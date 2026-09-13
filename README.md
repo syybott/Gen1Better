@@ -42,7 +42,12 @@ Reverse the selected palette from light-to-dark into dark-to-light.
 Changes can be made directly through the Mod Manager or main options menu
 
 
-## 👏 Special Thanks
-To [piftee](https://github.com/piftee) for the original ideas behind the Modern PC, Modern Pockets, and Battle HUD information concepts. Their original work and design ideas were a major inspiration for these features.
-_____
-Pokémon and related trademarks are property of their respective owners. This project is not affiliated with or endorsed by Nintendo, Game Freak, or The Pokémon Company.
+## License
+
+Gen1BetterMenus uses separate license notices by content type:
+
+- Original Gen1BetterMenus code and modifications are All Rights Reserved; see [`licenses/CODE_LICENSE.md`](licenses/CODE_LICENSE.md)
+- Original artwork and visual assets are All Rights Reserved; see [`licenses/ART_LICENSE.md`](licenses/ART_LICENSE.md)
+- Third-party components remain under their original licenses; see [`licenses/THIRD_PARTY_NOTICES.md`](licenses/THIRD_PARTY_NOTICES.md)
+
+Pokémon and related trademarks are property of their respective owners. This project is not affiliated with or endorsed by Nintendo, Game Freak, Creatures, or The Pokémon Company.
