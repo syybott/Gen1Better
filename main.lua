@@ -300,6 +300,112 @@ local YELLOW_TITLE_PIKACHU = {
 local activeMod
 local activeGame
 
+local SCALE_STEPS = { "100", "90", "80", "70" }
+local SCALE_FACTORS = {
+  ["100"] = 1.00,
+  ["90"] = 0.90,
+  ["80"] = 0.80,
+  ["70"] = 0.70,
+}
+
+-- BetterMenus redraws these stock menu classes using its widescreen
+-- default-GB-frame presentation. These are eligible for Menu Scale.
+-- Unknown state types are left at native scale unless their owning mod
+-- explicitly opts in through bettermenus.ui_scale.
+local SCALABLE_MENU_STATES = {
+  [OptionsMenu] = true,
+  [PaletteScreen] = true,
+  [ListMenu] = true,
+  [Menu] = true,
+  [BoxMenu] = true,
+  [BagMenu] = true,
+  [PlayerPC] = true,
+  [PokedexMenu] = true,
+  [PartyMenu] = true,
+  [TrainerCard] = true,
+  [DexEntryMenu] = true,
+  [NamingScreen] = true,
+  [SummaryMenu] = true,
+  [TextBox] = true,
+  [ChoiceBox] = true,
+  [QuantityBox] = true,
+  [LinkState] = true,
+}
+
+local function scaleOption(key)
+  if not activeMod then return "100" end
+  local ok, value = pcall(activeMod.options.get, activeMod.options, key)
+  value = ok and tostring(value or "100") or "100"
+  return SCALE_FACTORS[value] and value or "100"
+end
+
+local function optionScaleFactor(key)
+  return SCALE_FACTORS[scaleOption(key)] or 1
+end
+
+local function scaleHookFactor(context)
+  local enabled = context.defaultEnabled
+  if Runtime.wantsHook("bettermenus.ui_scale") then
+    enabled = Runtime.call(
+      "bettermenus.ui_scale",
+      function(ctx) return ctx.defaultEnabled end,
+      context)
+  end
+  return enabled == true and context.requestedFactor or 1
+end
+
+local function defaultMenuScaleEnabled(game)
+  local supported = false
+  for _, state in ipairs(game and game.stack and game.stack.states or {}) do
+    if state == game.overworld or (state and state.isOverworld) then
+      -- The overworld is the unscaled background beneath these menus.
+    elseif state and state.isBattle then
+      return false
+    elseif state and (state.modernPCUI or state.modernBagUI
+        or state.modernPartyUI or state.gen1BetterMenusModScreen) then
+      return false
+    elseif state and (SCALABLE_MENU_STATES[getmetatable(state)]
+        or state.gen1BetterMenusSavePanel
+        or state.gen1BetterMenusWide
+        or state.isPCLoginTransition) then
+      supported = true
+    elseif state then
+      -- Unknown and custom full-screen states stay native unless their
+      -- owner explicitly opts in through bettermenus.ui_scale.
+      return false
+    end
+  end
+  return supported
+end
+
+local function menuScaleFactor(game)
+  local factor = optionScaleFactor("menu_scale")
+  if factor >= 1 or not (game and game.stack) then return 1 end
+
+  local hasOverworld, hasBattle = false, false
+  for _, state in ipairs(game.stack.states or {}) do
+    if state == game.overworld or (state and state.isOverworld) then
+      hasOverworld = true
+    end
+    if state and state.isBattle then hasBattle = true end
+  end
+
+  local top = game.stack:top()
+  if not hasOverworld or hasBattle or not top or top == game.overworld
+      or top.isOverworld then
+    return 1
+  end
+
+  return scaleHookFactor({
+    kind = "menu",
+    game = game,
+    state = top,
+    states = game.stack.states,
+    requestedFactor = factor,
+    defaultEnabled = defaultMenuScaleEnabled(game),
+  })
+end
+
 local function modernBattleUIMode()
   if not activeMod then return "on" end
   local ok, value = pcall(activeMod.options.get, activeMod.options,
@@ -309,8 +415,49 @@ local function modernBattleUIMode()
   return value == "mod" and "mod" or value == "off" and "off" or "on"
 end
 
-local function modernBattleUIEnabled()
-  return modernBattleUIMode() == "on"
+local function wideBattleLayoutSelected(game)
+  game = game or activeGame
+  local options = game and game.save and game.save.options
+  return options and options.battleLayout == "wide" or false
+end
+
+local function extendedBattleHudSelected(game)
+  game = game or activeGame
+  local options = game and game.save and game.save.options
+  return options and options.battleHud == "extended" or false
+end
+
+local function betterBattleSettingsSupported(game)
+  return wideBattleLayoutSelected(game)
+    and extendedBattleHudSelected(game)
+end
+
+local function betterBattleApi()
+  local exports = activeMod and activeMod.exports
+  local api = exports and exports.betterBattle
+  return type(api) == "table" and api or nil
+end
+
+local function effectiveModernBattleUIMode(battle)
+  local api = betterBattleApi()
+  if api and type(api.modeFor) == "function" then
+    local ok, mode = pcall(api.modeFor, battle)
+    if ok and type(mode) == "string" then return mode end
+  end
+  return modernBattleUIMode()
+end
+
+local function modernBattleUIEnabled(game, battle)
+  if modernBattleUIMode() ~= "on"
+      or not betterBattleSettingsSupported(game) then
+    return false
+  end
+  local api = betterBattleApi()
+  if battle and api and type(api.enabled) == "function" then
+    local ok, enabled = pcall(api.enabled, battle)
+    return ok and enabled == true
+  end
+  return true
 end
 local LOCATION_OVERLAY_KEY = "__qolLocationBannerOverlay"
 local locationStates = setmetatable({}, { __mode = "k" })
@@ -494,12 +641,16 @@ end
 
 local function installModOptionsMarkerCompatibility()
   local function propagate(game, id, inst)
-    if not inst or inst.isModOptions ~= nil then
-      return inst
-    end
+    if not inst then return inst end
 
     local factory = Screens.get(game, id)
-    if factory and factory.isModOptions then
+    if factory and factory.__modOwned then
+      -- Screens supplied through the mod screen registry are custom UI.
+      -- They stay native unless their owner implements bettermenus.ui_scale.
+      inst.gen1BetterMenusModScreen = true
+    end
+
+    if inst.isModOptions == nil and factory and factory.isModOptions then
       inst.isModOptions = true
     end
 
@@ -521,6 +672,25 @@ local function installOverworldScaleStability()
   local originalDraw = Game.draw
   local originalUiScale = Renderer.uiScale
   local originalOffsetRange = Zoom.offsetRange
+  local originalFrameRects = Renderer.frameRects
+
+  local function scaledUiScale(renderer, game, scale)
+    local factor = menuScaleFactor(game)
+    if factor >= 1 then return scale end
+    local floorScale = math.max(1, math.ceil(renderer:fitScale() / 2))
+    return math.max(floorScale, scale * factor)
+  end
+
+  local function configuredUiScale(renderer)
+    return scaledUiScale(renderer, activeGame, originalUiScale(renderer))
+  end
+
+  Renderer.uiScale = configuredUiScale
+  Renderer.frameRects = function(renderer, ...)
+    local rects = originalFrameRects(renderer, ...)
+    renderer.gen1BetterMenusFrameRects = rects
+    return rects
+  end
 
   local function fitFor(w, h)
     local oldW, oldH = Renderer.uiWidth, Renderer.uiHeight
@@ -595,11 +765,11 @@ local function installOverworldScaleStability()
       Zoom.offset = savedOffset
       local scale = originalUiScale(renderer)
       Zoom.offset = adjusted
-      return scale
+      return scaledUiScale(renderer, self, scale)
     end
 
     local ok, err = pcall(originalDraw, self)
-    Renderer.uiScale = originalUiScale
+    Renderer.uiScale = configuredUiScale
     Zoom.offsetRange = originalOffsetRange
     Zoom.offset = savedOffset
     if not ok then error(err) end
@@ -1551,8 +1721,95 @@ end
 
 local function installBattlePaletteIsolation()
   local originalBlitCanvas = Renderer.blitCanvas
+  local originalSetBattleUIAnchor = Renderer.setBattleUIAnchor
 
-  Renderer.blitCanvas = function(self, canvas, sx, sy, zones, ...)
+  local function sameAnchorCoordinate(a, b)
+    return math.abs((a or 0) - (b or 0)) < 0.01
+  end
+
+  local function placeBetterBattleAnchor(self, canvas, sx, sy,
+      zoneSx, zoneSy, bx, by, boxX, boxY, boxW, boxH, dpiX, dpiY)
+    if canvas ~= self.battleHUDCanvas
+        or not (self.uiAnchors and sx and sy and bx and by
+          and boxX and boxY and boxW and boxH) then
+      return sx, sy, zoneSx, zoneSy, bx, by, boxX, boxY, boxW, boxH
+    end
+    local sourceX, sourceY = (boxX - bx) / sx, (boxY - by) / sy
+    for _, anchor in ipairs(self.uiAnchors) do
+      local p = anchor.gen1BetterMenusPlacement
+      if anchor.canvas == canvas and p and p.owner == "betterbattle"
+          and sameAnchorCoordinate(sourceX, anchor.x)
+          and sameAnchorCoordinate(sourceY, anchor.y) then
+        local r = self:frameRects()
+        dpiX, dpiY = dpiX or r.dpiX or 1, dpiY or r.dpiY or 1
+        local pixels = math.max(1, math.floor(
+          math.min(math.abs(sx) * dpiX, math.abs(sy) * dpiY)
+            * (tonumber(p.scale) or 1) + 1e-6))
+        local ux, uy = pixels / dpiX, pixels / dpiY
+        local w, h = anchor.w * ux, anchor.h * uy
+        local x, y = r.vux + (p.gapX or 0) * ux,
+          r.vuy + (p.gapY or 0) * uy
+        if p.edge == "top-right" then
+          x = r.vux + r.vuw - (p.gapX or 0) * ux - w
+        elseif p.edge == "center" then
+          x = r.vux + (r.vuw - w) / 2
+          y = r.vuy + (r.vuh - h) / 2
+        elseif p.edge == "center-bottom" then
+          x = r.vux + (r.vuw - w) / 2
+          y = r.vuy + r.vuh - (p.gapY or 0) * uy - h
+        elseif p.edge == "field" then
+          x = r.uox + p.fieldX * r.Ux - w / 2
+          y = r.uoy + p.fieldY * r.Uy + (p.gapY or 0) * uy
+        end
+        x = math.floor(x * dpiX + 0.5) / dpiX
+        y = math.floor(y * dpiY + 0.5) / dpiY
+        -- Keep the original origin when clipping. A negative y deliberately
+        -- removes the head/frame top; clamping the origin would reveal it.
+        local left, top = math.max(x, r.vux), math.max(y, r.vuy)
+        local right = math.min(x + w, r.vux + r.vuw)
+        local bottom = math.min(y + h, r.vuy + r.vuh)
+        return ux, uy, ux, uy, x - anchor.x * ux, y - anchor.y * uy,
+          left, top, math.max(0, right - left), math.max(0, bottom - top)
+      end
+    end
+    return sx, sy, zoneSx, zoneSy, bx, by, boxX, boxY, boxW, boxH
+  end
+
+  if type(originalSetBattleUIAnchor) == "function" then
+    Renderer.setBattleUIAnchor = function(self, x, y, w, h, anchor,
+        placement)
+      local before = #(self.uiAnchors or {})
+      local result = originalSetBattleUIAnchor(
+        self, x, y, w, h, anchor)
+      for i = before + 1, #(self.uiAnchors or {}) do
+        local record = self.uiAnchors[i]
+        if type(placement) == "table"
+            and placement.owner == "betterbattle" then
+          record.gen1BetterMenusPlacement = placement
+        end
+      end
+      return result
+    end
+  end
+
+  Renderer.blitCanvas = function(self, canvas, sx, sy, zones,
+      zoneSx, zoneSy, bx, by, boxX, boxY, boxW, boxH, dpiX, dpiY)
+    sx, sy, zoneSx, zoneSy, bx, by, boxX, boxY, boxW, boxH =
+      placeBetterBattleAnchor(
+        self, canvas, sx, sy, zoneSx, zoneSy,
+        bx, by, boxX, boxY, boxW, boxH, dpiX, dpiY)
+
+    if canvas == self.battleHUDCanvas and self.gen1BetterBattleZones then
+      for _, anchor in ipairs(self.uiAnchors or {}) do
+        local p = anchor.gen1BetterMenusPlacement
+        if p and p.owner == "betterbattle" then
+          -- This list belongs to this HUD draw, not to the actor canvas.
+          zones = self.gen1BetterBattleZones
+          break
+        end
+      end
+    end
+    if boxW and boxH and (boxW <= 0 or boxH <= 0) then return end
     if canvas == self.canvas and zones then
       local filtered = {}
       for i = 1, #zones do
@@ -1562,7 +1819,9 @@ local function installBattlePaletteIsolation()
       end
       zones = filtered
     end
-    return originalBlitCanvas(self, canvas, sx, sy, zones, ...)
+    return originalBlitCanvas(
+      self, canvas, sx, sy, zones, zoneSx, zoneSy,
+      bx, by, boxX, boxY, boxW, boxH, dpiX, dpiY)
   end
 end
 
@@ -1570,6 +1829,21 @@ local function battleUIZone(palette, tx1, ty1, tx2, ty2)
   local zone = PaletteFX.zone(palette, tx1, ty1, tx2, ty2)
   zone.gen1BetterMenusBattleUI = true
   return zone
+end
+
+local function battleHpFillPixels(battler)
+  local mon = battler and battler.mon
+  local maxHp = mon and mon.stats and mon.stats.hp or 0
+  local shownPixels = tonumber(battler and battler.shownPx)
+  if shownPixels ~= nil then
+    return math.min(88, math.max(0, math.floor(shownPixels * 11 / 6)))
+  end
+  local hp = math.max(0, math.floor(
+    (battler and battler.shownHP) or (mon and mon.hp) or 0))
+  if maxHp <= 0 then return 0 end
+  local px = math.floor(hp * 11 * 8 / maxHp)
+  if hp > 0 then px = math.max(1, px) end
+  return math.min(88, math.max(0, px))
 end
 
 local function locationBannerDuration(game)
@@ -1853,9 +2127,35 @@ local function installDialogueLayout()
         originalDraw(box)
       end
     end
+
     -- Reflow after widening and rebuild the typewriter's current line so it
     -- cannot retain the original 18-column first-page split.
-    self.pages = TextBox.paginate(TextBox.substitute(game, text), self.maxCols)
+    local wideText = TextBox.substitute(game, text)
+    -- Stock strings contain \n at their original narrow textbox boundaries.
+    -- In a widened BetterMenus pane, ordinary newlines are soft breaks and
+    -- should not prevent adjacent words from sharing a line. Preserve \v
+    -- continuation controls and \f page breaks.
+    wideText = wideText:gsub("\n", " ")
+    local pages = TextBox.paginate(wideText, self.maxCols)
+
+    -- A stock \v can have been positioned after the original second
+    -- narrow-textbox line. After widening, that content may now occupy only
+    -- the first visual line, which would pause before the second line.
+    -- Defer only that first-line continuation until the second visual line
+    -- has finished. Preserve all later continuation waits.
+    local contBefore = pages.contBefore or {}
+    for pageIndex, page in ipairs(pages) do
+      local conts = contBefore[pageIndex]
+      if conts and conts[2] then
+        conts[2] = false
+        if page[3] ~= nil then
+          conts[3] = true
+        end
+      end
+    end
+
+    self.pages = pages
+
     if self.instant then
       self.pageIndex = #self.pages
       local page = self.pages[self.pageIndex] or {}
@@ -2904,9 +3204,48 @@ return function(mod, menuColors)
 
   local qolCompatGame
   local enforcingQolBattleGate = false
+  local normalizingBetterBattleLayout = false
+  local rejectingBetterBattleSetting = false
 
   local function qolBattleGateReason(game)
-    return modernBattleUIMode() == "on" and "MODERN BATTLE UI" or nil
+    if modernBattleUIMode() == "on" then return "betterbattle" end
+    local options = game and game.save and game.save.options
+    if options and options.battleLayout == "wide"
+        and options.battleHud == "extended" then
+      return "extended"
+    end
+    return nil
+  end
+
+  local function qolBattleGateLabel(reason)
+    if reason == "betterbattle" then return "OFF (BetterBattle)" end
+    if reason == "extended" then return "OFF (BattleUI EXTENDED)" end
+    return nil
+  end
+
+  local function showBetterBattleRequiresWide(game)
+    if not (game and game.stack) then return end
+    game.stack:push(TextBox.new(game,
+      "Please enable WIDE in your\n" ..
+      "Battle UI settings to use\f" ..
+      "BetterBattle."))
+  end
+
+  local function showBetterBattleRequiresExtended(game)
+    if not (game and game.stack) then return end
+    game.stack:push(TextBox.new(game,
+      "Please enable EXTENDED in your\n" ..
+      "Battle HUD settings to use\f" ..
+      "BetterBattle."))
+  end
+
+  local function showDisableBetterBattleForStandard(game)
+    if not (game and game.stack) then return end
+    game.stack:push(TextBox.new(game,
+      "Please disable BetterBattle\n" ..
+      "in the BetterMenus options\f" ..
+      "before switching to WIDE\n" ..
+      "Standard Battle UI."))
   end
 
   local function optionValue(loader, modId, key)
@@ -2919,32 +3258,28 @@ return function(mod, menuColors)
     return nil
   end
 
-  local function persistGameOptions(game)
-    if game.writeOptions then
-      game:writeOptions()
-    elseif game.persistOptions then
-      game:persistOptions()
+  local function setBetterBattleOff(game)
+    if normalizingBetterBattleLayout or not game
+        or modernBattleUIMode() ~= "on" then return false end
+    normalizingBetterBattleLayout = true
+    ManagerState.new(game):setOption(
+      "gen1-better-menus", "modern_battle_ui", "off")
+    normalizingBetterBattleLayout = false
+    return true
+  end
+
+  local function normalizeInvalidBetterBattle(game)
+    if not game or modernBattleUIMode() ~= "on"
+        or betterBattleSettingsSupported(game) then
+      return false
     end
+    return setBetterBattleOff(game)
   end
 
   local function enforceQolBattleGate(game)
     if enforcingQolBattleGate or not game
-        or modernBattleUIMode() ~= "on" then return false end
+        or not qolBattleGateReason(game) then return false end
     enforcingQolBattleGate = true
-
-    local options = game.save and game.save.options
-    local baseOptionsChanged = false
-    if options then
-      if options.battleLayout ~= "wide" then
-        options.battleLayout = "wide"
-        baseOptionsChanged = true
-      end
-      if options.battleHud ~= "extended" then
-        options.battleHud = "extended"
-        baseOptionsChanged = true
-      end
-    end
-    if baseOptionsChanged then persistGameOptions(game) end
 
     local manager = ManagerState.new(game)
     local loader = game.mods
@@ -2963,6 +3298,7 @@ return function(mod, menuColors)
 
   local function initializeBattleUiCompatibility(game)
     if not game then return end
+    normalizeInvalidBetterBattle(game)
     enforceQolBattleGate(game)
   end
 
@@ -2974,6 +3310,19 @@ return function(mod, menuColors)
   mod.events:on("mod.options_changed", function(event)
     if event and event.mod == "gen1-better-menus"
         and event.key == "modern_battle_ui" then
+      if not normalizingBetterBattleLayout
+          and not rejectingBetterBattleSetting
+          and event.value == "on" then
+        rejectingBetterBattleSetting = true
+        if not wideBattleLayoutSelected(qolCompatGame) then
+          setBetterBattleOff(qolCompatGame)
+          showBetterBattleRequiresWide(qolCompatGame)
+        elseif not extendedBattleHudSelected(qolCompatGame) then
+          setBetterBattleOff(qolCompatGame)
+          showBetterBattleRequiresExtended(qolCompatGame)
+        end
+        rejectingBetterBattleSetting = false
+      end
       enforceQolBattleGate(qolCompatGame)
     end
     if event and event.mod == "quality_of_life"
@@ -2986,11 +3335,27 @@ return function(mod, menuColors)
   mod.hooks:wrap("ui.options.rows", function(next, game, rows)
     local out = next(game, rows)
     for _, row in ipairs(out or {}) do
-      if (row.id == "battleLayout" or row.id == "battleHud")
+      if row.id == "battleHud" and type(row.step) == "function" then
+        local step = row.step
+        row.step = function(g, ...)
+          if modernBattleUIMode() == "on"
+              and wideBattleLayoutSelected(g)
+              and extendedBattleHudSelected(g) then
+            showDisableBetterBattleForStandard(g)
+            return false
+          end
+          local result = step(g, ...)
+          normalizeInvalidBetterBattle(g)
+          enforceQolBattleGate(g)
+          return result
+        end
+      elseif row.id == "battleLayout"
           and type(row.step) == "function" then
         local step = row.step
         row.step = function(g, ...)
           local result = step(g, ...)
+          if not wideBattleLayoutSelected(g) then setBetterBattleOff(g) end
+          normalizeInvalidBetterBattle(g)
           enforceQolBattleGate(g)
           return result
         end
@@ -3015,7 +3380,7 @@ return function(mod, menuColors)
         row.value = function(g)
           local control = ManagerState.gen1BetterMenusQolBattleControl
           local reason = control and control.reason(g)
-          return reason and "OFF (MODERN BATTLE UI)" or value(g)
+          return qolBattleGateLabel(reason) or value(g)
         end
       end
     end
@@ -3033,13 +3398,18 @@ return function(mod, menuColors)
       if reason then control.enforce(self.game) end
       if gated and input and (input:wasPressed("a")
           or input:wasPressed("left") or input:wasPressed("right")) then
-        self.game.stack:push(TextBox.new(self.game,
-          "To use the QOL XP Bar or\n" ..
-          "Pokedex Indicator, please disable\f" ..
-          "BetterMenus Modern Battle UI.\n" ..
-          "Modern Battle UI already includes\f" ..
-          "an XP bar, Pokedex indicator, and\n" ..
-          "extended UI support."))
+        local message
+        if reason == "betterbattle" then
+          message = "To use the QOL XP Bar or\n" ..
+            "Pokedex Indicator, please disable\f" ..
+            "BetterBattle in the\n" ..
+            "BetterMenus options screen."
+        else
+          message = "The QOL mod XP Bar and Caught\n" ..
+            "Indicator only work with OG or\f" ..
+            "WIDE Standard Battle UI."
+        end
+        self.game.stack:push(TextBox.new(self.game, message))
         return true
       end
       local result = update(self, ...)
@@ -3070,29 +3440,67 @@ return function(mod, menuColors)
     installQolBattleStackGate(event and event.game)
   end)
 
-    local genderMod = mod.find("gender_mod")
+  local genderMod = mod.find("gender_mod")
   local genderExports = genderMod and genderMod.exports or nil
+
+  local crystalSprites
+  local crystalMod =
+    mod.find("crystal_animated_sprites_with_shiny_visuals")
+  if crystalMod then
+    local compatSource, compatReadErr =
+      mod:read("crystal_sprite_compat.lua")
+    if not compatSource then
+      mod.log:warn("Crystal sprite compatibility is missing: %s",
+        tostring(compatReadErr or "unknown read error"))
+    else
+      local compatChunk, compatCompileErr = load(
+        compatSource, "@" .. mod.path .. "/crystal_sprite_compat.lua")
+      if not compatChunk then
+        mod.log:warn("Crystal sprite compatibility did not compile: %s",
+          tostring(compatCompileErr))
+      else
+        local okFactory, compatFactory = pcall(compatChunk)
+        if not okFactory or type(compatFactory) ~= "function" then
+          mod.log:warn("Crystal sprite compatibility factory failed: %s",
+            tostring(compatFactory))
+        else
+          local okCompat, compat =
+            pcall(compatFactory, mod, crystalMod)
+          if okCompat and type(compat) == "table" then
+            crystalSprites = compat
+          elseif not okCompat then
+            mod.log:warn("Crystal sprite compatibility failed: %s",
+              tostring(compat))
+          end
+        end
+      end
+    end
+  end
 
   local compatibility = {
     hgssSprites = mod.find("HGSS_SPRITES") ~= nil,
+    crystalAnimatedSprites = crystalMod ~= nil,
+    crystalModId = crystalMod and crystalMod.id or nil,
+    crystalExports = crystalMod and crystalMod.exports or nil,
+    crystalSprites = crystalSprites,
   }
 
-  local source, readErr = mod:read("screen.lua")
+  local source, readErr = mod:read("better_pc_screen.lua")
   if not source then
-    mod.log:error("screen.lua is missing (%s); reinstall the mod",
+    mod.log:error("better_pc_screen.lua is missing (%s); reinstall the mod",
       tostring(readErr or "unknown read error"))
     return
   end
 
-  local chunk, compileErr = load(source, "@" .. mod.path .. "/screen.lua")
+  local chunk, compileErr = load(source, "@" .. mod.path .. "/better_pc_screen.lua")
   if not chunk then
-    mod.log:error("screen.lua did not compile: %s", tostring(compileErr))
+    mod.log:error("better_pc_screen.lua did not compile: %s", tostring(compileErr))
     return
   end
 
   local okFactory, factory = pcall(chunk)
   if not okFactory or type(factory) ~= "function" then
-    mod.log:error("screen.lua must return a factory function: %s",
+    mod.log:error("better_pc_screen.lua must return a factory function: %s",
       tostring(factory))
     return
   end
@@ -3105,6 +3513,41 @@ return function(mod, menuColors)
     mod.log:error("PC screen factory failed: %s", tostring(screen))
     return
   end
+
+  compatibility.tinyFont = screen.tinyFont
+
+  local modernPartySource, modernPartyReadErr =
+    mod:read("better_party_screen.lua")
+  if not modernPartySource then
+    mod.log:error("better_party_screen.lua is missing (%s)",
+      tostring(modernPartyReadErr or "unknown read error"))
+    return
+  end
+  local modernPartyChunk, modernPartyCompileErr = load(
+    modernPartySource, "@" .. mod.path .. "/better_party_screen.lua")
+  if not modernPartyChunk then
+    mod.log:error("better_party_screen.lua did not compile: %s",
+      tostring(modernPartyCompileErr))
+    return
+  end
+  local okModernPartyFactory, modernPartyFactory =
+    pcall(modernPartyChunk)
+  if not okModernPartyFactory or type(modernPartyFactory) ~= "function" then
+    mod.log:error("ModernParty factory failed: %s",
+      tostring(modernPartyFactory))
+    return
+  end
+  local okModernParty, modernParty = pcall(
+    modernPartyFactory, mod, genderExports, compatibility,
+    effectiveMenuPalette, useStockOgMenuPalette, effectivePaperPalette,
+    rawMenuPaletteCopy)
+  if not okModernParty or type(modernParty) ~= "table"
+      or type(modernParty.new) ~= "function" then
+    mod.log:error("ModernParty screen factory failed: %s",
+      tostring(modernParty))
+    return
+  end
+  mod.exports.modernParty = modernParty
 
   local originalBoxMenu = mod.content.screens:get("BoxMenu")
   local boxMenuWrapper = {
@@ -3128,6 +3571,13 @@ return function(mod, menuColors)
   local originalPartyMenu = mod.content.screens:get("PartyMenu")
   local partyMenuWrapper = {
     new = function(game, ...)
+      if activeMod
+          and activeMod.options:get("modern_party_ui") ~= false then
+        return modernParty.new(game, ...)
+      end
+      if originalPartyMenu and type(originalPartyMenu.new) == "function" then
+        return originalPartyMenu.new(game, ...)
+      end
       return PartyMenu.new(game, ...)
     end
   }
@@ -3191,8 +3641,8 @@ return function(mod, menuColors)
     return bagFactory
   end
 
-  local makeBagScreen = loadBagFactory("modern_bag_screen.lua")
-  local makeBagInventory = loadBagFactory("modern_bag_inventory.lua")
+  local makeBagScreen = loadBagFactory("better_bag_screen.lua")
+  local makeBagInventory = loadBagFactory("better_bag_inventory.lua")
   if makeBagScreen and makeBagInventory then
     local originalBagScreen = mod.content.screens:get("BagMenu")
     local bagCompatibility = {
@@ -3235,39 +3685,53 @@ return function(mod, menuColors)
     end
   end
   
-    local hudSource, hudReadErr = mod:read("hud.lua")
+    local hudSource, hudReadErr = mod:read("better_battle_hud.lua")
 	  if not hudSource then
-		mod.log:error("hud.lua is missing (%s); reinstall the mod",
+		mod.log:error("better_battle_hud.lua is missing (%s); reinstall the mod",
 		  tostring(hudReadErr or "unknown read error"))
 		return
 	  end
 
 	  local hudChunk, hudCompileErr = load(
 		hudSource,
-		"@" .. mod.path .. "/hud.lua"
+		"@" .. mod.path .. "/better_battle_hud.lua"
 	  )
 
 	  if not hudChunk then
-		mod.log:error("hud.lua did not compile: %s",
+		mod.log:error("better_battle_hud.lua did not compile: %s",
 		  tostring(hudCompileErr))
 		return
 	  end
 
 	  local hudOk, installHud = pcall(hudChunk)
 	  if not hudOk or type(installHud) ~= "function" then
-		mod.log:error("hud.lua must return an installer: %s",
+		mod.log:error("better_battle_hud.lua must return an installer: %s",
 		  tostring(installHud))
 		return
 	  end
 
 	  local installedHud, hudInstallErr = pcall(installHud, mod,
-		effectiveMenuPalette, useStockOgMenuPalette, modernBattleUIMode)
+		effectiveMenuPalette, useStockOgMenuPalette, modernBattleUIMode,
+		compatibility)
 	  if not installedHud then
 		mod.log:error("battle information HUD failed: %s",
 		  tostring(hudInstallErr))
 		return
 	  end
   
+  local backdropSource, backdropReadErr = mod:read("better_battle_backdrops.lua")
+  if backdropSource then
+    local backdropChunk, backdropCompileErr = load(backdropSource,
+      "@" .. mod.path .. "/better_battle_backdrops.lua")
+    local ok, err = pcall(function()
+      assert(backdropChunk, backdropCompileErr)
+      backdropChunk().install(mod, mod.exports.betterBattle)
+    end)
+    if not ok then mod.log:error("Battle backdrops failed: %s", tostring(err)) end
+  else
+    mod.log:error("Battle backdrops missing: %s", tostring(backdropReadErr))
+  end
+
   local frameGame
   local nicknameBackdrop
 
@@ -3341,11 +3805,21 @@ return function(mod, menuColors)
       } },
     { key = "inverse", label = "Inverse", type = "toggle",
       default = false },
-    { key = "modern_pc_ui", label = "Modern PC UI", type = "toggle",
-      default = false },
-    { key = "modern_bag_ui", label = "Modern Bag UI", type = "toggle",
+    { key = "modern_pc_ui", label = "BetterPC", type = "toggle",
       default = true },
-    { key = "modern_battle_ui", label = "Modern Battle UI", type = "choice",
+    { key = "modern_party_ui", label = "BetterParty", type = "toggle",
+      default = true },
+    { key = "modern_bag_ui", label = "BetterBag", type = "toggle",
+      default = true },
+    { key = "menu_scale", label = "Menu Scale", type = "choice",
+      default = "100",
+      choices = {
+        { "100%", "100" },
+        { "90%", "90" },
+        { "80%", "80" },
+        { "70%", "70" },
+      } },
+    { key = "modern_battle_ui", label = "BetterBattle", type = "choice",
       default = "on",
       choices = {
         { "OFF", "off" },
@@ -3400,6 +3874,20 @@ return function(mod, menuColors)
   local function setOption(game, key, value)
     local manager = ManagerState.new(game)
     manager:setOption("gen1-better-menus", key, value)
+  end
+
+  local function stepScaleOption(game, key, dir)
+    local current = scaleOption(key)
+    local index = 1
+    for i, value in ipairs(SCALE_STEPS) do
+      if value == current then
+        index = i
+        break
+      end
+    end
+    local delta = dir and dir < 0 and -1 or 1
+    index = ((index - 1 + delta) % #SCALE_STEPS) + 1
+    setOption(game, key, SCALE_STEPS[index])
   end
 
   local COMPACT_VISIBLE = 13
@@ -3845,34 +4333,61 @@ return function(mod, menuColors)
       description = "Invert your color palette",
     }
     rows[#rows + 1] = {
-      label = "Modern PC UI",
+      label = "BetterPC",
       value = function() return activeMod.options:get("modern_pc_ui") and "ON" or "OFF" end,
       widthValues = { "ON", "OFF" },
       step = function(g) setOption(g, "modern_pc_ui", not activeMod.options:get("modern_pc_ui")) end,
     }
     rows[#rows + 1] = {
-      label = "Modern Bag UI",
+      label = "BetterParty",
+      value = function() return activeMod.options:get("modern_party_ui") ~= false and "ON" or "OFF" end,
+      widthValues = { "ON", "OFF" },
+      step = function(g) setOption(g, "modern_party_ui", not (activeMod.options:get("modern_party_ui") ~= false)) end,
+    }
+    rows[#rows + 1] = {
+      label = "BetterBag",
       value = function() return activeMod.options:get("modern_bag_ui") ~= false and "ON" or "OFF" end,
       widthValues = { "ON", "OFF" },
       step = function(g) setOption(g, "modern_bag_ui", not (activeMod.options:get("modern_bag_ui") ~= false)) end,
     }
     rows[#rows + 1] = {
-      label = "Modern Battle UI",
+      label = "Menu Scale",
+      value = function() return scaleOption("menu_scale") .. "%" end,
+      widthValues = { "100%", "90%", "80%", "70%" },
+      step = function(g, dir)
+        stepScaleOption(g, "menu_scale", dir)
+      end,
+      description = "Scale in-game menus and dialogue. BetterPC, BetterBag, and BetterParty keep their responsive size.",
+    }
+    rows[#rows + 1] = {
+      label = "BetterBattle",
       value = function() return modernBattleUIMode():upper() end,
       widthValues = { "ON", "OFF", "MOD" },
       step = function(g)
         local mode = modernBattleUIMode()
-        mode = mode == "on" and "off" or mode == "off" and "mod" or "on"
-        setOption(g, "modern_battle_ui", mode)
+        local nextMode = mode == "on" and "off"
+          or mode == "off" and "mod" or "on"
+        if nextMode == "on" then
+          if not wideBattleLayoutSelected(g) then
+            showBetterBattleRequiresWide(g)
+            return false
+          end
+          if not extendedBattleHudSelected(g) then
+            showBetterBattleRequiresExtended(g)
+            return false
+          end
+        end
+        setOption(g, "modern_battle_ui", nextMode)
+        return true
       end,
       description = function()
         local mode = modernBattleUIMode()
         if mode == "on" then
-          return "This will add an XP bar to the user Pokémon panel and a Pokédex 'Caught' indicator to the enemy Pokémon panel"
+          return "Use the complete BetterBattle WIDE Extended layout, including compact status, command, move, XP, caught, portrait, and party panels"
         elseif mode == "off" then
           return "BetterMenus will provide palette coverage for stock drawn Battle UI"
         end
-        return "Use this option if you want to use a custom Battle UI or you see issues with your preferred mod using the OFF setting"
+        return "Use a detected custom Battle UI while BetterMenus continues to provide its menu palette coverage"
       end,
     }
     rows[#rows + 1] = {
@@ -4079,7 +4594,7 @@ return function(mod, menuColors)
   end)
   mod.hooks:wrap("battle.overlay", function(next, battle)
     next(battle)
-    if not modernBattleUIEnabled() then return end
+    if not modernBattleUIEnabled(battle and battle.game) then return end
     if not (battle and battle.wideLayout and battle:wideLayout()
             and battle.extendedHUD and battle:extendedHUD()) then return end
     local g = love.graphics
@@ -4161,18 +4676,26 @@ end
   mod.hooks:wrap("render.hud", function(next, game, viewport)
     next(game, viewport)
     local top = game and game.stack and game.stack:top()
-    local options = game and game.save and game.save.options
+    local uiFrame = game and game.renderer
+      and game.renderer.gen1BetterMenusFrameRects
+    local menuX = uiFrame and uiFrame.uox
+      or viewport and viewport.gameX
+    local menuY = uiFrame and uiFrame.uoy
+      or viewport and viewport.gameY
+    local menuWidth = uiFrame and uiFrame.uvpw
+      or viewport and viewport.gameWidth
+    local menuHeight = uiFrame and uiFrame.uvph
+      or viewport and viewport.gameHeight
 
     -- Summary sprites are transparent images. Draw them after the menu's
     -- palette pass so true-color art is never remapped and no rectangular
     -- true-color zone can expose an unpaletted seam around the sprite.
     if top and getmetatable(top) == SummaryMenu and top.sprite
-        and viewport and viewport.gameX and viewport.gameY
-        and viewport.gameWidth and viewport.gameHeight then
+        and menuX and menuY and menuWidth and menuHeight then
       local pw, ph = top.sprite:getDimensions()
       local py = math.max(0, 56 - ph)
-      local scaleX = viewport.gameWidth / UI_W
-      local scaleY = viewport.gameHeight / UI_H
+      local scaleX = menuWidth / UI_W
+      local scaleY = menuHeight / UI_H
       local r, green, b, a = love.graphics.getColor()
       local previousShader = love.graphics.getShader()
       local scissorX, scissorY, scissorW, scissorH = love.graphics.getScissor()
@@ -4183,9 +4706,8 @@ end
 
       love.graphics.push()
       love.graphics.setScissor(
-        viewport.gameX, viewport.gameY,
-        viewport.gameWidth, viewport.gameHeight)
-      love.graphics.translate(viewport.gameX, viewport.gameY)
+        menuX, menuY, menuWidth, menuHeight)
+      love.graphics.translate(menuX, menuY)
       love.graphics.scale(scaleX, scaleY)
       love.graphics.setColor(1, 1, 1, 1)
       if shader then
@@ -4213,10 +4735,13 @@ end
     local stack = game and game.stack
     local first = stack and stack.visibleBase and stack:visibleBase() or 1
     local modernBagVisible = false
+    local modernPartyVisible = false
     for i = first, #states do
       if states[i] and states[i].modernBagUI then
         modernBagVisible = true
-        break
+      end
+      if states[i] and states[i].modernPartyUI then
+        modernPartyVisible = true
       end
     end
     if modernBagVisible and viewport and viewport.width and viewport.height then
@@ -4231,24 +4756,35 @@ end
       love.graphics.setColor(r, green, b, a)
     end
 
-	local pipelineId = Pipelines.worldPipeline()
-    if not (modernBattleUIEnabled()
-            and top and getmetatable(top) == BattleState
-            and top.extendedHUD and top:extendedHUD()
-            and top.wantsFillScale and top:wantsFillScale()
-            and options and options.battleBg == "white"
-			and not pipelineId
-            and viewport and viewport.gameY and viewport.gameY > 0) then
-      return
+    if modernPartyVisible and viewport and viewport.width
+        and viewport.height then
+      local palette = PaletteFX.effectiveColors(effectiveMenuPalette())
+      local footer = palette and palette[3] or { 85, 85, 85 }
+      local pixelW = 1 / (viewport.dpiX or 1)
+      local pixelH = 1 / (viewport.dpiY or 1)
+      local r, green, b, a = love.graphics.getColor()
+      love.graphics.setColor(
+        footer[1] / 255, footer[2] / 255, footer[3] / 255, 1)
+
+      -- Top/header edge.
+      love.graphics.rectangle("fill", 0, 0,
+        viewport.width, pixelH)
+
+      -- Bottom/footer edge.
+      love.graphics.rectangle("fill", 0, viewport.height - pixelH,
+        viewport.width, pixelH)
+
+      -- Left and right screen edges.
+      love.graphics.rectangle("fill", 0, 0,
+        pixelW, viewport.height)
+      love.graphics.rectangle("fill", viewport.width - pixelW, 0,
+        pixelW, viewport.height)
+
+      love.graphics.setColor(r, green, b, a)
     end
-    local scale = math.min(viewport.height / UI_H, viewport.width / UI_W)
-    local uiX = math.floor((viewport.width - UI_W * scale) / 2)
-    local uiY = math.floor((viewport.height - UI_H * scale) / 2)
-    local x = math.floor(uiX + 128 * scale)
-    local r, green, b, a = love.graphics.getColor()
-    love.graphics.setColor(PaletteFX.paperShade(game.data))
-    love.graphics.rectangle("fill", x, 0, viewport.width - x, uiY)
-    love.graphics.setColor(r, green, b, a)
+
+    -- Detached BetterBattle panels need no stock-position paper overpaint.
+    -- That late fill could otherwise cover the top-right trainer band.
   end)
   mod.hooks:wrap("render.zones", function(next, game, zones)
     frameGame = game
@@ -4272,21 +4808,59 @@ end
     end
 
     if mt == BattleState and top.wideLayout and top:wideLayout() then
-      local battleMode = modernBattleUIMode()
-      if battleMode ~= "mod" then
-        out[#out + 1] = battleUIZone(effectiveMenuPalette(), 0, 0, 15, 3)
-        out[#out + 1] = battleUIZone(effectiveMenuPalette(), 23, 7, 37, 12)
-        out[#out + 1] = battleUIZone(effectiveMenuPalette(), 0, 13, 37, 17)
-        -- Standard WIDE draws its bottom message/command panels directly on
-        -- the main battle canvas.  The detached-HUD zone above is isolated
-        -- from that canvas, so add the same exact 104..143 panel band as a
-        -- main-canvas zone in ON/OFF. MOD remains the complete opt-out.
-        if not (top.extendedHUD and top:extendedHUD()) then
-          out[#out + 1] = PaletteFX.zone(
-            effectiveMenuPalette(), 0, 13, 37, 17)
-        end
+      local battleMode = effectiveModernBattleUIMode(top)
+      local palette = effectiveMenuPalette()
+      if battleMode == "on" then
+        out[#out + 1] = battleUIZone(palette, 0, 0, 15, 3)
+        out[#out + 1] = battleUIZone(palette, 22, 0, 37, 3)
+        out[#out + 1] = battleUIZone(palette, 0, 4, 16, 9)
+        out[#out + 1] = battleUIZone(palette, 21, 4, 37, 7)
+        out[#out + 1] = battleUIZone(palette, 0, 10, 37, 17)
+      else
+        out[#out + 1] = battleUIZone(palette, 0, 0, 15, 3)
+        out[#out + 1] = battleUIZone(palette, 23, 7, 37, 12)
+        out[#out + 1] = battleUIZone(palette, 0, 13, 37, 17)
       end
-      if battleMode == "off" then
+      -- Standard WIDE draws its bottom message/command panels directly on
+      -- the main battle canvas. The detached-HUD zone above is isolated from
+      -- that canvas, so add the same exact 104..143 panel band in every mode.
+      if not (top.extendedHUD and top:extendedHUD()) then
+        out[#out + 1] = PaletteFX.zone(
+          effectiveMenuPalette(), 0, 13, 37, 17)
+      end
+      if battleMode == "on" then
+        local function addBetterHpFill(battler, x, y)
+          local px = battleHpFillPixels(battler)
+          if px > 0 then
+            out[#out + 1] = {
+              colors = false, x = x, y = y, w = px, h = 2,
+              gen1BetterMenusBattleUI = true,
+            }
+          end
+        end
+        addBetterHpFill(top.enemy, 208, 51)
+        addBetterHpFill(top.player, 24, 51)
+        local api = betterBattleApi()
+        local xp = api and api.expPixels and api.expPixels(top) or 0
+        if xp > 0 then
+          out[#out + 1] = {
+            colors = false, x = 24, y = 67, w = xp, h = 2,
+            gen1BetterMenusBattleUI = true,
+          }
+        end
+      elseif battleMode == "off" then
+        local function addStockHpFill(battler, x, y)
+          local px = battleHpFillPixels(battler)
+          if px > 0 then
+            out[#out + 1] = {
+              colors = false, x = x, y = y, w = px, h = 2,
+              gen1BetterMenusBattleUI = true,
+            }
+          end
+        end
+        addStockHpFill(top.enemy, 24, 19)
+        addStockHpFill(top.player, 208, 75)
+      elseif battleMode ~= "on" then
         out[#out + 1] = {
           colors = false, x = 8, y = 16, w = 112, h = 8,
           gen1BetterMenusBattleUI = true,
@@ -4296,8 +4870,8 @@ end
           gen1BetterMenusBattleUI = true,
         }
       end
-      -- ON preserves only semantic meter fills. OFF restores each complete
-      -- stock HP element (label, track, and fill) after palette treatment.
+      -- ON and stock OFF preserve only semantic meter fills.
+      -- MOD retains the provider-owned full-element exemption.
     else
       local title
       for i = 1, #states do

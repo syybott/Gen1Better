@@ -1,5 +1,7 @@
 # Gen1BetterMenus — Mod Options Screen Compatibility
 
+This page is part of the [Gen1BetterMenus compatibility reference](Compatibility.md).
+
 Gen1BetterMenus/Gen1Recomp supports third-party mod options and settings screens through a simple opt-in marker:
 
 ```lua
