@@ -6,7 +6,7 @@
   - [Choose the game palette](Extra-Features#choose-the-game-palette)
   - [Choose a BetterMenus menu palette](Extra-Features#choose-a-bettermenus-menu-palette)
   - [Keep the original game palette](Extra-Features#keep-the-original-game-palette-on-the-menus)
-  - [Choose modern screens or BetterMenus' widescreen screens](Extra-Features#choose-modern-screens-or-betterminus-widescreen-screens)
+  - [Choose BetterPC, BetterParty, BetterBag, and BetterBattle](Extra-Features#choose-betterpc-betterparty-betterbag-and-betterbattle)
 - [BetterBattle pixel-art backdrops](Battle-Backdrops)
   - [Sprite compatibility requirement](Battle-Backdrops#sprite-compatibility-requirement)
   - [Custom-spawn hook](Battle-Backdrops#custom-spawn-hook)

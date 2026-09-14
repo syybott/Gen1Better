@@ -1,4 +1,4 @@
-return function(mod, menuColors, useStockOgMenuPalette, battleUiMode,
+return function(mod, menuColors, useStockOgMenuPalette, betterBattleUIMode,
     compatibility)
   local Font = require("src.render.Font")
   local Growth = require("src.pokemon.Growth")
@@ -76,8 +76,8 @@ return function(mod, menuColors, useStockOgMenuPalette, battleUiMode,
 
   local function battleModeValue()
     local mode
-    if type(battleUiMode) == "function" then
-      local ok, value = pcall(battleUiMode)
+    if type(betterBattleUIMode) == "function" then
+      local ok, value = pcall(betterBattleUIMode)
       if ok then mode = value end
     end
     if mode == nil then
@@ -1665,6 +1665,8 @@ end
 	end
 
   local BETTER_BATTLE_SCALE = 0.50 -- internal only; no options entry
+  local BETTER_BATTLE_SPRITE_SCALE = 0.85
+  local spriteLayerCache = setmetatable({}, { __mode = "k" })
 
   local function betterBattleGeometry(battle)
     local r = battle.game.renderer:frameRects()
@@ -1751,11 +1753,89 @@ end
     return true
   end
 
-  -- Translate native pic/animation drawing, without resizing assets or
-  -- changing battler coordinates/state. The existing engine methods retain
-  -- send-out, recall, fainting, hit blink, capture and sprite-mod behavior.
+  -- Keep native sprite drawing intact, then scale its finished layer through
+  -- the same placement function used by the panels.
   local function withBetterBattleField(battle, draw)
     local geometry = betterBattleGeometry(battle)
+    local renderer = battle.game.renderer
+    renderer.gen1BetterBattleSpriteLayers = nil
+    local cached = spriteLayerCache[battle]
+    if not cached then
+      cached = {}
+      spriteLayerCache[battle] = cached
+    end
+
+    local function layerFor(key)
+      if not cached[key] then
+        local canvas = love.graphics.newCanvas(
+          WideBattle.WIDTH, WideBattle.HEIGHT, { dpiscale = 1 })
+        canvas:setFilter("nearest", "nearest")
+        cached[key] = {
+          canvas = canvas,
+          x = 0, y = 0,
+          w = WideBattle.WIDTH, h = WideBattle.HEIGHT,
+        }
+      end
+      return cached[key]
+    end
+
+    local function captureSprite(side, callback)
+      local g = love.graphics
+      local previous = g.getCanvas()
+      if previous ~= renderer.canvas then return callback() end
+
+      -- Preserve the field already painted before the first Pokémon.
+      -- Subsequent native drawing remains above the detached sprites.
+      if not renderer.gen1BetterBattleSpriteLayers then
+        local field = layerFor("field")
+        field.nativeField = true
+        g.push("all")
+        g.setCanvas(field.canvas)
+        g.origin()
+        g.setScissor()
+        g.setShader()
+        g.clear(0, 0, 0, 0)
+        g.setColor(1, 1, 1, 1)
+        g.setBlendMode("replace", "premultiplied")
+        g.draw(previous)
+        g.setCanvas(previous)
+        g.clear(0, 0, 0, 0)
+        g.pop()
+        renderer.gen1BetterBattleSpriteLayers = { field }
+      end
+
+      local layer = layerFor(side)
+      layer.gen1BetterMenusPlacement = {
+        owner = "betterbattle",
+        edge = "field-sprite",
+        scale = BETTER_BATTLE_SPRITE_SCALE,
+        fieldX = side == "player" and 52 or 260,
+        fieldY = side == "player"
+          and geometry.playerGround or geometry.enemyGround,
+      }
+      layer.zones = WideBattle.zones()
+      local marks = PaletteFX.trueColorRects("ui")
+      local first = #marks + 1
+      g.push("all")
+      g.setCanvas(layer.canvas)
+      local clipX, clipY, clipW, clipH = g.getScissor()
+      g.setScissor()
+      g.clear(0, 0, 0, 0)
+      if clipX then g.setScissor(clipX, clipY, clipW, clipH) end
+      local ok, result = pcall(callback)
+      g.setCanvas(previous)
+      g.pop()
+      for i = first, #marks do
+        if PaletteFX.honorsTrueColor() then
+          layer.zones[#layer.zones + 1] = marks[i]
+        end
+      end
+      for i = #marks, first, -1 do marks[i] = nil end
+      if not ok then error(result, 0) end
+      local layers = renderer.gen1BetterBattleSpriteLayers
+      layers[#layers + 1] = layer
+      return result
+    end
     local originalPics, originalAnim = battle.drawPicsLayer, battle.drawAnimLayer
     local ownPics, ownAnim = rawget(battle, "drawPicsLayer"),
       rawget(battle, "drawAnimLayer")
@@ -1777,9 +1857,17 @@ end
     end
     battle.drawPicsLayer = function(self, slide, sx, sy, side, skipMenuClip)
       local dy = side == "player" and geometry.playerShift or geometry.enemyShift
-      return shifted(dy, function()
-        return originalPics(self, slide, sx, sy, side, skipMenuClip)
-      end)
+      local function drawSide()
+        return shifted(dy, function()
+          return originalPics(self, slide, sx, sy, side, skipMenuClip)
+        end)
+      end
+      local pokemonSide =
+        (side == "player" and not self.showPlayerBack
+          and not self.safari and not self.demo)
+        or (side == "enemy" and not self.showEnemyTrainer)
+      if pokemonSide then return captureSprite(side, drawSide) end
+      return drawSide()
     end
     battle.drawAnimLayer = function(self, colorized)
       local sprites = self.lockedBall
@@ -1799,7 +1887,10 @@ end
     end
     local ok, result = pcall(draw)
     battle.drawPicsLayer, battle.drawAnimLayer = ownPics, ownAnim
-    if not ok then error(result, 0) end
+    if not ok then
+      renderer.gen1BetterBattleSpriteLayers = nil
+      error(result, 0)
+    end
     return result
   end
 
@@ -2107,7 +2198,7 @@ end
   -- expose the level slot just for that draw because our layout shows both.
   local function installGenderBridge(game)
     local _, hud = genderCompatibility(game)
-    if not hud or hud.battleInfoHudCoordinatesV10 then return end
+    if not hud or hud.betterBattleHudCoordinatesV10 then return end
 
     if type(hud.classicGenderXY) == "function" then
       local originalClassicXY = hud.classicGenderXY
@@ -2218,7 +2309,7 @@ end
       end
     end
 
-    hud.battleInfoHudCoordinatesV10 = true
+    hud.betterBattleHudCoordinatesV10 = true
     mod.log:info("attached HUD coordinates to Gender Mod")
   end
 
@@ -2240,7 +2331,7 @@ end
   local function captureStagedGenderCell(battle, layer)
     local _, hud = genderCompatibility(battle and battle.game)
     if not (hud and type(hud.classicGenderXY) == "function"
-        and hud.battleInfoHudCoordinatesV10
+        and hud.betterBattleHudCoordinatesV10
         and playerVisible(battle)) then return nil end
     local level = battle.player.mon and battle.player.mon.level or 1
     local okXY, targetX, targetY = pcall(hud.classicGenderXY,
@@ -2414,7 +2505,7 @@ end
         or ((tonumber(companionMajor) or 0) == 1
           and (tonumber(companionMinor) or 0) >= 8))
     if usesNativeStagedHud then nativeStagedHudOwner = true end
-    if overworld.battleInfoHudTextureEditorV6 then return end
+    if overworld.betterBattleHudTextureEditorV6 then return end
 
     -- Battle Art 1.8+ publishes and owns a complete snapped HUD pipeline.
     -- Repainting its private 160x144 capture through the older 1.7 bridge
@@ -2439,7 +2530,7 @@ end
         end
         return layer
       end
-      overworld.battleInfoHudTextureEditorV6 = true
+      overworld.betterBattleHudTextureEditorV6 = true
       mod.log:info("preserving %s %s native staged HUD coordinates",
         companionId, companionVersion)
       return
@@ -2503,7 +2594,7 @@ end
       composeStagedTexture(liveBattle, layer, inkPass)
       return layer
     end
-    overworld.battleInfoHudTextureEditorV6 = true
+    overworld.betterBattleHudTextureEditorV6 = true
     mod.log:info("attached staged HUD to %s", companionId)
   end
 

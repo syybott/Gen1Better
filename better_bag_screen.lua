@@ -54,7 +54,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
   -- Kanto Reforged exposes these five pockets on its public Bag controller.
   -- The source id is retained because its controller uses "tmhm", while the
-  -- Modern Bag presentation calls the same visual category "machines".
+  -- BetterBag presentation calls the same visual category "machines".
   local KANTO_POCKETS = {
     { key = "items", source = "items", label = "ITEMS", short = "ITEMS",
       palette = "BROWNMON",
@@ -74,7 +74,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   }
 
   -- The reference skin uses compact, title-case labels in its rail rather
-  -- than the all-caps names used by the modern header and tabs.
+  -- than the all-caps names used by the BetterBag header and tabs.
   local CLASSIC_POCKET_LABELS = {
     all = "All",
     items = "Items",
@@ -396,7 +396,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   end
 
   -- Useful Bag calls the same presentation choice FULLSCREEN BAG MENUS.
-  -- OFF means its native Game Boy-sized pop-out, so Modern Bag must not
+  -- OFF means its native Game Boy-sized pop-out, so BetterBag must not
   -- replace that choice with its tall-phone canvas merely because it owns the
   -- shared BagMenu presentation record.
   local function usefulBagNativeMenus(menu)
@@ -505,7 +505,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     local headerH = stacked and 24 or HEADER_H
     local tabsY = headerH
     local contentY = tabsY + TABS_H
-    local expandedFooter = menu and menu.modernBagPrompt
+    local expandedFooter = menu and menu.betterBagPrompt
     local footerH = stacked and 20 or (expandedFooter and 16 or FOOTER_H)
     local footerY = height - footerH
     local listY = contentY + (wide and 4 or 3)
@@ -580,31 +580,31 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   end
 
   local function pocketsFor(menu)
-    return menu.modernBagPockets or POCKETS
+    return menu.betterBagPockets or POCKETS
   end
 
   local function pocketFor(menu)
     local pockets = pocketsFor(menu)
-    return pockets[menu.modernBagPocket or 1] or pockets[1] or POCKETS[1]
+    return pockets[menu.betterBagPocket or 1] or pockets[1] or POCKETS[1]
   end
 
   local function syncExternalPocketIndex(menu)
-    if not menu.modernBagExternalController then return end
+    if not menu.betterBagExternalController then return end
     local sourceIds = menu.__pocketIds or {}
     local source = sourceIds[menu.__pocketIndex or 1]
     local pockets = pocketsFor(menu)
     for index, pocket in ipairs(pockets) do
       if pocket.source == source or pocket.key == source then
-        menu.modernBagPocket = index
+        menu.betterBagPocket = index
         return
       end
     end
-    menu.modernBagPocket = math.max(1,
+    menu.betterBagPocket = math.max(1,
       math.min(menu.__pocketIndex or 1, #pockets))
   end
 
   local function listConfig(menu)
-    return menu.modernBagListConfig
+    return menu.betterBagListConfig
   end
 
   local function itemStore(menu)
@@ -622,7 +622,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     end
     -- Kanto filters Bag.order globally while one pocket is open. Counts and
     -- change detection need the complete order, not only the active pocket.
-    if menu.modernBagExternalController then
+    if menu.betterBagExternalController then
       local order = menu.game.save.bagOrder
       if type(order) == "table" then return order end
       local ids = {}
@@ -681,7 +681,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   end
 
   local function rebuildPocket(menu, preserveId)
-    if menu.modernBagExternalController then
+    if menu.betterBagExternalController then
       local api = menu.gen1ModernUi
       if api and type(api.switchPocket) == "function" then
         api:switchPocket(0)
@@ -696,7 +696,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         end
       end
       clampList(menu)
-      menu.modernBagInventorySignature = inventorySignature(menu)
+      menu.betterBagInventorySignature = inventorySignature(menu)
       return
     end
     local key = pocketFor(menu).key
@@ -710,9 +710,9 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       end
     end
     clampList(menu)
-    menu.modernBagInventorySignature = inventorySignature(menu)
-    if menu.modernBagSwapId and not itemStore(menu)[menu.modernBagSwapId] then
-      menu.modernBagSwapId = nil
+    menu.betterBagInventorySignature = inventorySignature(menu)
+    if menu.betterBagSwapId and not itemStore(menu)[menu.betterBagSwapId] then
+      menu.betterBagSwapId = nil
     end
   end
 
@@ -722,48 +722,48 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   end
 
   local function swapId(menu)
-    if menu.modernBagSwapId then return menu.modernBagSwapId end
+    if menu.betterBagSwapId then return menu.betterBagSwapId end
     local item = menu.swapIndex and menu.items and menu.items[menu.swapIndex]
     return item and item.value or nil
   end
 
   local function syncInventory(menu)
     local signature = inventorySignature(menu)
-    if signature ~= menu.modernBagInventorySignature then
+    if signature ~= menu.betterBagInventorySignature then
       rebuildPocket(menu, selectedId(menu))
     end
   end
 
   local function switchPocket(menu, delta)
-    if menu.modernBagExternalController then
+    if menu.betterBagExternalController then
       local api = menu.gen1ModernUi
       if api and type(api.switchPocket) == "function" then
         api:switchPocket(delta or 0)
         syncExternalPocketIndex(menu)
         clampList(menu)
-        menu.modernBagInventorySignature = inventorySignature(menu)
-        menu.modernBagHeaderFlash = 0
+        menu.betterBagInventorySignature = inventorySignature(menu)
+        menu.betterBagHeaderFlash = 0
       end
       return
     end
     local current = pocketFor(menu)
-    menu.modernBagPocketState[current.key] = {
+    menu.betterBagPocketState[current.key] = {
       id = selectedId(menu), index = menu.index, scroll = menu.scroll,
     }
     local pockets = pocketsFor(menu)
-    menu.modernBagPocket = ((menu.modernBagPocket - 1 + delta) % #pockets) + 1
-    menu.modernBagSwapId = nil
+    menu.betterBagPocket = ((menu.betterBagPocket - 1 + delta) % #pockets) + 1
+    menu.betterBagSwapId = nil
     local nextPocket = pocketFor(menu)
-    local saved = menu.modernBagPocketState[nextPocket.key]
+    local saved = menu.betterBagPocketState[nextPocket.key]
     menu.index = saved and saved.index or 1
     menu.scroll = saved and saved.scroll or 0
     rebuildPocket(menu, saved and saved.id)
-    menu.modernBagHeaderFlash = 0
+    menu.betterBagHeaderFlash = 0
   end
 
   local function finishSwap(menu, targetId)
-    local sourceId = menu.modernBagSwapId
-    menu.modernBagSwapId = nil
+    local sourceId = menu.betterBagSwapId
+    menu.betterBagSwapId = nil
     if not sourceId or not targetId then return end
     local order = Bag.order(menu.game.save)
     local sourceIndex, targetIndex
@@ -781,10 +781,10 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
   local function reorder(menu, item)
     if not item then return end
-    if menu.modernBagSwapId then
+    if menu.betterBagSwapId then
       finishSwap(menu, item.value)
     else
-      menu.modernBagSwapId = item.value
+      menu.betterBagSwapId = item.value
     end
   end
 
@@ -1120,7 +1120,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     local function rect(index, rx, ry, rw, rh)
       shade(index)
       love.graphics.rectangle("fill", x + rx, y + ry, rw, rh)
-      local zones = menu.modernBagHeaderIconZones
+      local zones = menu.betterBagHeaderIconZones
       if zones then
         zones[#zones + 1] = {
           x = x + rx, y = y + ry, w = rw, h = rh,
@@ -1272,12 +1272,12 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     local slotW = math.floor(layout.width / #pockets)
     local tileW = math.min(28, slotW - 4)
     local tileH = 18
-    local flashPhase = math.floor((menu.modernBagHeaderFlash or 0) / 60)
+    local flashPhase = math.floor((menu.betterBagHeaderFlash or 0) / 60)
     local selectedDark = flashPhase == 0 or flashPhase == 2
       or flashPhase >= 4
 
     local function recordBorder(x, y, width, height)
-      local zones = menu.modernBagHeaderBorderZones
+      local zones = menu.betterBagHeaderBorderZones
       if not zones then return end
       local function add(rx, ry, rw, rh)
         zones[#zones + 1] = { x = rx, y = ry, w = rw, h = rh }
@@ -1296,7 +1296,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       local slotX = (index - 1) * slotW
       local x = slotX + math.floor((slotW - tileW) / 2)
       local y = layout.tabsY - 1
-      local active = index == menu.modernBagPocket
+      local active = index == menu.betterBagPocket
       gray(active and selectedDark and BLACK or DARK)
       pixelRoundFill(x, y, tileW, tileH)
       recordBorder(x, y, tileW, tileH)
@@ -1464,9 +1464,9 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       if not (item and drawCustomKeyItemIcon(item.value,
           iconX + math.floor((iconSize - 20) / 2),
           iconY + math.floor((iconSize - 20) / 2),
-          menu.modernBagIconZones)) then
+          menu.betterBagIconZones)) then
         drawPocketSymbol(category, iconX, iconY, iconSize,
-          menu.modernBagIconZones)
+          menu.betterBagIconZones)
       end
       local textX = layout.detailX + iconSize + 14
       local textW = layout.detailX + layout.detailW - 6 - textX
@@ -1518,12 +1518,12 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         iconX = layout.detailX + math.floor((layout.detailW - 20) / 2)
         iconY = layout.detailY + 10
         drawCustomKeyItemIcon(item.value, iconX, iconY,
-          menu.modernBagIconZones)
+          menu.betterBagIconZones)
       else
         iconX = layout.detailX + math.floor((layout.detailW - iconSize) / 2)
         iconY = layout.detailY + 17
         drawPocketSymbol(category, iconX, iconY, iconSize,
-          menu.modernBagIconZones)
+          menu.betterBagIconZones)
       end
       local nameLines = wrappedLines(item.label, layout.detailW - 12, 2)
       for index, line in ipairs(nameLines) do
@@ -1552,7 +1552,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     else
       drawPocketSymbol(pocket.key,
         layout.detailX + math.floor((layout.detailW - 28) / 2),
-        layout.detailY + 20, 28, menu.modernBagIconZones)
+        layout.detailY + 20, 28, menu.betterBagIconZones)
       local lines = wrappedLines(
         Strings(config and config.blurb or pocket.blurb),
         layout.detailW - 12, 3)
@@ -1577,9 +1577,9 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       math.max(layout.footerH,
         (layout.canvasHeight or layout.height) - layout.footerY + 1))
     local config = listConfig(menu)
-    if config or menu.modernBagPrompt then
+    if config or menu.betterBagPrompt then
       local lines
-      local status = config and menu.footer or menu.modernBagPrompt
+      local status = config and menu.footer or menu.betterBagPrompt
       if status then
         lines = wrappedLines(Strings(status):gsub("\n", " "),
           layout.width - 8, 2)
@@ -1694,7 +1694,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   -- A second skin inspired by the late-era Pocket Bag: a black title strip,
   -- woven blue pocket rail, red active-pocket frame, clean white item sheet
   -- and a full-width description card. It keeps the same controller and
-  -- responsive layout contract as the modern skin.
+  -- responsive layout contract as BetterBag.
   local function drawClassicBackdrop(layout)
     gray(BLACK)
     love.graphics.rectangle("fill", 0, 0,
@@ -1878,8 +1878,8 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       boxes.bagW, boxes.bagH)
     drawClassicPocketBag(pocket.key, boxes.bagX, boxes.bagY,
       boxes.bagW, boxes.bagH)
-    menu.modernBagClassicPocketArt = pocket.key
-    menu.modernBagClassicPocketRegion = CLASSIC_BAG_REGIONS[pocket.key]
+    menu.betterBagClassicPocketArt = pocket.key
+    menu.betterBagClassicPocketRegion = CLASSIC_BAG_REGIONS[pocket.key]
 
     gray(DARK)
     love.graphics.rectangle("fill", boxes.pocketX - 1, boxes.pocketY - 1,
@@ -1888,7 +1888,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     love.graphics.rectangle("fill", boxes.pocketX + 2, boxes.pocketY + 2,
       boxes.pocketW - 4, boxes.pocketH - 4)
     local label = CLASSIC_POCKET_LABELS[pocket.key] or pocket.short
-    menu.modernBagClassicPocketLabel = classicRailLabel(Strings(label),
+    menu.betterBagClassicPocketLabel = classicRailLabel(Strings(label),
       boxes.pocketX + 4, boxes.pocketY + 2,
       boxes.pocketW - 8, boxes.pocketH - 4)
   end
@@ -1960,7 +1960,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     love.graphics.rectangle("fill", x + w - 1, y, 1, h)
 
     local config = listConfig(menu)
-    local status = config and menu.footer or menu.modernBagPrompt
+    local status = config and menu.footer or menu.betterBagPrompt
     local text
     if status then
       text = Strings(status):gsub("\n", " ")
@@ -2009,9 +2009,9 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       return
     end
     local counts = pocketCounts(menu)
-    menu.modernBagIconZones = {}
-    menu.modernBagHeaderIconZones = {}
-    menu.modernBagHeaderBorderZones = {}
+    menu.betterBagIconZones = {}
+    menu.betterBagHeaderIconZones = {}
+    menu.betterBagHeaderBorderZones = {}
     drawBackdrop(layout)
     drawHeader(menu, layout)
     drawTabs(menu, layout, counts)
@@ -2078,7 +2078,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     }
   end
 
-  -- Complete Modern Bag palette map. This is the sole owner of the parent
+  -- Complete BetterBag palette map. This is the sole owner of the parent
   -- screen: selected BetterMenus palette for shared chrome/wallpaper, a
   -- stable list palette, and pocket-specific details/selection accents.
   local function buildParentPaletteZones(menu, game)
@@ -2115,14 +2115,14 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
           tileW, 18)
       end
     end
-    for _, iconZone in ipairs(menu.modernBagHeaderIconZones or {}) do
+    for _, iconZone in ipairs(menu.betterBagHeaderIconZones or {}) do
       zones[#zones + 1] = {
         colors = base,
         x = iconZone.x, y = iconZone.y,
         w = iconZone.w, h = iconZone.h,
       }
     end
-    for _, borderZone in ipairs(menu.modernBagHeaderBorderZones or {}) do
+    for _, borderZone in ipairs(menu.betterBagHeaderBorderZones or {}) do
       zones[#zones + 1] = {
         colors = base,
         x = borderZone.x, y = borderZone.y,
@@ -2178,7 +2178,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         x = centerX - 2, y = stackY + stackH + 1, w = 5, h = 4,
       }
     end
-    for _, zone in ipairs(menu.modernBagIconZones or {}) do
+    for _, zone in ipairs(menu.betterBagIconZones or {}) do
       zones[#zones + 1] = zone
     end
     return zones
@@ -2186,15 +2186,15 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
   local function update(menu, dt)
     menu.marquee = (menu.marquee or 0) + 1
-    menu.modernBagHeaderFlash = math.min(
-      (menu.modernBagHeaderFlash or 0) + 1, 240)
+    menu.betterBagHeaderFlash = math.min(
+      (menu.betterBagHeaderFlash or 0) + 1, 240)
     local layout = layoutFor(menu)
     menu.rows = layout.rows
     clampList(menu)
     syncInventory(menu)
     local input = menu.game.input
     if not (input and input.wasPressed) then
-      return menu.modernBagBaseUpdate(menu, dt)
+      return menu.betterBagBaseUpdate(menu, dt)
     end
     if input:wasPressed("left") then
       switchPocket(menu, -1)
@@ -2206,7 +2206,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     -- ListMenu closes an empty list on A as a legacy convenience. Pocket
     -- tabs remain open instead, so the player can continue browsing them.
     if #menu.items == 0 and input:wasPressed("a") then return end
-    return menu.modernBagBaseUpdate(menu, dt)
+    return menu.betterBagBaseUpdate(menu, dt)
   end
 
   local function copyParentPaletteZones(owner, game)
@@ -2243,21 +2243,21 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     if not ok then error(err, 0) end
   end
 
-  -- One bridge owns every Modern Bag child. The parent palette map is copied
+  -- One bridge owns every BetterBag child. The parent palette map is copied
   -- first on every frame; each child then appends only its own selected-menu
   -- palette rectangle. No child inherits, replaces, shifts, or true-color
   -- masks the parent map.
   local function installOverlayBridge(game)
     local stack = game and game.stack
-    if not stack or stack.__modernBagOverlayBridge then return end
+    if not stack or stack.__betterBagOverlayBridge then return end
     local originalPush = stack.push
     if type(originalPush) ~= "function" then return end
-    stack.__modernBagOverlayBridge = true
+    stack.__betterBagOverlayBridge = true
     stack.push = function(self, state, ...)
       local owner
       for index = #(self.states or {}), 1, -1 do
         local candidate = self.states[index]
-        if candidate and candidate.modernBagUI then
+        if candidate and candidate.betterBagUI then
           owner = candidate
           break
         end
@@ -2265,9 +2265,9 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
       local Menu = require("src.ui.Menu")
       if owner and state and getmetatable(state) == Menu then
-        state.__modernBagResponsiveOverlay = true
-        local layout = type(owner.modernBagLayoutInfo) == "function"
-          and owner:modernBagLayoutInfo() or nil
+        state.__betterBagResponsiveOverlay = true
+        local layout = type(owner.betterBagLayoutInfo) == "function"
+          and owner:betterBagLayoutInfo() or nil
         local width = layout and layout.width or select(1, owner:uiSize())
         local height = layout and (layout.canvasHeight or layout.height)
           or select(2, owner:uiSize())
@@ -2290,12 +2290,12 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
       local TextBox = require("src.render.TextBox")
       if owner and state and getmetatable(state) == TextBox then
-        state.__modernBagResponsiveOverlay = true
+        state.__betterBagResponsiveOverlay = true
         state.uiSize = function() return owner:uiSize() end
         state.holdsUIAnchors = true
         local width = owner:uiSize()
-        local layout = type(owner.modernBagLayoutInfo) == "function"
-          and owner:modernBagLayoutInfo() or nil
+        local layout = type(owner.betterBagLayoutInfo) == "function"
+          and owner:betterBagLayoutInfo() or nil
         -- Font.drawBox is tile based. Keep a whole-tile frame and center the
         -- remaining one-pixel margins instead of creating a fractional final
         -- tile whose horizontal border cannot reach the right corner.
@@ -2325,7 +2325,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       -- the final letterbox layer supplies a solid frame outside its viewport.
       local TownMap = require("src.ui.TownMap")
       if owner and state and getmetatable(state) == TownMap then
-        state.__modernBagFrameBackdrop = true
+        state.__betterBagFrameBackdrop = true
         return originalPush(self, state, ...)
       end
 
@@ -2334,8 +2334,8 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       local stateType = state and getmetatable(state)
       if owner and state
           and (stateType == QuantityBox or stateType == ChoiceBox)
-          and not state.__modernBagResponsiveOverlay then
-        state.__modernBagResponsiveOverlay = true
+          and not state.__betterBagResponsiveOverlay then
+        state.__betterBagResponsiveOverlay = true
         state.uiSize = function() return owner:uiSize() end
         state.holdsUIAnchors = true
 
@@ -2349,19 +2349,19 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
             local boxW, boxH = active.tw * 8, active.th * 8
             local targetX = math.floor((width - boxW) / 2)
             local targetY = math.floor((height - boxH) / 2)
-            active.__modernBagAnchorKind = "center"
-            active.__modernBagAnchorX = targetX
-            active.__modernBagAnchorY = targetY
-            active.__modernBagAnchorW = boxW
-            active.__modernBagAnchorH = boxH
+            active.__betterBagAnchorKind = "center"
+            active.__betterBagAnchorX = targetX
+            active.__betterBagAnchorY = targetY
+            active.__betterBagAnchorW = boxW
+            active.__betterBagAnchorH = boxH
             return targetX - active.tx * 8, targetY - active.ty * 8
           end
           if getmetatable(active) ~= QuantityBox
-              or type(owner.modernBagLayoutInfo) ~= "function" then
+              or type(owner.betterBagLayoutInfo) ~= "function" then
             return offsetX, offsetY
           end
 
-          local layout = owner:modernBagLayoutInfo()
+          local layout = owner:betterBagLayoutInfo()
           local priced = active.unitPrice ~= nil
           local threeDigits = not priced and active.max >= 100
           local sourceTX = priced and 7 or (threeDigits and 14 or 15)
@@ -2385,11 +2385,11 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
           targetX = math.max(0, math.min(width - boxW, targetX))
           targetY = math.max(layout.contentY,
             math.min(layout.footerY - boxH, targetY))
-          active.__modernBagAnchorKind = "selection"
-          active.__modernBagAnchorX = targetX
-          active.__modernBagAnchorY = targetY
-          active.__modernBagAnchorW = boxW
-          active.__modernBagAnchorH = boxH
+          active.__betterBagAnchorKind = "selection"
+          active.__betterBagAnchorX = targetX
+          active.__betterBagAnchorY = targetY
+          active.__betterBagAnchorW = boxW
+          active.__betterBagAnchorH = boxH
           return targetX - sourceTX * 8, targetY - 9 * 8
         end
 
@@ -2403,9 +2403,9 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
             local nativePalette = getmetatable(active) == QuantityBox
               or getmetatable(active) == ChoiceBox
             local x, y, w, h
-            if active.__modernBagAnchorX then
-              x, y = active.__modernBagAnchorX, active.__modernBagAnchorY
-              w, h = active.__modernBagAnchorW, active.__modernBagAnchorH
+            if active.__betterBagAnchorX then
+              x, y = active.__betterBagAnchorX, active.__betterBagAnchorY
+              w, h = active.__betterBagAnchorW, active.__betterBagAnchorH
             elseif active.tx and active.ty and active.tw and active.th then
               x, y = active.tx * 8 + offsetX, active.ty * 8 + offsetY
               w, h = active.tw * 8, active.th * 8
@@ -2437,10 +2437,10 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
           local ChoiceBox = require("src.ui.ChoiceBox")
           if getmetatable(active) == QuantityBox
               or getmetatable(active) == ChoiceBox then
-            if active.__modernBagAnchorX then
+            if active.__betterBagAnchorX then
               return addOverlayPaletteZone(zones, activeGame,
-                active.__modernBagAnchorX, active.__modernBagAnchorY,
-                active.__modernBagAnchorW, active.__modernBagAnchorH)
+                active.__betterBagAnchorX, active.__betterBagAnchorY,
+                active.__betterBagAnchorW, active.__betterBagAnchorH)
             end
             if active.tx and active.ty and active.tw and active.th then
               return addOverlayPaletteZone(zones, activeGame,
@@ -2449,10 +2449,10 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
             end
             return zones
           end
-          if active.__modernBagAnchorX then
+          if active.__betterBagAnchorX then
             return addOverlayPaletteZone(zones, activeGame,
-              active.__modernBagAnchorX, active.__modernBagAnchorY,
-              active.__modernBagAnchorW, active.__modernBagAnchorH)
+              active.__betterBagAnchorX, active.__betterBagAnchorY,
+              active.__betterBagAnchorW, active.__betterBagAnchorH)
           end
           if active.tx and active.ty and active.tw and active.th then
             return addOverlayPaletteZone(zones, activeGame,
@@ -2483,10 +2483,10 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       end
     end
     if not tossRow or type(tossRow.onSelect) ~= "function"
-        or actionMenu.__modernBagTossPrompts then
+        or actionMenu.__betterBagTossPrompts then
       return
     end
-    actionMenu.__modernBagTossPrompts = true
+    actionMenu.__betterBagTossPrompts = true
     local chooseToss = tossRow.onSelect
     tossRow.onSelect = function()
       local result = chooseToss()
@@ -2497,13 +2497,13 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         return result
       end
 
-      menu.modernBagPrompt = Strings("How many?")
+      menu.betterBagPrompt = Strings("How many?")
       local finishQuantity = quantity.onDone
       quantity.onDone = function(qty)
         if qty then
-          menu.modernBagPrompt = Strings("Toss %s?", item.label)
+          menu.betterBagPrompt = Strings("Toss %s?", item.label)
         else
-          menu.modernBagPrompt = nil
+          menu.betterBagPrompt = nil
         end
         local finished = finishQuantity(qty)
         if qty then
@@ -2513,11 +2513,11 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
               and type(choice.onChoose) == "function" then
             local confirm = choice.onChoose
             choice.onChoose = function(yes)
-              menu.modernBagPrompt = nil
+              menu.betterBagPrompt = nil
               return confirm(yes)
             end
           else
-            menu.modernBagPrompt = nil
+            menu.betterBagPrompt = nil
           end
         end
         return finished
@@ -2528,12 +2528,12 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
   local function decorateList(menu, config)
     installOverlayBridge(menu.game)
-    menu.modernBagListConfig = config or {}
-    menu.modernPCUI = true
-    menu.modernBagBaseUpdate = menu.update
-    menu.modernBagPocket = 1
-    menu.modernBagPocketState = {}
-    menu.modernBagSwapId = nil
+    menu.betterBagListConfig = config or {}
+    menu.betterPCUI = true
+    menu.betterBagBaseUpdate = menu.update
+    menu.betterBagPocket = 1
+    menu.betterBagPocketState = {}
+    menu.betterBagSwapId = nil
     menu.rows = layoutFor(menu).rows
     menu.draw = draw
     menu.update = update
@@ -2541,15 +2541,15 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     menu.uiSize = uiSize
     menu.wantsFillScale = function() return true end
     menu.holdsUIAnchors = true
-    menu.modernBagUI = true
-    menu.modernBagLayout = "pc-pockets"
-    menu.modernBagPockets = POCKETS
-    menu.modernBagCategoryFor = function(_, id)
+    menu.betterBagUI = true
+    menu.betterBagLayout = "pc-pockets"
+    menu.betterBagPockets = POCKETS
+    menu.betterBagCategoryFor = function(_, id)
       return categoryFor(menu.game, id)
     end
-    menu.modernBagLayoutInfo = function() return layoutFor(menu) end
-    menu.modernBagSwitchPocket = switchPocket
-    menu.modernBagRefresh = rebuildPocket
+    menu.betterBagLayoutInfo = function() return layoutFor(menu) end
+    menu.betterBagSwitchPocket = switchPocket
+    menu.betterBagRefresh = rebuildPocket
     rebuildPocket(menu)
     return menu
   end
@@ -2568,12 +2568,12 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         and type(menu.gen1ModernUi) == "table"
         and type(menu.gen1ModernUi.switchPocket) == "function"
       local baseChoose = menu.onChoose
-      menu.modernBagBaseUpdate = menu.update
-      menu.modernBagPocket = 1
-      menu.modernBagPocketState = {}
-      menu.modernBagSwapId = nil
-      menu.modernBagExternalController = externalController
-      menu.modernBagPockets = externalController and KANTO_POCKETS or POCKETS
+      menu.betterBagBaseUpdate = menu.update
+      menu.betterBagPocket = 1
+      menu.betterBagPocketState = {}
+      menu.betterBagSwapId = nil
+      menu.betterBagExternalController = externalController
+      menu.betterBagPockets = externalController and KANTO_POCKETS or POCKETS
       syncExternalPocketIndex(menu)
       menu.rows = layoutFor(menu).rows
 
@@ -2583,7 +2583,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         end
       end
       menu.onChoose = function(item, list)
-        if not externalController and list.modernBagSwapId then
+        if not externalController and list.betterBagSwapId then
           finishSwap(list, item and item.value)
           return
         end
@@ -2606,12 +2606,12 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       -- keep Bag messages (item failures, toss confirmations, etc.) inside
       -- this surface as well.
       menu.holdsUIAnchors = true
-      menu.modernBagUI = true
-      menu.modernBagLayout = "pockets"
-      menu.modernBagCategoryFor = function(_, id) return categoryFor(game, id) end
-      menu.modernBagLayoutInfo = function() return layoutFor(menu) end
-      menu.modernBagSwitchPocket = switchPocket
-      menu.modernBagRefresh = rebuildPocket
+      menu.betterBagUI = true
+      menu.betterBagLayout = "pockets"
+      menu.betterBagCategoryFor = function(_, id) return categoryFor(game, id) end
+      menu.betterBagLayoutInfo = function() return layoutFor(menu) end
+      menu.betterBagSwitchPocket = switchPocket
+      menu.betterBagRefresh = rebuildPocket
       rebuildPocket(menu)
       return menu
     end,

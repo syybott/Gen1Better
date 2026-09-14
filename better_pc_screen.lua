@@ -63,9 +63,9 @@ return function(mod, genderExports, compatibility, menuColors,
     TYPE_PALETTES[key] = typeRamp(color)
   end
 
-  local PC = {}
-  PC.__index = PC
-  PC.isOpaque = true
+  local BetterPC = {}
+  BetterPC.__index = BetterPC
+  BetterPC.isOpaque = true
 
   local inkShader -- false if the host has no shader support
   local fittedHgssIcons = {}
@@ -248,7 +248,7 @@ return function(mod, genderExports, compatibility, menuColors,
     end
   end
 
-  -- Match Modern Bag's symmetric hard-pixel rounded geometry. Three stacked
+  -- Match BetterBag's symmetric hard-pixel rounded geometry. Three stacked
   -- rectangles produce identical two-pixel steps at all four corners.
   local function pixelRoundFill(x, y, width, height)
     x, y = math.floor(x), math.floor(y)
@@ -887,7 +887,7 @@ return function(mod, genderExports, compatibility, menuColors,
     screen.detailPage = 1
   end
 
-  function PC:update(_dt)
+  function BetterPC:update(_dt)
     self.blink = ((self.blink or 0) + 1) % 320
 	advanceGen1IconHover(self)
 	local dt = tonumber(_dt)
@@ -2052,7 +2052,7 @@ end
     end
   end
 
-  function PC:draw()
+  function BetterPC:draw()
     local layout = layoutFor(self)
     local trueColorRegions = {}
     drawBackdrop(layout)
@@ -2095,7 +2095,7 @@ end
     gray(WHITE)
   end
 
-  function PC:sgbPalettes(game)
+  function BetterPC:sgbPalettes(game)
     local data = game and game.data
     if not data then return nil end
     local layout = layoutFor(self)
@@ -2185,37 +2185,37 @@ end
     return zones
   end
 
-  function PC:uiSize()
+  function BetterPC:uiSize()
     return responsiveSize()
   end
 
-  function PC:isWideBattleLayout()
+  function BetterPC:isWideBattleLayout()
     return true
   end
 
   -- Named helpers are intentionally exposed for compatibility tests and for
   -- companion mods that want to add non-destructive PC shortcuts.
-  function PC:modernPCSelected()
+  function BetterPC:betterPCSelected()
     return selected(self)
   end
 
-  function PC:modernPCPickOrDrop()
+  function BetterPC:betterPCPickOrDrop()
     return pickOrDrop(self)
   end
 
-  function PC:modernPCSwitchBox(delta)
+  function BetterPC:betterPCSwitchBox(delta)
     return switchBox(self, delta)
   end
 
-  function PC:modernPCQuickTransfer()
+  function BetterPC:betterPCQuickTransfer()
     return quickTransfer(self)
   end
 
-  function PC:modernPCRequestRelease()
+  function BetterPC:betterPCRequestRelease()
     return requestRelease(self)
   end
 
-  function PC:modernPCLayoutInfo()
+  function BetterPC:betterPCLayoutInfo()
     return layoutFor(self)
   end
 
@@ -2249,10 +2249,10 @@ end
         detailPage = 1,
         leftPaneMode = "party",
         leftPaneManual = false,
-        modernPCUI = true,
-        modernPCLayout = "party-and-box",
+        betterPCUI = true,
+        betterPCLayout = "party-and-box",
         holdsUIAnchors = true,
-      }, PC)
+      }, BetterPC)
     end,
   }
 end

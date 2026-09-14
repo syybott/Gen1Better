@@ -1,6 +1,6 @@
 # Extra Features: Start Menu, Favorites, Palettes, and UI Choices
 
-Gen1BetterMenus keeps the original Gen 1 menu structure and adds optional widescreen and modern interfaces. The extra controls are available from the in-game Start Menu.
+Gen1BetterMenus keeps the original Gen 1 menu structure and adds optional widescreen interfaces and BetterPC, BetterParty, BetterBag, and BetterBattle. The extra controls are available from the in-game Start Menu.
 
 ## Open the BetterMenus options
 
@@ -74,9 +74,9 @@ When the gate is enabled, selecting a BetterMenus or Groovy entry allows that me
 
 The **Inverse** switch reverses the selected four-color menu ramp. It changes the light and dark order without changing the menu layout.
 
-## Choose modern screens or BetterMenus' widescreen screens
+## Choose BetterPC, BetterParty, BetterBag, and BetterBattle
 
-BetterMenus itself supplies the widescreen menu layer. The Better options choose whether a modern replacement screen is used inside that layer. Turn off the Better option for any screen where you want BetterMenus' Game Boy-style widescreen presentation:
+BetterMenus itself supplies the widescreen menu layer. The BetterPC, BetterParty, BetterBag, and BetterBattle options select their respective interfaces. Turn off the Better option for any screen where you want BetterMenus' Game Boy-style widescreen presentation:
 
 | Setting | OFF keeps |
 | --- | --- |
@@ -85,7 +85,7 @@ BetterMenus itself supplies the widescreen menu layer. The Better options choose
 | **BetterBag** | BetterMenus' widescreen classic bag/list interface, including its larger visible item list |
 | **BetterBattle** | the upstream WIDE battle presentation with BetterMenus palette coverage |
 
-With BetterMenus enabled and these four modern options set to **OFF**, you get the Game Boy-style BetterMenus widescreen presentation without the modern PC, Party, Bag, or BetterBattle screens.
+With BetterMenus enabled and these four options set to **OFF**, you get the Game Boy-style BetterMenus widescreen presentation with BetterPC, BetterParty, BetterBag, and BetterBattle disabled.
 
 The BetterMenus options also include:
 

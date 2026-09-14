@@ -15,8 +15,8 @@ their compatibility names.
 | `betterBattle` | Export | Query battle ownership, draw the BetterBattle HUD, inspect backdrop selection. |
 | `isModOptions = true` | Screen marker | Identify a third-party settings screen. |
 | `ui.party.submenu` | Engine hook supported by BetterMenus | Add actions to party menus and BetterPC's party-side action list. |
-| `modernPC*` methods | BetterPC instance helpers | Operate the active PC screen through its existing controller. |
-| `modernParty`, `modernBag`, `modernBagInventoryLimits` | Exports | Access installed screen factories and active inventory limits. |
+| `betterPC*` methods | BetterPC instance helpers | Operate the active PC screen through its existing controller. |
+| `betterParty`, `betterBag`, `betterBagInventoryLimits` | Exports | Access installed screen factories and active inventory limits. |
 
 The `render.*`, `pokemon.sprite`, and `ui.*` engine hooks mentioned below are
 engine interfaces, not additional BetterMenus-owned hooks.
@@ -300,25 +300,24 @@ pc = true }`. Return the action table. A custom callback entry should omit
 called for box-side selections. BetterPC keeps MOVE first, removes entries whose
 `action` is `summary`, and appends CANCEL after the hook.
 
-The active BetterPC instance (`state.modernPCUI == true`) exposes colon methods:
+The active BetterPC instance (`state.betterPCUI == true`) exposes colon methods:
 
 | Method | Purpose |
 | --- | --- |
-| `state:modernPCSelected()` | Get the current selection through the PC controller. |
-| `state:modernPCPickOrDrop()` | Pick up or place the selection. |
-| `state:modernPCSwitchBox(delta)` | Switch boxes through the existing controller. |
-| `state:modernPCQuickTransfer()` | Transfer between party and box. |
-| `state:modernPCRequestRelease()` | Open the existing release confirmation flow. |
-| `state:modernPCLayoutInfo()` | Get the current computed layout. |
+| `state:betterPCSelected()` | Get the current selection through the PC controller. |
+| `state:betterPCPickOrDrop()` | Pick up or place the selection. |
+| `state:betterPCSwitchBox(delta)` | Switch boxes through the existing controller. |
+| `state:betterPCQuickTransfer()` | Transfer between party and box. |
+| `state:betterPCRequestRelease()` | Open the existing release confirmation flow. |
+| `state:betterPCLayoutInfo()` | Get the current computed layout. |
 
-These retain their `modernPC` names for compatibility; file renames do not rename
-the methods. Resolve the active screen before calling them.
+Resolve the active BetterPC screen before calling these methods.
 
-Other retained exports are `modernParty` and `modernBag` screen factories, plus
-`modernBagInventoryLimits` with `slots` and `stack`. Prefer the engine's registered
+Other exports are `betterParty` and `betterBag` screen factories, plus
+`betterBagInventoryLimits` with `slots` and `stack`. Prefer the engine's registered
 `PartyMenu` / `BagMenu` screens for ordinary navigation so settings-based routing
 continues to apply. BetterPC is routed through the registered `BoxMenu`; there is
-no top-level `modernPC` export in this source.
+no top-level `betterPC` export in this source.
 
 ## Existing provider bridges and limits
 

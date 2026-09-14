@@ -1,5 +1,5 @@
 -- Pixel-art scenes are an outer, true-color layer. Never palette-map this art.
-local M = {}
+local BetterBattleBackdrops = {}
 local sceneNames = [[
 boss_agatha boss_bruno boss_lorelei boss_lance boss_champion
 boss_giovanni_silph boss_giovanni_hideout boss_giovanni_gym
@@ -53,7 +53,7 @@ local seas = { ROUTE_12=true, ROUTE_13=true, ROUTE_19=true, ROUTE_20=true, ROUTE
 local function starts(s, prefix) return s:sub(1, #prefix) == prefix end
 
 -- Pure: false is an intentional plain scene, distinct from no matching rule.
-function M.resolve(c)
+function BetterBattleBackdrops.resolve(c)
   local map, water = c.mapId or "", c.surfing or c.fishing
   if landmarks[map] then return landmarks[map], "landmark" end
   if starts(map, "SILPH_CO_") then return "boss_giovanni_silph", "silph" end
@@ -107,12 +107,12 @@ function M.resolve(c)
   return "env_route_grass", "universal-fallback"
 end
 
-function M.sceneIds()
+function BetterBattleBackdrops.sceneIds()
   local ids = {}; for id in pairs(scenes) do ids[#ids+1] = id end
   table.sort(ids); return ids
 end
 
-function M.install(mod, api)
+function BetterBattleBackdrops.install(mod, api)
   local BattleState = require("src.battle.BattleState")
   local WideBattle = require("src.battle.WideBattle")
   local Runtime = require("src.mods.Runtime")
@@ -142,7 +142,7 @@ function M.install(mod, api)
             and (o.x == 10 or o.x == 11) then c.nuggetBridgeTrainer = true end
       end
     end
-    local default, reason = M.resolve(c)
+    local default, reason = BetterBattleBackdrops.resolve(c)
     c.defaultSceneId = default
     local selected = default
     if Runtime.wantsHook("bettermenus.battle_backdrop") then
@@ -279,8 +279,8 @@ function M.install(mod, api)
     return handled
   end, math.huge)
   api.backdrop = {
-    sceneIds=M.sceneIds,
-    resolve=function(context) return M.resolve(context) end,
+    sceneIds=BetterBattleBackdrops.sceneIds,
+    resolve=function(context) return BetterBattleBackdrops.resolve(context) end,
     diagnostics=function(battle)
       local r = records[battle]
       if not r then return nil end
@@ -294,4 +294,4 @@ function M.install(mod, api)
     end,
   }
 end
-return M
+return BetterBattleBackdrops

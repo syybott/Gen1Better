@@ -1,11 +1,11 @@
--- Expanded storage for the modern Bag.  The engine already stores inventory
+-- Expanded storage for BetterBag.  The engine already stores inventory
 -- as item-id dictionaries, so native saves do not need a migration; only the
 -- cartridge-era validation limits and quantity box width need to change.
 
 local SLOT_MAX = 255
 local STACK_MAX = 999
 
-return function(mod, bagScreen, compatibility)
+return function(mod, betterBagScreen, compatibility)
   compatibility = compatibility or {}
   local Bag = require("src.inventory.Bag")
   local Font = require("src.render.Font")
@@ -39,22 +39,22 @@ return function(mod, bagScreen, compatibility)
   -- Bag.add is the engine's single acquisition/withdrawal guard.  Keep its
   -- original behavior through 99, then extend the same slot/order rules up
   -- to the configured stack maximum.  Module tags make dev hot reload safe.
-  Bag.__modernBagStackMax = math.max(
-    tonumber(Bag.__modernBagStackMax) or 99, STACK_MAX)
-  if not Bag.__modernBagStackLimitPatched then
-    Bag.__modernBagStackLimitPatched = true
-    Bag.__modernBagOriginalAdd = Bag.add
+  Bag.__betterBagStackMax = math.max(
+    tonumber(Bag.__betterBagStackMax) or 99, STACK_MAX)
+  if not Bag.__betterBagStackLimitPatched then
+    Bag.__betterBagStackLimitPatched = true
+    Bag.__betterBagOriginalAdd = Bag.add
     Bag.add = function(save, id, qty, data)
       -- If a previously loaded inventory mod already accepts this addition,
       -- retain its behavior (including any limit higher than ours).
-      if Bag.__modernBagOriginalAdd(save, id, qty, data) then return true end
+      if Bag.__betterBagOriginalAdd(save, id, qty, data) then return true end
 
       local amount = qty or 1
       local inv = save.inventory
       local total = (inv[id] or 0) + amount
 
       if Bag.isBadge(id) or total <= 99 then return false end
-      if total > Bag.__modernBagStackMax then return false end
+      if total > Bag.__betterBagStackMax then return false end
       if not inv[id] and Bag.slots(save) >= Bag.capacity(data) then
         return false
       end
@@ -69,23 +69,23 @@ return function(mod, bagScreen, compatibility)
 
   -- A three-digit quantity needs one extra tile.  This also covers PC
   -- withdraw/toss selectors for any existing expanded stack.
-  if not QuantityBox.__modernBagWideQuantityPatched then
-    QuantityBox.__modernBagWideQuantityPatched = true
-    QuantityBox.__modernBagOriginalNew = QuantityBox.new
+  if not QuantityBox.__betterBagWideQuantityPatched then
+    QuantityBox.__betterBagWideQuantityPatched = true
+    QuantityBox.__betterBagOriginalNew = QuantityBox.new
     QuantityBox.new = function(game, opts)
       opts = opts or {}
       local adjusted = {}
       for key, value in pairs(opts) do adjusted[key] = value end
 
-      local depositId = game.__modernBagPCDepositId
+      local depositId = game.__betterBagPCDepositId
       if depositId then
         local pc = game.save.pcItems or {}
         local remaining = math.max(0,
-          Bag.__modernBagStackMax - (pc[depositId] or 0))
+          Bag.__betterBagStackMax - (pc[depositId] or 0))
         adjusted.max = math.min(adjusted.max or remaining, remaining)
       end
 
-      local box = QuantityBox.__modernBagOriginalNew(game, adjusted)
+      local box = QuantityBox.__betterBagOriginalNew(game, adjusted)
       if box.max >= 100 and not box.unitPrice then
         box.draw = function(self)
           local tx, ty = 14, 9
@@ -114,14 +114,14 @@ return function(mod, bagScreen, compatibility)
         local chooseDeposit = list.onChoose
         list.onChoose = function(item, activeList)
           local pc = game.save.pcItems or {}
-          if (pc[item.value] or 0) >= Bag.__modernBagStackMax then
+          if (pc[item.value] or 0) >= Bag.__betterBagStackMax then
             activeList.footer = Strings("No room left to\nstore items.")
             return
           end
 
-          game.__modernBagPCDepositId = item.value
+          game.__betterBagPCDepositId = item.value
           local ok, chosen = pcall(chooseDeposit, item, activeList)
-          game.__modernBagPCDepositId = nil
+          game.__betterBagPCDepositId = nil
           if not ok then error(chosen, 0) end
           return chosen
         end
@@ -173,8 +173,8 @@ return function(mod, bagScreen, compatibility)
             end
 
             if action.deposit then constrainDeposit(list) end
-            if bagScreen and type(bagScreen.decorateList) == "function" then
-              bagScreen.decorateList(list, {
+            if betterBagScreen and type(betterBagScreen.decorateList) == "function" then
+              betterBagScreen.decorateList(list, {
                 header = "PC",
                 label = action.label,
                 short = action.short,
@@ -204,7 +204,7 @@ return function(mod, bagScreen, compatibility)
 
   return {
     playerPC = playerPC,
-    limits = { slots = activeSlots, stack = Bag.__modernBagStackMax },
+    limits = { slots = activeSlots, stack = Bag.__betterBagStackMax },
   }
 end
 

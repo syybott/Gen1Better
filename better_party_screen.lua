@@ -1,4 +1,4 @@
--- ModernParty presentation for Gen1BetterMenus.
+-- BetterParty presentation for Gen1BetterMenus.
 --
 -- PartyMenu remains the controller.  This module owns the widescreen
 -- presentation, while PartyMenu continues to own selection, actions,
@@ -32,7 +32,7 @@ return function(mod, genderExports, compatibility, menuColors,
   local DARK = 85 / 255
   local BLACK = 0
 
-  -- This is the same type-owned frame palette used by ModernPC.  The values
+  -- This is the same type-owned frame palette used by BetterPC.  The values
   -- are presentation data; the active BetterMenus palette still owns the
   -- paper and menu shades through sgbPalettes below.
   local TYPE_BASE = {
@@ -1252,10 +1252,10 @@ return function(mod, genderExports, compatibility, menuColors,
       right.w, BLACK)
     for slot = 1, 4 do
       drawMoveRow(screen, mon, slot, moveRowRect(panel, slot),
-        screen.modernPartyFocus == "moves"
-          and slot == (screen.modernPartyMoveSlot or 1))
+        screen.betterPartyFocus == "moves"
+          and slot == (screen.betterPartyMoveSlot or 1))
     end
-    drawMoveDetails(screen, mon, screen.modernPartyMoveSlot or 1,
+    drawMoveDetails(screen, mon, screen.betterPartyMoveSlot or 1,
       moveDetailsRect(panel))
   end
 
@@ -1301,7 +1301,7 @@ return function(mod, genderExports, compatibility, menuColors,
   local function footerMessage(screen)
     if screen.status then return tostring(screen.status) end
     if screen.submenu then return "UP/DOWN CHOOSE   A OK   B BACK" end
-    if screen.modernPartyFocus == "moves" then return nil end
+    if screen.betterPartyFocus == "moves" then return nil end
     if screen.itemUse or screen.tmhm or screen.evoStone or screen.forceSwitch then
       local message = type(screen.bottomMessage) == "function"
         and screen:bottomMessage() or nil
@@ -1493,7 +1493,7 @@ return function(mod, genderExports, compatibility, menuColors,
       end
 
       local detailBorder = moveBorderPalette(
-        screen, mon, screen.modernPartyMoveSlot or 1)
+        screen, mon, screen.betterPartyMoveSlot or 1)
       roundedPaletteFrame(zones, detailBorder or base, dataPaper,
         moveDetailsRect(layout.detail), 2)
     end
@@ -1538,9 +1538,9 @@ return function(mod, genderExports, compatibility, menuColors,
 
   local function wrapUpdate(screen)
     local original = screen.update
-    screen.modernPartyFocus = "party"
-    screen.modernPartyMoveSlot = 1
-    screen.modernPartyPreviousIndex = screen.index
+    screen.betterPartyFocus = "party"
+    screen.betterPartyMoveSlot = 1
+    screen.betterPartyPreviousIndex = screen.index
     screen.gen1IconHoverCounter = 0
     screen.gen1IconHoverDone = false
     screen.update = function(self, dt)
@@ -1558,58 +1558,58 @@ return function(mod, genderExports, compatibility, menuColors,
           or not canFocusMoves(self) then
         local result = original(self, dt)
         removeStatsAction(self)
-        if self.index ~= self.modernPartyPreviousIndex then
-          self.modernPartyPreviousIndex = self.index
-          self.modernPartyMoveSlot = 1
+        if self.index ~= self.betterPartyPreviousIndex then
+          self.betterPartyPreviousIndex = self.index
+          self.betterPartyMoveSlot = 1
           self.selectorBlinkElapsed = 0
         end
         return result
       end
-      if self.modernPartyFocus == "moves" then
+      if self.betterPartyFocus == "moves" then
         if input:wasPressed("up") then
-          self.modernPartyMoveSlot = self.modernPartyMoveSlot > 1
-            and self.modernPartyMoveSlot - 1 or 4
+          self.betterPartyMoveSlot = self.betterPartyMoveSlot > 1
+            and self.betterPartyMoveSlot - 1 or 4
           play(self, "Press_AB")
           return
         elseif input:wasPressed("down") then
-          self.modernPartyMoveSlot = self.modernPartyMoveSlot < 4
-            and self.modernPartyMoveSlot + 1 or 1
+          self.betterPartyMoveSlot = self.betterPartyMoveSlot < 4
+            and self.betterPartyMoveSlot + 1 or 1
           play(self, "Press_AB")
           return
         elseif input:wasPressed("left") or input:wasPressed("b") then
-          self.modernPartyFocus = "party"
+          self.betterPartyFocus = "party"
           play(self, "Press_AB")
           return
         end
         local result = original(self, dt)
         removeStatsAction(self)
-        if self.index ~= self.modernPartyPreviousIndex then
-          self.modernPartyPreviousIndex = self.index
-          self.modernPartyMoveSlot = 1
+        if self.index ~= self.betterPartyPreviousIndex then
+          self.betterPartyPreviousIndex = self.index
+          self.betterPartyMoveSlot = 1
           self.selectorBlinkElapsed = 0
         end
         return result
       end
       if input:wasPressed("right") then
-        self.modernPartyFocus = "moves"
+        self.betterPartyFocus = "moves"
         play(self, "Press_AB")
         return
       end
       local result = original(self, dt)
       removeStatsAction(self)
-      if self.index ~= self.modernPartyPreviousIndex then
-        self.modernPartyPreviousIndex = self.index
-        self.modernPartyMoveSlot = 1
+      if self.index ~= self.betterPartyPreviousIndex then
+        self.betterPartyPreviousIndex = self.index
+        self.betterPartyMoveSlot = 1
         self.selectorBlinkElapsed = 0
       end
       return result
     end
   end
 
-  local record = {}
-  function record.new(game, opts)
+  local BetterParty = {}
+  function BetterParty.new(game, opts)
     local state = PartyMenu.new(game, opts or {})
-    state.modernPartyUI = true
+    state.betterPartyUI = true
     state.selectorBlinkElapsed = 0
     state.marquee = 0
     state.uiSize = function() return responsiveSize() end
@@ -1622,5 +1622,5 @@ return function(mod, genderExports, compatibility, menuColors,
     return state
   end
 
-  return record
+  return BetterParty
 end
