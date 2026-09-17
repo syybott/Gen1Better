@@ -258,37 +258,10 @@ or Pokémon actions), use the `bettermenus.battle_shadow` hook. See the
 [Provider and Mod Compatibility guide](Compatibility.md#3-battle-shadows-and-custom-scenes)
 for full hook specifications and examples.
 
-## Diagnostics and visual driver
+## Diagnostics
 
 `mod.exports.betterBattle.backdrop` exposes `sceneIds()`, pure `resolve(context)`,
 and `diagnostics(battle)`. Diagnostics returns a detached table with the selected
 scene, reason, asset path, captured encounter context, whether the field was made
 transparent, whether the scene was rendered, viewport dimensions, and inactivity
 reason. Changing that table does not change the battle. False scene IDs mean plain.
-
-From the Gen1Recomp folder, run:
-
-```powershell
-.\worker-drivers\run_betterbattle_backdrops.ps1 -Version red
-.\worker-drivers\run_betterbattle_backdrops.ps1 -Version red -Case route_12_fish
-.\worker-drivers\run_betterbattle_backdrops.ps1 -Version blue -Suite scenes -Width 2560 -Height 1080
-```
-
-The default driver snapshots your current saved options and loads your installed,
-enabled mods. It does not force BetterBattle ON, change palettes, or substitute
-sprites. Save your settings before launching; each new run reads them again.
-Explicit Width/Height arguments request only a test-window size change. The
-`guards` suite contains deliberate palette/nickname/hook test cases and records
-those changes separately.
-
-Test party/progress and mod storage live under a fresh LÖVE identity; user save
-files are not used or overwritten. Installed mods and complete ROM caches are
-shared, while writable mod caches are copied. Captures, JSON results, launch-option
-snapshots, and file hashes go under a timestamped `worker-output` directory.
-
-`locations` verifies actual map/encounter selection. `scenes` requests all 63
-registered IDs through the public custom-spawn hook. Inactive BetterBattle and
-active external providers must produce an ownership check, not a false claim
-that backdrop art was visually validated. Crystal battle sprites are required
-for the background-on visual acceptance configuration, and any alternate sprite
-provider needs the same full-color compatibility check.

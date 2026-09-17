@@ -18,7 +18,7 @@
   - [Custom backdrop registration](Battle-Backdrops#custom-backdrop-registration)
   - [Verifying backdrops for 1080p and 4K](Battle-Backdrops#verifying-backdrops-for-1080p-and-4k-python)
   - [Shadow system and scene interaction](Battle-Backdrops#shadow-system-and-scene-interaction)
-  - [Diagnostics and visual driver](Battle-Backdrops#diagnostics-and-visual-driver)
+  - [Diagnostics](Battle-Backdrops#diagnostics)
 - [Artist backdrop packs](Artist-Backdrop-Packs)
   - [The 3 Safe Doors](Artist-Backdrop-Packs#artist-backdrop-pack-quickstart)
   - [The Hard Wall (320×180)](Artist-Backdrop-Packs#1-the-hard-wall-strictly-320180-pngs)

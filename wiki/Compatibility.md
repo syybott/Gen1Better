@@ -514,16 +514,8 @@ chain with `next`; they are not interchangeable with the three BetterMenus hooks
 
 ## Compatibility testing
 
-The [backdrop visual-driver instructions](Battle-Backdrops.md#diagnostics-and-visual-driver)
-describe runs using the user's current saved settings and enabled mods. Every
-new run snapshots the settings, loaded mods, source hashes, selection diagnostics,
-and screenshots. It does not silently enable BetterBattle or replace sprite mods.
-
-Check your provider active and inactive, BetterBattle ON and OFF, fishing versus
+When testing compatibility with other mods, verify behavior across standard in-game states:
+check your provider active and inactive, BetterBattle ON and OFF, fishing versus
 surfing, nickname entry, and menu overlays. An inactive 2D backdrop while your 3D
-provider owns the frame is expected. Compare diagnostics with what the screenshot
-actually presents rather than treating a selected scene ID as proof it was drawn.
-
-Source: [provider/HUD](../better_battle_hud.lua),
-[backdrops](../better_battle_backdrops.lua), [scaling and integration](../main.lua),
-[BetterPC](../better_pc_screen.lua).
+provider owns the frame is expected. Use the [Diagnostics API](Battle-Backdrops.md#diagnostics)
+to inspect the active scene state and verify whether the backdrop is drawn.
