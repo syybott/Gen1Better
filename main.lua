@@ -1,4 +1,3 @@
--- Gen1BetterMenus 1.1.2
 
 local Font = require("src.render.Font")
 local PaletteFX = require("src.render.PaletteFX")
@@ -43,8 +42,6 @@ local UI_TW, UI_TH = UI_W / 8, UI_H / 8
 local TITLE_PANEL_TW = 13
 local TITLE_INFO_TH = 10
 
--- Fill only the interior; border tiles retain their own transparency.
--- Keep the stock left edge aligned with the corner stems.
 if not Font.gen1BetterMenusLeftBorderFix then
   local function usesStockBorder()
     for key, code in pairs(Font.DEFAULT_BORDER or {}) do
@@ -67,8 +64,7 @@ if not Font.gen1BetterMenusLeftBorderFix then
         love.graphics.rectangle("fill",
           x + left, y + row, right - left, 1)
       end
-      -- Match the reference's opaque silhouette, including the white
-      -- inside the border rails and corner Poké Balls.
+
       for row = 1, h - 2 do
         local edge = math.min(row, h - 1 - row)
         if edge == 1 then
@@ -318,9 +314,6 @@ local PAPER_COLORS = {
   grape       = { 240, 235, 247 },
 }
 
--- Yellow's CGB title colors.  The normal SGB title palettes deliberately use
--- softer yellow, lavender, and pink shades; the Yellow title art instead uses
--- the vivid CGBBasePalettes colors seen on the intended full-color title.
 local YELLOW_TITLE_LOGO = {
   { 255, 255, 255 }, { 255, 255, 0 },
   { 58, 58, 206 }, { 0, 0, 140 },
@@ -344,13 +337,6 @@ local SCALE_FACTORS = {
   ["70"] = 0.70,
 }
 
--- BetterMenus redraws these stock menu classes using its widescreen
--- default-GB-frame presentation. These are eligible for Menu Scale.
--- `isModOptions` is the upstream marker for mod-created options/settings
--- screens. `BetterMenusScaleEligible` is BetterMenus' separate screen
--- eligibility marker.
--- Unknown state types are left at native scale unless their owning mod
--- explicitly opts in through bettermenus.ui_scale.
 local SCALABLE_MENU_STATES = {
   [OptionsMenu] = true,
   [PaletteScreen] = true,
@@ -397,7 +383,7 @@ local function defaultMenuScaleEnabled(game)
   local supported = false
   for _, state in ipairs(game and game.stack and game.stack.states or {}) do
     if state == game.overworld or (state and state.isOverworld) then
-      -- The overworld is the unscaled background beneath these menus.
+
     elseif state and state.isBattle then
       return false
     elseif state and (state.betterPCUI or state.betterBagUI
@@ -414,8 +400,7 @@ local function defaultMenuScaleEnabled(game)
         or state.isPCLoginTransition) then
       supported = true
     elseif state then
-      -- Unknown and custom full-screen states stay native unless their
-      -- owner explicitly opts in through bettermenus.ui_scale.
+
       return false
     end
   end
@@ -511,9 +496,6 @@ local function betterBattleUIEnabled(game, battle)
   return true
 end
 
--- PaletteFX normally applies the engine's active display mode after a state
--- supplies its zones. Under BetterMenus ownership, BetterMenus-owned menu
--- palettes bypass that final substitution and reach the shader directly.
 PaletteFX.gen1BetterMenusRawZonePalettes =
   PaletteFX.gen1BetterMenusRawZonePalettes
   or setmetatable({}, { __mode = "k" })
@@ -577,16 +559,6 @@ local function bypassOgTransformForZones(zones)
   return zones
 end
 
--- Rendering contract:
--- 1. When a BetterMenus menu palette is enabled, BetterMenus owns the palette used to render BetterMenus menu UI.
--- 2. Upstream may continue to own overworld/game palettes and any screens BetterMenus does not override.
--- 3. Global upstream palette settings such as inverse must not silently replace or reorder BetterMenus menu palette ownership.
--- 4. Menu geometry is identical in NORMAL and INVERSE.
--- 5. colors() always returns canonical palette order.
--- 6. INVERSE is applied once by effectiveMenuPalette().
--- 7. Semantic HP/XP colors are excluded from menu-palette remapping unless an OG engine palette is active.
--- 8. Renderers must never reverse or un-reverse palettes themselves.
-
 local function colors(game)
   local id = activeMod and activeMod.options:get("palette") or "soulsilver"
   local palette = PALETTES[id] or PALETTES.soulsilver
@@ -621,15 +593,11 @@ end
 
 local function makeWideState(class)
   class.uiSize = function() return UI_W, UI_H end
-  -- Only inherit the wide-battle marker when a battle actually owns the
-  -- stack. Claiming it over the overworld makes Game.lua apply the battle's
-  -- 72px classic-content offset to the map beneath the menu.
+
   class.isWideBattleLayout = function(self)
     local states = self.game and self.game.stack and self.game.stack.states
       or {}
-	    -- An opaque child completely replaces this screen.
-  -- Do not let this wide menu masquerade as a wide battle underneath it,
-  -- or Game.drawBaseInStack will deliberately draw through the opaque child.
+
   local selfIndex
   for i = 1, #states do
     if states[i] == self then
@@ -659,7 +627,7 @@ local function makeWideState(class)
 	  local baseState = states[base]
       if baseState and baseState.isOverworld then
 	    return true
-end	
+end
     for i = 1, #states do
       if states[i] ~= self and states[i] and (states[i].isBattle or not states[i].isOverworld) then
         return true
@@ -667,18 +635,15 @@ end
     end
     return false
   end
-  -- These menus are panels over the field. Keeping them non-opaque lets the
-  -- normal world pass replace the black letterbox around the wide panel.
+
   class.isOpaque = false
 end
 
 local function isOptionRowsScreen(state)
   if not state or not state.rows then return false end
 
-  -- New Gen1Recomp opt-in marker for mod-created options screens.
   if state.isModOptions then return true end
 
-  -- Legacy fallback for older builds/mods that do not declare isModOptions.
   local sid = type(state.screenId) == "string"
     and state.screenId
     or ""
@@ -693,8 +658,7 @@ local function installModOptionsMarkerCompatibility()
 
     local factory = Screens.get(game, id)
     if factory and factory.__modOwned then
-      -- Screens supplied through the mod screen registry are custom UI.
-      -- They stay native unless their owner implements bettermenus.ui_scale.
+
       inst.gen1BetterMenusModScreen = true
     end
 
@@ -801,10 +765,6 @@ local function installOverworldScaleStability()
     local desiredScale = Zoom.scale(classicScale)
     local classicLo, classicHi = originalOffsetRange(classicScale)
 
-    -- Wide overlays reduce fitScale because their canvas is 304px across.
-    -- Translate the saved survey-zoom offset for this draw only so the world
-    -- retains exactly the scale it had before the overlay opened. UI keeps
-    -- using the player's unmodified offset and its own wide fit scale.
     Zoom.offset = desiredScale - wideScale
     Zoom.offsetRange = function(scale)
       if scale == wideScale then
@@ -965,7 +925,7 @@ if isOptionRowsScreen(inst) then
     inst.isWideBattleLayout = function()
       return false
     end
-	
+
 	inst.sgbPalettes = wholeWide
   end
 
@@ -1017,9 +977,7 @@ OptionsMenu.isWideBattleLayout = function(self)
   return originalOptionsWide(self)
 end
   OptionsMenu.sgbPalettes = wholeWide
-  -- ManagerState uses OptionRows for each mod's settings page. Without the
-  -- same canvas declaration the compact 38-tile renderer would be clipped
-  -- back to the manager's original 20-tile surface.
+
   makeWideState(ManagerState)
   ManagerState.sgbPalettes = wholeWide
 end
@@ -1085,9 +1043,6 @@ ListMenu.new = function(game, ...)
   local self = originalListMenuNew(game, ...)
   local bagItems = self.itemBox and self.kind == "bag"
 
-  -- Newer Gen1Recomp builds mark the overworld bag as a partial item box,
-  -- which disables its palette and leaves the wide replacement transparent.
-  -- This mod owns the bag's full-screen layout, so restore only that instance.
   if self.itemBox then
     self.itemBox = false
     self.isOpaque = false
@@ -1145,13 +1100,9 @@ ListMenu.new = function(game, ...)
   return self
 end
   ListMenu.sgbPalettes = wholeWide
-  -- PokedexMenu stamps its own palette function onto the ListMenu instance,
-  -- so update that factory-owned function as well as the generic class.
+
   PokedexMenu.sgbPalettes = wholeWide
 
-  -- Current Gen1Recomp gives the Pokédex contents screen its own renderer
-  -- rather than a ListMenu instance. Lay that renderer out across the wide
-  -- surface instead of leaving its native 160px contents at the left edge.
   PokedexMenu.isOpaque = false
   PokedexMenu.uiSize = function() return UI_W, UI_H end
   PokedexMenu.isWideBattleLayout = function() return false end
@@ -1614,9 +1565,7 @@ local function installMenuLayout()
     local titleOptions = top and getmetatable(top) == OptionsMenu
     local currentSprite
     if titleOptions then
-      -- The wide Options panel completely covers the title canvas. Suppress
-      -- the hidden Red/Blue title Pokémon so its true-color redraw rectangle
-      -- cannot be replayed over the finished panel during the palette pass.
+
       top.titleUiBox = { 0, 0, UI_TW - 1, UI_TH - 1 }
       currentSprite = self.currentSprite
       self.currentSprite = function() return nil, false end
@@ -1687,7 +1636,7 @@ end
       return
     end
   end
-  
+
   if self.startCloses then
     local originalLabels = {}
 
@@ -1821,8 +1770,7 @@ local function installBattlePaletteIsolation()
         end
         x = math.floor(x * dpiX + 0.5) / dpiX
         y = math.floor(y * dpiY + 0.5) / dpiY
-        -- Keep the original origin when clipping. A negative y deliberately
-        -- removes the head/frame top; clamping the origin would reveal it.
+
         local left, top = math.max(x, r.vux), math.max(y, r.vuy)
         local right = math.min(x + w, r.vux + r.vuw)
         local bottom = math.min(y + h, r.vuy + r.vuh)
@@ -1893,7 +1841,7 @@ local function installBattlePaletteIsolation()
       for _, anchor in ipairs(self.uiAnchors or {}) do
         local p = anchor.gen1BetterMenusPlacement
         if p and p.owner == "betterbattle" then
-          -- This list belongs to this HUD draw, not to the actor canvas.
+
           zones = self.gen1BetterBattleZones
           break
         end
@@ -2032,9 +1980,6 @@ local function installDialogueLayout()
   local originalOpenPC = OverworldState.openPC
   local openingPC = 0
 
-  -- Scope the skipped startup TextBox to the engine's existing openPC flow.
-  -- Every caller receives the same behavior, including a physical Pokemon
-  -- Center PC and mods that invoke openPC from the Start menu.
   OverworldState.openPC = function(self, ...)
     openingPC = openingPC + 1
     local ok, result = pcall(originalOpenPC, self, ...)
@@ -2121,7 +2066,7 @@ local function installDialogueLayout()
         or "..."
       Font.drawBox(self.tx, self.ty, self.tw, self.th)
       love.graphics.setColor(0, 0, 0, 1)
-      -- Anchor based on the full string with all 3 dots so base text never shifts
+
       local fullWidth = Font.width(baseText .. " ...")
       local baseX = self.tx * 8 + math.floor((self.tw * 8 - fullWidth) / 2)
       local textY = (self.ty + 1) * 8
@@ -2133,9 +2078,7 @@ local function installDialogueLayout()
 
   local originalPush = StateStack.push
   StateStack.push = function(stack, state, ...)
-    -- The Pokemon Center PC builds its menu before pushing the stock
-    -- "turned on the PC" TextBox. Run a short visual login transition
-    -- (~0.38s) before invoking its completion callback to open the menu.
+
     if state and state.gen1BetterMenusSkipCenterPCTurnOn then
       local onDone = state.onDone
       state.onDone = nil
@@ -2143,8 +2086,6 @@ local function installDialogueLayout()
       return originalPush(stack, loginState)
     end
 
-    -- The SAVE panel waits 30 frames before creating its TextBox. Widen it
-    -- as it enters the stack so the retained START menu never flashes first.
     widenSavePanel(Game, state)
     return originalPush(stack, state, ...)
   end
@@ -2183,9 +2124,7 @@ local function installDialogueLayout()
     self.maxCols = 36
     self.textX, self.line1Y, self.line2Y = 8, 112, 128
     if parent and getmetatable(parent) == OakSpeech then
-      -- The dialogue is 304px wide, but OakSpeech still draws its original
-      -- 160px scene. Let the engine center that classic scene and its palette
-      -- masks inside the wide canvas.
+
       self.isWideBattleLayout = function() return true end
     end
     if inWideBattle and tostring(text):lower():find("nickname", 1, true)
@@ -2218,21 +2157,11 @@ local function installDialogueLayout()
       end
     end
 
-    -- Reflow after widening and rebuild the typewriter's current line so it
-    -- cannot retain the original 18-column first-page split.
     local wideText = TextBox.substitute(game, text)
-    -- Stock strings contain \n at their original narrow textbox boundaries.
-    -- In a widened BetterMenus pane, ordinary newlines are soft breaks and
-    -- should not prevent adjacent words from sharing a line. Preserve \v
-    -- continuation controls and \f page breaks.
+
     wideText = wideText:gsub("\n", " ")
     local pages = TextBox.paginate(wideText, self.maxCols)
 
-    -- A stock \v can have been positioned after the original second
-    -- narrow-textbox line. After widening, that content may now occupy only
-    -- the first visual line, which would pause before the second line.
-    -- Defer only that first-line continuation until the second visual line
-    -- has finished. Preserve all later continuation waits.
     local contBefore = pages.contBefore or {}
     for pageIndex, page in ipairs(pages) do
       local conts = contBefore[pageIndex]
@@ -2282,12 +2211,10 @@ local function installSupportingScreens()
 	  local ox = math.floor((UI_W - 160) / 2) / 8
 
 	  return {
-	  -- The entry renderer is translated into the centre of the 304px canvas;
-	  -- its palette zones must follow the same translation.
+
 	  PaletteFX.zone(base, ox, 0, ox + 9, 17),
 	  PaletteFX.zone(base, ox + 10, 0, ox + 19, 17),
 
-	  -- Pokémon sprite palette.
 	  PaletteFX.zone(
 		PaletteFX.monPal(game.data, self.def and self.def.id),
 		ox + 1,
@@ -2296,15 +2223,14 @@ local function installSupportingScreens()
 		8
 	  ),
 
-	  -- Active menu palette on the Pokédex frame only.
-	  PaletteFX.zone(effectiveMenuPalette(), ox, 0, ox + 9, 0),         -- top-left
-	  PaletteFX.zone(effectiveMenuPalette(), ox + 10, 0, ox + 19, 0),   -- top-right
-	  PaletteFX.zone(effectiveMenuPalette(), ox, 17, ox + 9, 17),       -- bottom-left
-	  PaletteFX.zone(effectiveMenuPalette(), ox + 10, 17, ox + 19, 17), -- bottom-right
-	  PaletteFX.zone(effectiveMenuPalette(), ox, 0, ox, 17),            -- left
-	  PaletteFX.zone(effectiveMenuPalette(), ox + 19, 0, ox + 19, 17),  -- right
-	  PaletteFX.zone(effectiveMenuPalette(), ox, 9, ox + 9, 9),         -- divider-left
-	  PaletteFX.zone(effectiveMenuPalette(), ox + 10, 9, ox + 19, 9),   -- divider-right
+	  PaletteFX.zone(effectiveMenuPalette(), ox, 0, ox + 9, 0),
+	  PaletteFX.zone(effectiveMenuPalette(), ox + 10, 0, ox + 19, 0),
+	  PaletteFX.zone(effectiveMenuPalette(), ox, 17, ox + 9, 17),
+	  PaletteFX.zone(effectiveMenuPalette(), ox + 10, 17, ox + 19, 17),
+	  PaletteFX.zone(effectiveMenuPalette(), ox, 0, ox, 17),
+	  PaletteFX.zone(effectiveMenuPalette(), ox + 19, 0, ox + 19, 17),
+	  PaletteFX.zone(effectiveMenuPalette(), ox, 9, ox + 9, 9),
+	  PaletteFX.zone(effectiveMenuPalette(), ox + 10, 9, ox + 19, 9),
 	}
 	end
 
@@ -2317,13 +2243,11 @@ local function installSupportingScreens()
 	end
 
 	DexEntryMenu.isOpaque = false
-	
-	
+
 	local originalDexEntryDraw = DexEntryMenu.draw
 
 	DexEntryMenu.draw = function(self)
-	  -- The Dex renderer still inherits the classic 160px clip.
-	  -- Remove it while drawing the centered page.
+
 	  love.graphics.setScissor()
 	  love.graphics.setColor(1, 1, 1, 1)
 	  love.graphics.rectangle("fill", 0, 0, UI_W, UI_H)
@@ -2428,7 +2352,6 @@ local function installSupportingScreens()
       if okPalette and type(exported) == "table" then color = exported end
     end
 
-    -- Match the white background of the nickname screen
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.rectangle("fill", x - 1, y - 1, 10, 10)
 
@@ -2461,10 +2384,6 @@ local function installSupportingScreens()
       self.mon = opts.mon
     end
 
-    -- nickname_changer pushes NamingScreen from the party submenu (overworld
-    -- only; it guards against the battle context itself).  BetterMenus detects
-    -- this by the mod being present and the screen carrying the changer's
-    -- specific title so we don't accidentally capture unrelated naming screens.
     local fromNicknameChanger = false
     if not wideBattle and not introNaming then
       local hasChanger = (activeMod and activeMod.find and activeMod.find("nickname_changer"))
@@ -2507,7 +2426,6 @@ local function installSupportingScreens()
         love.graphics.push()
         love.graphics.translate(math.floor((UI_W - Renderer.WIDTH) / 2), 0)
 
-        -- 1. Keyboard box (tx = 0, ty = 1, tw = 21, th = 12) shifted upward by 4px
         love.graphics.push()
         love.graphics.translate(0, -4)
         Font.drawBox(0, 1, 21, 12)
@@ -2528,7 +2446,6 @@ local function installSupportingScreens()
         end
         love.graphics.pop()
 
-        -- 2. Lower-left Pokémon battle front sprite
         local mon = screen.mon or self.mon
         if not mon and opts and opts.mon then
           mon = opts.mon
@@ -2574,7 +2491,6 @@ local function installSupportingScreens()
             PartyMenu.drawIcon(game, mon, -3, 101, false, 0)
           end
 
-          -- 3. Species name to the right of sprite (only when catching in battle, not when renaming)
           local titleStr = tostring(screen.title or "NICKNAME?"):upper()
           if not titleStr:find("NEW", 1, true) then
             local def = game.data.pokemon and game.data.pokemon[mon.species]
@@ -2585,7 +2501,6 @@ local function installSupportingScreens()
           end
         end
 
-        -- 4. NICKNAME? below species name with '?' moved up by 1 pixel
         love.graphics.setColor(0, 0, 0, 1)
         local title = screen.title or "NICKNAME?"
         if title:sub(-1) == "?" then
@@ -2596,7 +2511,6 @@ local function installSupportingScreens()
           Font.draw(title, 55, 115)
         end
 
-        -- 5. Nickname entry line shifted right by approx 20px
         local maxLen = screen.maxLen or 10
         local slotStartX = math.floor((160 - maxLen * 8) / 2) + 14
         for i = 1, maxLen do
@@ -2617,9 +2531,7 @@ local function installSupportingScreens()
         end
       end
     elseif introNaming then
-      -- Oak's held dialogue remains below this screen and would otherwise
-      -- split the naming UI at its bottom anchor. Temporarily release only
-      -- that retained dialogue anchor while the naming screen is active.
+
       for _, state in ipairs(game and game.stack and game.stack.states or {}) do
         if state and state.isTextBox then
           introAnchors[#introAnchors + 1] = {
@@ -2650,9 +2562,7 @@ local function installSupportingScreens()
       local originalEnter = self.enter
       self.enter = function(screen, ...)
         originalEnter(screen, ...)
-        -- The preset list is an overlay on this naming screen. Keep this
-        -- solid canvas opaque so Oak's held scene/dialogue cannot supply a
-        -- displaced palette field behind either player's or rival's list.
+
         screen.isOpaque = true
       end
       self.draw = function(screen)
@@ -2709,16 +2619,8 @@ local function installSupportingScreens()
     add(ix2, iy1, x2 - ix2, iy2 - iy1)
   end
 
-
-
-  -- Maximum number of Pokémon action submenu entries shown at once.
-  -- When other mods add entries (HM Anywhere, Move Relearn, etc.) the total
-  -- can exceed what the stock box geometry can fit on screen.  BetterMenus
-  -- caps the visible window to this many rows and scrolls as the cursor moves.
   local SUBMENU_PAGE = 6
 
-  -- Returns the 0-based scroll offset stored on the menu instance, clamped to
-  -- a valid range for the current item count.
   local function subScrollFor(menu)
     local total  = menu.subItems and #menu.subItems or 0
     local maxScr = math.max(0, total - SUBMENU_PAGE)
@@ -2805,44 +2707,34 @@ local function installSupportingScreens()
   makeWideState(PartyMenu)
 
   local originalPartyMenuUpdate = PartyMenu.update
-  -- Override navigation only when the submenu is open with more entries than
-  -- the visible window can show.  For ≤ SUBMENU_PAGE items every keystroke
-  -- falls through to the engine's original handler unchanged.
+
   PartyMenu.update = function(self, dt)
     if self.submenu and self.subItems and #self.subItems > SUBMENU_PAGE then
       local n     = #self.subItems
       local input = self.game and self.game.input
       if input then
         if input:wasPressed("down") then
-          -- Advance cursor with wrap: last → first
           self.subIndex = self.subIndex % n + 1
           local scroll  = subScrollFor(self)
           if self.subIndex == 1 then
-            -- Wrapped from bottom to top: snap window to top
             self.gen1BetterMenusSubScroll = 0
           elseif self.subIndex > scroll + SUBMENU_PAGE then
-            -- Cursor moved past the bottom of the window: scroll down one
             self.gen1BetterMenusSubScroll = self.subIndex - SUBMENU_PAGE
           end
           return
         elseif input:wasPressed("up") then
-          -- Retreat cursor with wrap: first → last
           self.subIndex = (self.subIndex - 2) % n + 1
           local scroll  = subScrollFor(self)
           if self.subIndex == n then
-            -- Wrapped from top to bottom: snap window to bottom
             self.gen1BetterMenusSubScroll = n - SUBMENU_PAGE
           elseif self.subIndex <= scroll then
-            -- Cursor moved past the top of the window: scroll up one
             self.gen1BetterMenusSubScroll = self.subIndex - 1
           end
           return
         end
       end
-      -- A, B, START, or anything else: let the engine act on subIndex normally
       return originalPartyMenuUpdate(self, dt)
     end
-    -- Normal path (no submenu, or ≤ SUBMENU_PAGE items): engine handles everything
     return originalPartyMenuUpdate(self, dt)
   end
 
@@ -2973,14 +2865,12 @@ local function installSupportingScreens()
     if self.submenu then
       local total   = #self.subItems
       local visible = math.min(total, SUBMENU_PAGE)
-      local scroll  = subScrollFor(self)          -- 0-based first visible index
+      local scroll  = subScrollFor(self)
       local tx      = UI_TW - 11
 
-      -- Box height is fixed to the visible window; its top edge stays constant.
       Font.drawBox(tx, 17 - visible * 2 - 1, 11, visible * 2 + 1)
       local y0 = (17 - visible * 2) * 8
 
-      -- Draw only the entries in the current scroll window.
       for slot = 1, visible do
         local entry = self.subItems[scroll + slot]
         if entry then
@@ -2988,15 +2878,12 @@ local function installSupportingScreens()
         end
       end
 
-      -- Draw the cursor at its position within the visible window.
       local cursorSlot = self.subIndex - scroll
       Font.drawCode(Theme.cursor, (tx + 1) * 8, y0 + (cursorSlot - 1) * 16)
 
-      -- Scroll indicators when the list is taller than the window.
       if total > SUBMENU_PAGE then
         if scroll > 0 then
-          -- "More above" arrow: draw a small upward chevron (▲ pixels) manually
-          -- because not all theme builds expose a moreArrowUp glyph.
+
           if Theme.moreArrowUp then
             Font.drawCode(Theme.moreArrowUp, (tx + 9) * 8, y0 - 5)
           else
@@ -3020,8 +2907,7 @@ local function installSupportingScreens()
     drawFrameOnly(0, 0, UI_TW, UI_TH)
     love.graphics.setColor(1, 1, 1, 1)
   end
-  -- Rare Candy level-up stat box: inherit the wide menu canvas and
-  -- move the stock 11-tile stats window into the added right-hand space.
+
   local StatBox = BattleState.StatBox
   local originalStatBoxNew = StatBox.new
   local originalStatBoxDraw = StatBox.draw
@@ -3057,7 +2943,7 @@ local function installSupportingScreens()
 
     originalStatBoxDraw(self)
   end
-  
+
   local originalSummaryDraw = SummaryMenu.draw
 
 SummaryMenu.draw = function(self)
@@ -3070,12 +2956,11 @@ SummaryMenu.draw = function(self)
     drawPartyGender(self.game, self.mon, 104, 16, self)
   end
 end
-  
+
   makeWideState(SummaryMenu)
   SummaryMenu.sgbPalettes = function(self, game)
     local zones = wholeWide()
 
-    -- Summary Pokémon HP bar.
     if self.page == 1 and self.mon and self.mon.stats then
       local bar = PaletteFX.pal(
         game.data,
@@ -3281,7 +3166,7 @@ local function installLinkLayout()
       return
     end
     love.graphics.push()
-    -- Keep one empty text row between the outer frame and Link's heading.
+
     love.graphics.translate((UI_W - 160) / 2, 16)
     originalDraw(self)
     love.graphics.pop()
@@ -3719,9 +3604,6 @@ return function(mod, menuColors)
     mod.content.screens:register("NamingScreen", namingScreenWrapper)
   end
 
-  -- BetterBag is vendored under BetterMenus-owned filenames. Preserve
-  -- the controller registered before us so the option can switch presentation
-  -- off without changing item behavior or requiring a restart.
   local function loadBetterBagFactory(filename)
     local betterBagSource, betterBagReadErr = mod:read(filename)
     if not betterBagSource then
@@ -3788,7 +3670,7 @@ return function(mod, menuColors)
         tostring(betterBagScreen), tostring(betterBagInventory))
     end
   end
-  
+
     local betterBattleHudSource, betterBattleHudReadErr = mod:read("better_battle_hud.lua")
 	  if not betterBattleHudSource then
 		mod.log:error("better_battle_hud.lua is missing (%s); reinstall the mod",
@@ -3822,7 +3704,7 @@ return function(mod, menuColors)
 		  tostring(betterBattleHudInstallErr))
 		return
 	  end
-  
+
   local betterBattleBackdropSource, betterBattleBackdropReadErr = mod:read("better_battle_backdrops.lua")
   if betterBattleBackdropSource then
     local betterBattleBackdropChunk, betterBattleBackdropCompileErr = load(betterBattleBackdropSource,
@@ -3968,7 +3850,7 @@ return function(mod, menuColors)
         { "RED", "red" },
       } },
   })
-  
+
   local defaultMenuPalettes = {
     { "GAME BOY", "gameboy" },
     { "BLACK AND WHITE", "blackwhite" },
@@ -4616,7 +4498,6 @@ return function(mod, menuColors)
       end
     end
 
-    -- Change QUIT to close the application, then add RESTART below it.
     for i, item in ipairs(items) do
       if tostring(item.label) == "QUIT" then
         item.onSelect = function()
@@ -4823,9 +4704,6 @@ end
     local menuHeight = uiFrame and uiFrame.uvph
       or viewport and viewport.gameHeight
 
-    -- Summary sprites are transparent images. Draw them after the menu's
-    -- palette pass so true-color art is never remapped and no rectangular
-    -- true-color zone can expose an unpaletted seam around the sprite.
     if top and getmetatable(top) == SummaryMenu and top.sprite
         and menuX and menuY and menuWidth and menuHeight then
       local pw, ph = top.sprite:getDimensions()
@@ -4864,9 +4742,6 @@ end
       love.graphics.setColor(r, green, b, a)
     end
 
-    -- The responsive Bag reaches the logical canvas edge, but the final
-    -- presentation pass can leave one framebuffer row from the overworld.
-    -- Cover that post-composite seam with the active menu footer color.
     local states = game and game.stack and game.stack.states or {}
     local stack = game and game.stack
     local first = stack and stack.visibleBase and stack:visibleBase() or 1
@@ -4902,15 +4777,12 @@ end
       love.graphics.setColor(
         footer[1] / 255, footer[2] / 255, footer[3] / 255, 1)
 
-      -- Top/header edge.
       love.graphics.rectangle("fill", 0, 0,
         viewport.width, pixelH)
 
-      -- Bottom/footer edge.
       love.graphics.rectangle("fill", 0, viewport.height - pixelH,
         viewport.width, pixelH)
 
-      -- Left and right screen edges.
       love.graphics.rectangle("fill", 0, 0,
         pixelW, viewport.height)
       love.graphics.rectangle("fill", viewport.width - pixelW, 0,
@@ -4918,9 +4790,6 @@ end
 
       love.graphics.setColor(r, green, b, a)
     end
-
-    -- Detached BetterBattle panels need no stock-position paper overpaint.
-    -- That late fill could otherwise cover the top-right trainer band.
 
     if betterScenesInstance and betterScenesInstance.isActive() then
       betterScenesInstance.draw()
@@ -4933,11 +4802,6 @@ end
     local top = game and game.stack and game.stack:top()
     local mt = top and getmetatable(top)
 
-    -- BetterBag composes a responsive pixel-space surface and supplies its
-    -- complete palette map through its own sgbPalettes method.  Appending the
-    -- legacy tile-space Menu/ListMenu zones below recolors the old 160px Bag
-    -- region over that surface, producing the vertical palette stripe.  Once
-    -- BetterBag owns the visible palette map, leave it unchanged here.
     local states = game and game.stack and game.stack.states or {}
     local stack = game and game.stack
     local first = stack and stack.visibleBase and stack:visibleBase() or 1
@@ -4961,9 +4825,7 @@ end
         out[#out + 1] = battleUIZone(palette, 23, 7, 37, 12)
         out[#out + 1] = battleUIZone(palette, 0, 13, 37, 17)
       end
-      -- Standard WIDE draws its bottom message/command panels directly on
-      -- the main battle canvas. The detached-HUD zone above is isolated from
-      -- that canvas, so add the same exact 104..143 panel band in every mode.
+
       if not (top.extendedHUD and top:extendedHUD()) then
         out[#out + 1] = PaletteFX.zone(
           effectiveMenuPalette(), 0, 13, 37, 17)
@@ -5010,8 +4872,7 @@ end
           gen1BetterMenusBattleUI = true,
         }
       end
-      -- ON and stock OFF preserve only semantic meter fills.
-      -- MOD retains the provider-owned full-element exemption.
+
     else
       local title
       for i = 1, #states do
@@ -5020,9 +4881,7 @@ end
           break
         end
       end
-      -- Color every visible UI overlay, not only the top state. A ChoiceBox
-      -- sits above its TextBox, and ContinueInfo is private to TitleState;
-      -- walking the visible stack covers both without depending on names.
+
       for i = first, #states do
         local state = states[i]
         local stateMt = state and getmetatable(state)

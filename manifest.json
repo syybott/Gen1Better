@@ -1,6 +1,6 @@
 {
   "id": "gen1-better-menus",
-  "name": "Gen1BetterMenus",
+  "name": "Gen1Better",
   "version": "1.1.14",
   "api": 2,
   "entry": "main.lua",
@@ -14,6 +14,6 @@
     "crystal_animated_sprites_with_shiny_visuals"
   ],
   "conflicts": ["modern_pc_ui"],
-  "description": "Enhanced widescreen menus, frames, and palette options for Gen1Recomp",
+  "description": "Widescreen presentation, 2D battle backdrops, cinematic story stage, and enhanced menus for Gen1Recomp",
   "github": "syybott/Gen1BetterMenus"
 }

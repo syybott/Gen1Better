@@ -1,17 +1,3 @@
-#!/usr/bin/env python3
-"""
-BetterBattle 320x180 Backdrop Grid & Resolution Validator
-
-Verifies that custom battle backdrop images comply with Gen1BetterMenus requirements:
-  1. File is a valid PNG image.
-  2. Dimensions are strictly 320 x 180 pixels.
-  3. Aspect ratio is strictly 16:9.
-  4. Confirms exact integer scaling at 720p (4x), 1080p (6x), 1440p (8x), and 4K (12x).
-  5. Inspects pixel grid integrity and transparency warnings.
-
-Usage:
-  python verify_backdrop.py <image_path_or_directory> [...]
-"""
 
 import sys
 import os
@@ -26,9 +12,8 @@ SCALE_TARGETS = [
     ("4K / 2160p", 12, 3840, 2160),
 ]
 
-
 def read_png_dimensions(filepath):
-    """Reads width and height from PNG IHDR chunk without external dependencies."""
+    
     with open(filepath, "rb") as f:
         header = f.read(8)
         if header != b"\x89PNG\r\n\x1a\n":
@@ -40,9 +25,8 @@ def read_png_dimensions(filepath):
         bit_depth, color_type = struct.unpack(">BB", f.read(2))
         return (width, height, bit_depth, color_type), None
 
-
 def verify_image(filepath):
-    """Runs full verification on a backdrop image file."""
+    
     print(f"\n========================================================")
     print(f"Verifying: {filepath}")
     print(f"========================================================")
@@ -59,14 +43,12 @@ def verify_image(filepath):
     width, height, bit_depth, color_type = info
     passed = True
 
-    # 1. Dimension check
     if width == EXPECTED_WIDTH and height == EXPECTED_HEIGHT:
         print(f"  [PASS] Dimensions: {width}x{height} (matches expected 320x180)")
     else:
         print(f"  [FAIL] Dimensions: {width}x{height} (MUST be exactly {EXPECTED_WIDTH}x{EXPECTED_HEIGHT})")
         passed = False
 
-    # 2. Aspect ratio check
     ratio = width / height
     expected_ratio = 16.0 / 9.0
     if abs(ratio - expected_ratio) < 1e-5:
@@ -75,7 +57,6 @@ def verify_image(filepath):
         print(f"  [FAIL] Aspect Ratio: {ratio:.4f} (MUST be 16:9 / ~1.7778)")
         passed = False
 
-    # 3. Integer scaling verification
     print(f"\n  Integer Scaling Multipliers:")
     for name, factor, target_w, target_h in SCALE_TARGETS:
         calc_w = width * factor
@@ -86,7 +67,6 @@ def verify_image(filepath):
             print(f"    - {name:12s}: MISMATCH (computed {calc_w}x{calc_h}, expected {target_w}x{target_h})")
             passed = False
 
-    # 4. Optional Pillow / PIL deep inspection
     try:
         from PIL import Image
 
@@ -94,7 +74,6 @@ def verify_image(filepath):
         print(f"\n  Deep Pixel Inspection (Pillow):")
         print(f"    - Color Mode: {img.mode} (Bit depth: {bit_depth})")
 
-        # Check for transparency
         if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
             alpha = img.convert("RGBA").split()[-1]
             min_alpha, max_alpha = alpha.getextrema()
@@ -112,8 +91,6 @@ def verify_image(filepath):
         else:
             print(f"    - [PASS] Fully opaque {img.mode} image")
 
-        # Grid alignment test: check 6x (1080p) and 12x (4K) nearest upsampling
-        # Each source pixel in 320x180 becomes a 6x6 square at 1080p and 12x12 at 4K.
         for name, factor, tw, th in [("1080p", 6, 1920, 1080), ("4K", 12, 3840, 2160)]:
             upscaled = img.resize((tw, th), resample=Image.Resampling.NEAREST)
             sample_passed = True
@@ -141,7 +118,6 @@ def verify_image(filepath):
         print(f"\n  >>> RESULT: FAIL - Resolve the issues above before using in BetterBattle.")
 
     return passed
-
 
 def main():
     if len(sys.argv) < 2:
@@ -171,7 +147,6 @@ def main():
             all_passed = False
 
     sys.exit(0 if all_passed else 1)
-
 
 if __name__ == "__main__":
     main()

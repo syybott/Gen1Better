@@ -1,8 +1,4 @@
--- BetterParty presentation for Gen1BetterMenus.
---
--- PartyMenu remains the controller.  This module owns the widescreen
--- presentation, while PartyMenu continues to own selection, actions,
--- callbacks, healing, switching, and Party-owned submenu semantics.
+
 return function(mod, genderExports, compatibility, menuColors,
     useStockOgMenuPalette, menuPaper, rawPaletteCopy)
   compatibility = compatibility or {}
@@ -32,9 +28,6 @@ return function(mod, genderExports, compatibility, menuColors,
   local DARK = 85 / 255
   local BLACK = 0
 
-  -- This is the same type-owned frame palette used by BetterPC.  The values
-  -- are presentation data; the active BetterMenus palette still owns the
-  -- paper and menu shades through sgbPalettes below.
   local TYPE_BASE = {
     NORMAL = { 184, 185, 171 }, FIGHTING = { 174, 91, 75 },
     FLYING = { 117, 148, 202 }, POISON = { 161, 91, 151 },

@@ -1,4 +1,4 @@
--- Pixel-art scenes are an outer, true-color layer. Never palette-map this art.
+
 local BetterBattleBackdrops = {}
 local sceneNames = [[
 boss_agatha boss_bruno boss_lorelei boss_lance boss_champion
@@ -46,8 +46,6 @@ local WING_SHADOW_RINGS = {
   { scale = 0.90, alpha = 0.018 },
   { scale = 0.82, alpha = 0.022 },
 }
--- Reduce the prior 1.15 global multiplier by 10% while preserving ring
--- proportions and per-species opacityScale overrides.
 local SHADOW_GLOBAL_OPACITY = 1.035
 local landmarks = {
   AGATHAS_ROOM = "boss_agatha", BRUNOS_ROOM = "boss_bruno",
@@ -81,7 +79,6 @@ local seas = { ROUTE_12=true, ROUTE_13=true, ROUTE_19=true, ROUTE_20=true, ROUTE
   PALLET_TOWN=true, VERMILION_CITY=true, CINNABAR_ISLAND=true, VERMILION_DOCK=true }
 local function starts(s, prefix) return s:sub(1, #prefix) == prefix end
 
--- Pure: false is an intentional plain scene, distinct from no matching rule.
 function BetterBattleBackdrops.resolve(c)
   local map, water = c.mapId or "", c.surfing or c.fishing
   if landmarks[map] then return landmarks[map], "landmark" end
@@ -188,7 +185,7 @@ function BetterBattleBackdrops.install(mod, api)
       trainerClass=battle.oppClass, partyIndex=battle.partyIndex }
     local def = game and game.data and game.data.maps and game.data.maps[c.mapId]
     c.tileset = def and def.tileset or c.tileset
-    -- The off-bridge junior trainer at x=5 must not inherit Nugget Bridge.
+
     if c.mapId == "ROUTE_24" and c.kind == "trainer" then
       for _, o in ipairs(def and def.objects or {}) do
         if o.trainerClass == c.trainerClass and o.trainerParty == c.partyIndex
@@ -765,7 +762,6 @@ function BetterBattleBackdrops.install(mod, api)
             alphaScale = alphaScale * SHADOW_SHAPE.flyingAlphaScale
           end
 
-          -- Apply tuning without changing the cached animation footprint.
           local sourceX = anchor.centerX
             + shadowSettings.value(species, side, "offsetX")
           sourceY = sourceY + shadowSettings.value(species, side, "offsetY")
@@ -904,7 +900,7 @@ function BetterBattleBackdrops.install(mod, api)
     local own = rawget(battle, "extendedWorldHUD")
     local g = love.graphics
     g.push("all")
-    -- This is the actor canvas, not the outer art canvas. No white field survives.
+
     g.clear(0, 0, 0, 0)
     battle.extendedWorldHUD = function() return true end
     local ok, result = pcall(wideDraw, battle, ...)
@@ -976,11 +972,9 @@ function BetterBattleBackdrops.install(mod, api)
         local toImg = toRecord and imageFor(toRecord)
 
         if not fromImg and not toImg then
-          -- Plain -> Plain: no-op / clear to plain field
           drawPlainField(1.0)
           r.transition = nil
         elseif fromImg and toImg then
-          -- Image -> Image
           if t.type == "crossfade" then
             drawBackdropImg(fromImg, 1.0)
             drawBackdropImg(toImg, progress)
@@ -1000,7 +994,6 @@ function BetterBattleBackdrops.install(mod, api)
             drawBackdropImg(toImg, 1.0)
           end
         elseif fromImg and not toImg then
-          -- Image -> Plain: draw plain field underneath, fade out fromImg
           drawPlainField(1.0)
           if t.type == "crossfade" then
             drawBackdropImg(fromImg, 1.0 - progress)
@@ -1017,7 +1010,6 @@ function BetterBattleBackdrops.install(mod, api)
             end
           end
         elseif not fromImg and toImg then
-          -- Plain -> Image: draw plain field underneath, fade in toImg
           drawPlainField(1.0)
           if t.type == "crossfade" then
             drawBackdropImg(toImg, progress)
@@ -1054,7 +1046,7 @@ function BetterBattleBackdrops.install(mod, api)
     end)
     g.setCanvas(previous); g.pop()
     if not ok then error(err, 0) end
-    -- Claim only after downstream providers have had their chance this frame.
+
     renderer:setWorldOverride(outerCanvas)
     renderer.battleDim = 0
     r.rendered, r.inactiveReason = true, nil

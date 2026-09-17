@@ -1,10 +1,4 @@
--- Pocket-based presentation for src/ui/BagMenu.
---
--- The built-in BagMenu already owns a large and delicate behavior surface:
--- item targeting, battle turns, field actions, toss confirmation, scripted
--- tutorial input and several screens opened after item use. This module wraps
--- that controller instead of duplicating it. Only the visible list, drawing,
--- left/right pocket navigation and filtered-list reordering live here.
+
 return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     menuPaperPalette, rawPaletteCopy)
   compatibility = compatibility or {}
@@ -52,9 +46,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       blurb = Strings.source("Important items for your adventure.") },
   }
 
-  -- Kanto Reforged exposes these five pockets on its public Bag controller.
-  -- The source id is retained because its controller uses "tmhm", while the
-  -- BetterBag presentation calls the same visual category "machines".
   local KANTO_POCKETS = {
     { key = "items", source = "items", label = "ITEMS", short = "ITEMS",
       palette = "BROWNMON",
@@ -73,8 +64,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       blurb = Strings.source("Berries that POKéMON can use or hold.") },
   }
 
-  -- The reference skin uses compact, title-case labels in its rail rather
-  -- than the all-caps names used by the BetterBag header and tabs.
   local CLASSIC_POCKET_LABELS = {
     all = "All",
     items = "Items",
@@ -85,9 +74,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     berries = "Berries",
   }
 
-  -- The extracted reference backpack has five real compartments. All is a
-  -- combined view; the remaining five categories each own one sprite region.
-  -- Battle enhancers stay in Items so the navigation and artwork are 1:1.
   local CLASSIC_BAG_REGIONS = {
     all = "all",
     items = "items",
@@ -95,8 +81,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     balls = "balls",
     machines = "machines",
     key = "key",
-    -- Kanto's Berry pocket uses the backpack's medicine compartment; both
-    -- configurations therefore keep a five-compartment sprite.
+
     berries = "medicine",
   }
   local CLASSIC_BAG_ASSET = mod.path .. "/assets/classic_bag_pockets.png"
@@ -162,9 +147,9 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     SUPER_ROD = Strings.source("The best rod for fishing up POKéMON."),
   }
 
-  local inkShader -- false when shaders are unavailable
-  local classicLabelFont -- false when direct TTF labels are unavailable
-  local classicBagSprites -- false when the source sprite cannot be loaded
+  local inkShader
+  local classicLabelFont
+  local classicBagSprites
 
   local function gray(value)
     love.graphics.setColor(value, value, value, 1)
@@ -314,8 +299,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     end
   end
 
-  -- Symmetric hard-pixel rounded rectangle.  Three stacked rectangles form
-  -- identical two-pixel steps at all four corners without antialiasing.
   local function pixelRoundFill(x, y, width, height)
     x, y = math.floor(x), math.floor(y)
     width, height = math.floor(width), math.floor(height)
@@ -334,10 +317,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     return tonumber(width) or 160, tonumber(height) or SCREEN_H
   end
 
-  -- The touch pad is painted after the game canvas. On portrait devices its
-  -- controls can occupy a large lower section of the drawable, so treating
-  -- that covered area as useful Bag height produces an unnecessarily tall
-  -- canvas and forces the visible Bag above it to a smaller integer scale.
   local function portraitControlsTop(pixelWidth, pixelHeight)
     if pixelHeight <= pixelWidth then return nil end
     local okVisible, visible = pcall(TouchControls.visible, TouchControls)
@@ -353,8 +332,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       local zone = controls[name]
       if type(zone) == "table" and tonumber(zone.cy)
           and tonumber(zone.w) then
-        -- TouchControls' backing disc is the first visible pixel of a
-        -- control, at 0.58 times its configured width above the centre.
+
         local y = (zone.cy - zone.w * 0.58) * dpiY
         top = top and math.min(top, y) or y
       end
@@ -367,10 +345,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     local width, height = displayPixels()
     local portraitWindow = height > width
 
-    -- A wide window keeps the original 144px-tall responsive surface. A
-    -- phone in portrait needs the inverse treatment: lock the readable
-    -- 160px width, then use the vertical pixels available at that same
-    -- integer scale. This avoids both a postage-stamp Bag and resampled text.
     local portraitScale = math.max(1, math.floor(width / 160))
     local portraitHeight = math.min(PORTRAIT_MAX_H,
       math.floor(height / portraitScale))
@@ -383,22 +357,12 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       math.max(SCREEN_H, math.floor(height / scale))
   end
 
-  -- FAITHFUL RATIO owns the shape of the complete UI surface. On desktop the
-  -- option also resizes the window, so responsiveSize happens to arrive at
-  -- 160x144. Phones cannot resize their window, however: the renderer locks
-  -- a 160x144 viewport inside the physical display instead. Reading only the
-  -- drawable dimensions there made the Bag request a tall 160x400 canvas and
-  -- defeated that lock (most visibly alongside Useful Bag).
   local function faithfulRatioEnabled(menu)
     local options = menu and menu.game and menu.game.save
       and menu.game.save.options
     return (tonumber(options and options.faithfulRes) or 0) > 0
   end
 
-  -- Useful Bag calls the same presentation choice FULLSCREEN BAG MENUS.
-  -- OFF means its native Game Boy-sized pop-out, so BetterBag must not
-  -- replace that choice with its tall-phone canvas merely because it owns the
-  -- shared BagMenu presentation record.
   local function usefulBagNativeMenus(menu)
     if not compatibility.usefulBag then return false end
     local game = menu and menu.game
@@ -422,10 +386,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     if not nativeViewportRequested(menu) then return end
     local renderer = menu and menu.game and menu.game.renderer
     if renderer then
-      -- Game:draw may inherit BATTLE SIZE = FILL from a battle underneath the
-      -- Bag. Renderer:endFrame applies that after fitScale, which stretches a
-      -- correctly-sized 160x144 canvas back over the whole phone. The Bag is
-      -- a native pop-out in this mode, so the later fill override must not win.
+
       renderer.uiFill = false
     end
   end
@@ -439,9 +400,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     local nativeViewport = nativeViewportRequested(menu)
     local width, height = uiSize(menu)
     local renderer = menu and menu.game and menu.game.renderer
-    -- Renderer:uiSize still describes the previous frame while an option or
-    -- state is changing. Never let that stale responsive size override the
-    -- explicit faithful-ratio request.
+
     if not nativeViewport and renderer and renderer.uiSize then
       local rendererW, rendererH = renderer:uiSize()
       width, height = rendererW or width, rendererH or height
@@ -450,10 +409,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     height = math.max(SCREEN_H, math.floor(height))
     local canvasHeight = height
 
-    -- Keep the full responsive canvas—and therefore its larger integer
-    -- scale—but end the actual Bag composition above visible touch controls.
-    -- The unused lower canvas becomes a black control bed instead of making
-    -- the Bag narrower or letting controls cover its description/footer.
     local pixelWidth, pixelHeight = displayPixels()
     local controlsTop = portraitControlsTop(pixelWidth, pixelHeight)
     if controlsTop then
@@ -620,8 +575,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     if config and type(config.order) == "function" then
       return config.order(menu, store) or {}
     end
-    -- Kanto filters Bag.order globally while one pocket is open. Counts and
-    -- change detection need the complete order, not only the active pocket.
+
     if menu.betterBagExternalController then
       local order = menu.game.save.bagOrder
       if type(order) == "table" then return order end
@@ -868,8 +822,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     local green = { 72, 200, 72 }
 
     if id == "TOWN_MAP" then
-      -- Three bright folded panels; no solid backing rectangle, so the map
-      -- keeps its silhouette against the dark details card.
+
       rect(white, 2, 3, 5, 14)
       rect(cyan, 7, 3, 6, 14)
       rect(white, 13, 3, 5, 14)
@@ -897,7 +850,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(white, 5, 5, 10, 10); rect(orange, 9, 5, 2, 10)
       rect(black, 2, 8, 3, 3); rect(black, 15, 8, 3, 3)
     elseif id == "COIN_CASE" then
-      -- A single large coin, centered in the 20x20 icon cell.
+
       rect(black, 6, 1, 8, 1); rect(black, 3, 2, 14, 2)
       rect(black, 2, 4, 16, 3); rect(black, 1, 7, 18, 6)
       rect(black, 2, 13, 16, 3); rect(black, 3, 16, 14, 2)
@@ -921,7 +874,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(white, 17, 8, 1, 4)
     elseif id == "GOOD_ROD" or id == "SUPER_ROD" then
       local metal = id == "SUPER_ROD" and gold or silver
-      -- Angled rod at left, white fishing line at right, visible hook below.
+
       rect(black, 1, 15, 5, 4); rect(orange, 2, 15, 4, 3)
       rect(black, 5, 12, 3, 5); rect(metal, 5, 12, 2, 4)
       rect(black, 7, 9, 3, 5); rect(metal, 7, 9, 2, 4)
@@ -1110,8 +1063,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     end
   end
 
-  -- Fixed 16x16 header glyphs emit canonical four-shade source indices. The
-  -- centralized menu-palette pass owns their final colors.
   local function drawHeaderPocketIcon(menu, pocket, x, y)
     x, y = math.floor(x), math.floor(y)
     local function shade(index)
@@ -1160,7 +1111,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(4, 7, 6, 2, 6)
       rect(4, 5, 8, 6, 2)
     elseif key == "balls" then
-      -- The header Poké Ball participates in the active menu palette.
+
       drawClassicPokeBall16(x, y, nil, function(index, rx, ry, rw, rh)
         rect(index, rx, ry, rw, rh)
       end)
@@ -1173,7 +1124,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(1, 7, 1, 2, 3)
       rect(4, 7, 12, 2, 3)
     elseif key == "machines" then
-      -- Concentric four-shade bullseye for the TM/HM pocket.
+
       rect(4, 6, 1, 4, 1)
       rect(4, 4, 2, 8, 1)
       rect(4, 3, 3, 10, 2)
@@ -1190,7 +1141,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(3, 5, 6, 6, 4)
       rect(3, 6, 10, 4, 1)
       rect(2, 7, 7, 2, 2)
-    else -- MISC / key items
+    else
       drawKeyIconMask(x - 1, y + 3, function(px, py)
         rect(4, px - x, py - y, 1, 1)
       end, function(px, py)
@@ -1239,9 +1190,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     else
       label = (layout.wide or layout.stacked) and pocket.label or pocket.short
     end
-    -- The right side already reports the total slot count. Repeating the
-    -- active pocket count after the label made ALL ITEMS read like
-    -- "ALL ITEMS 4646/255" once the Bag held 46 unique items.
+
     local center = Strings(label)
     local centerWidth = layout.stacked and (layout.width - 26)
       or math.max(24, layout.width - 112)
@@ -1512,9 +1461,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       local customIcon = CUSTOM_KEY_ICONS[item.value]
       local iconX, iconY
       if customIcon then
-        -- Custom art owns a 20x20 painted box centered directly in the
-        -- details column's upper icon region. This uses the art bounds—not a
-        -- larger generic 24px wrapper—and leaves a full 15px before the name.
+
         iconX = layout.detailX + math.floor((layout.detailW - 20) / 2)
         iconY = layout.detailY + 10
         drawCustomKeyItemIcon(item.value, iconX, iconY,
@@ -1691,10 +1638,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     end
   end
 
-  -- A second skin inspired by the late-era Pocket Bag: a black title strip,
-  -- woven blue pocket rail, red active-pocket frame, clean white item sheet
-  -- and a full-width description card. It keeps the same controller and
-  -- responsive layout contract as BetterBag.
   local function drawClassicBackdrop(layout)
     gray(BLACK)
     love.graphics.rectangle("fill", 0, 0,
@@ -1788,9 +1731,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   end
 
   local function classicBagRegionAt(x, y)
-    -- The reference screenshot is in Items and visibly selects the left-side
-    -- compartment. Continue from there through the main and two front pockets
-    -- before ending at the right-side Key Items compartment.
+
     if x >= 4 and x <= 5 and y >= 8 and y <= 18 then return "items" end
     if x >= 12 and x <= 21 and y >= 2 and y <= 10 then return "medicine" end
     if x >= 12 and x <= 21 and y >= 12 and y <= 13 then return "balls" end
@@ -1823,9 +1764,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         local active = region
           and (CLASSIC_BAG_REGIONS[pocket.key] or pocket.key) == region
 
-        -- The source screenshot shows its left pocket selected. Neutralize
-        -- that fill first, then apply the same black fill as every other
-        -- selected compartment so all five states behave consistently.
         if region == "items" and r < 0.17 then
           local shade = active and BLACK or WHITE
           return shade, shade, shade, a
@@ -1859,7 +1797,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       return true
     end
 
-    -- Headless tests and damaged installs still receive a safe fallback.
     local size = math.min(26, height - 8, width - 8)
     drawPocketSymbol("all", x + math.floor((width - size) / 2),
       y + math.floor((height - size) / 2), size)
@@ -2040,8 +1977,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       + (tonumber(color[3]) or 0) * 0.0722
   end
 
-  -- Rebuild pane palette by brightness so inverse cannot move a light shade
-  -- into the text slot. We only require a stable paper shade and darkest ink.
   local function lockedDataPaper(game)
     local source = selectedMenuPalette(game)
     local paper = type(menuPaperPalette) == "function"
@@ -2078,9 +2013,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     }
   end
 
-  -- Complete BetterBag palette map. This is the sole owner of the parent
-  -- screen: selected BetterMenus palette for shared chrome/wallpaper, a
-  -- stable list palette, and pocket-specific details/selection accents.
   local function buildParentPaletteZones(menu, game)
     local data = game and game.data
     if not data then return nil end
@@ -2203,8 +2135,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       switchPocket(menu, 1)
       return
     end
-    -- ListMenu closes an empty list on A as a legacy convenience. Pocket
-    -- tabs remain open instead, so the player can continue browsing them.
+
     if #menu.items == 0 and input:wasPressed("a") then return end
     return menu.betterBagBaseUpdate(menu, dt)
   end
@@ -2233,9 +2164,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   local function drawPaletteMappedOverlay(_, drawOverlay)
     local originalDrawBox = Font.drawBox
     Font.drawBox = function(tx, ty, tw, th)
-      -- Child boxes stay in the normal four-shade pipeline. The white source
-      -- shade maps to the selected BetterMenus menu background, exactly like
-      -- the parent header, footer, and wallpaper.
+
       return originalDrawBox(tx, ty, tw, th, { 255, 255, 255 })
     end
     local ok, err = pcall(drawOverlay)
@@ -2243,10 +2172,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     if not ok then error(err, 0) end
   end
 
-  -- One bridge owns every BetterBag child. The parent palette map is copied
-  -- first on every frame; each child then appends only its own selected-menu
-  -- palette rectangle. No child inherits, replaces, shifts, or true-color
-  -- masks the parent map.
   local function installOverlayBridge(game)
     local stack = game and game.stack
     if not stack or stack.__betterBagOverlayBridge then return end
@@ -2296,9 +2221,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         local width = owner:uiSize()
         local layout = type(owner.betterBagLayoutInfo) == "function"
           and owner:betterBagLayoutInfo() or nil
-        -- Font.drawBox is tile based. Keep a whole-tile frame and center the
-        -- remaining one-pixel margins instead of creating a fractional final
-        -- tile whose horizontal border cannot reach the right corner.
+
         state.boxTw = math.max(1, math.floor(width / 8))
         state.boxTx = (width - state.boxTw * 8) / 16
         if layout and layout.footerY then
@@ -2321,8 +2244,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         return originalPush(self, state, ...)
       end
 
-      -- Town Map remains an opaque, centered native-width screen. Tag it so
-      -- the final letterbox layer supplies a solid frame outside its viewport.
       local TownMap = require("src.ui.TownMap")
       if owner and state and getmetatable(state) == TownMap then
         state.__betterBagFrameBackdrop = true
@@ -2374,12 +2295,10 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
           local targetX
           if layout.skin ~= "classic_pocket"
               and layout.showDetails and not layout.stacked then
-            -- Straddle the seam: a small overlap joins the box to the row,
-            -- while most of it opens into the details column.
+
             targetX = layout.listX + layout.listW - 6
           else
-            -- A portrait list has no free column, so replace the selected
-            -- row's quantity at its right edge instead of leaving the screen.
+
             targetX = layout.listX + layout.listW - boxW - 5
           end
           targetX = math.max(0, math.min(width - boxW, targetX))
@@ -2597,14 +2516,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       menu.sgbPalettes = buildParentPaletteZones
       menu.uiSize = uiSize
       menu.wantsFillScale = function() return true end
-      -- The responsive Bag is one composed surface. In DYNAMIC UI mode a
-      -- TextBox normally docks itself to the window edge, but its 160px
-      -- source rect is declared in classic coordinates while this screen is
-      -- wider. The renderer would then cut out the wrong canvas region and
-      -- reassemble part of the Bag as dialogue (# wide Bag text seam).
-      -- Battles solve the same composition problem by holding UI anchors;
-      -- keep Bag messages (item failures, toss confirmations, etc.) inside
-      -- this surface as well.
+
       menu.holdsUIAnchors = true
       menu.betterBagUI = true
       menu.betterBagLayout = "pockets"

@@ -1,13 +1,13 @@
-# Gen1BetterMenus
+# Gen1Better
 
-Widescreen menus, customizable menu colors, and optional BetterPC, BetterParty, BetterBag, and BetterBattle interfaces for Gen1Recomp.
+Widescreen presentation, customizable menu colors, 2D battle backdrops, cinematic story staging, and the BetterPC, BetterParty, BetterBag, BetterBattle, and BetterScenes suites for Gen1Recomp.
 
-Choose each interface independently. Turning off a Better interface option keeps the corresponding classic interface with BetterMenus' widescreen and palette support.
+Choose each interface independently. Turning off a Better interface option keeps the corresponding classic interface with Gen1Better's widescreen and palette support.
 
 ## Installation
 
 1. Place the complete mod folder in your Gen1Recomp `mods` directory. The folder should contain `manifest.json`, `main.lua`, and the supplied assets directly inside it.
-2. Enable **Gen1BetterMenus** in the game's mod manager.
+2. Enable **Gen1Better** in the game's mod manager.
 3. Open **START → COLORS → BetterMenus** to choose your menu palette and interfaces.
 
 Keep the supplied assets with the mod when updating. Disable the separate **Modern PC UI** mod if installed; it conflicts with BetterPC.
@@ -76,6 +76,14 @@ There is no separate backdrop switch. Art appears when BetterBattle is active an
 
 See [Battle Backdrops](wiki/Battle-Backdrops.md) for the scene list and location mappings.
 
+### BetterScenes
+
+A dedicated story stage and presentation overlay for narrative cutscenes outside of combat. Built with the same 320×180 integer-scaled pixel-art discipline, BetterScenes gives modders and creators full theatrical control:
+
+- **Endpoint-Aware Transitions**: Seamless `cut`, `crossfade`, and whiteout `flash` transitions.
+- **Underlays**: Support for solid `black` (blackouts, space, psychic voids), `paper` (palette-reactive parchment), and `transparent` overlays.
+- **Narrative Staging**: Decoupled from combat states so event scripts can choreograph story intros, preludes, and visual novel sequences before a battle begins.
+
 ## Colors and options
 
 Open **START → COLORS → BetterMenus**. Use **UP/DOWN** to select a row, **LEFT/RIGHT** to change a value, **A** to open a palette group, and **B** to return.
@@ -123,7 +131,7 @@ Mod authors can find the provider hooks, custom battle scenes, and integration e
 - **Menu colors differ from the overworld:** these are separate palette choices. Change the menu theme under COLORS → BetterMenus.
 - **Menu Scale does not resize BetterPC, BetterParty, or BetterBag:** these interfaces size themselves to the available screen area.
 
-When reporting a problem, include your Gen1Recomp and Gen1BetterMenus versions, game version, enabled mods, relevant options, and a screenshot showing the issue.
+When reporting a problem, include your Gen1Recomp and Gen1Better versions, game version, enabled mods, relevant options, and a screenshot showing the issue.
 
 ## Licenses
 

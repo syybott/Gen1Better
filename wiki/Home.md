@@ -1,16 +1,14 @@
-# Gen1BetterMenus
+# Gen1Better
 
-Gen1BetterMenus adds widescreen menus, customizable menu colors, and the
-optional BetterPC, BetterParty, BetterBag, and BetterBattle interfaces to
-Gen1Recomp.
+Gen1Better adds widescreen presentation, customizable menu colors, 2D battle backdrops, cinematic story staging, and the optional BetterPC, BetterParty, BetterBag, BetterBattle, and BetterScenes suites to Gen1Recomp.
 
 Each interface can be enabled independently. Disabling one keeps its classic
-interface with BetterMenus' widescreen and palette support.
+interface with Gen1Better's widescreen and palette support.
 
 ## Getting started
 
-1. Place the complete Gen1BetterMenus folder in the Gen1Recomp `mods` directory.
-2. Enable **Gen1BetterMenus** in the game's mod manager.
+1. Place the complete mod folder in the Gen1Recomp `mods` directory.
+2. Enable **Gen1Better** in the game's mod manager.
 3. Open **START > COLORS > BetterMenus** to choose your menu palette and
    interfaces.
 
@@ -47,9 +45,17 @@ also required; the current supported visual configuration uses Crystal battle
 sprites. Active external battle renderers take priority over BetterBattle's
 2D backdrop.
 
+### BetterScenes
+
+A dedicated story stage and presentation overlay for narrative cutscenes outside
+of combat. Built with the same 320×180 integer-scaled pixel-art discipline,
+BetterScenes provides endpoint-aware transitions (`cut`, `crossfade`, `flash`),
+underlays (`black`, `paper`, `transparent`), and a clean foundation for
+cutscenes, character staging, and dialogue bubbles.
+
 ## More features
 
-BetterMenus also includes menu palettes, Menu Scale, Start Menu and item
+Gen1Better also includes menu palettes, Menu Scale, Start Menu and item
 favorites, scrolling labels, and configurable Pokédex caught indicators.
 
 See [Extra Features](Extra-Features) for the player guide and
@@ -58,8 +64,9 @@ scene mappings, and sprite requirements.
 
 ## For mod authors
 
-See [Provider and Mod Compatibility](Compatibility) for BetterMenus hooks,
-exports, provider ownership, custom battle scenes, and custom-menu scaling.
+See [Provider and Mod Compatibility](Compatibility) for public hooks,
+exports (`betterBattle`, `betterScenes`), provider ownership, custom battle
+scenes, and custom-menu scaling.
 
 See [Mod Options Screen Compatibility](Mod-Options-Screen-Compatibility) for
 the standard `isModOptions` screen marker.

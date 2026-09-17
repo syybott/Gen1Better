@@ -1,6 +1,6 @@
 # Extra Features: Start Menu, Favorites, Palettes, and UI Choices
 
-Gen1BetterMenus keeps the original Gen 1 menu structure and adds optional widescreen interfaces and BetterPC, BetterParty, BetterBag, and BetterBattle. The extra controls are available from the in-game Start Menu.
+Gen1Better keeps the original Gen 1 menu structure and adds optional widescreen interfaces, BetterPC, BetterParty, BetterBag, BetterBattle, and the BetterScenes cinematic staging system. The extra controls are available from the in-game Start Menu.
 
 ## Open the BetterMenus options
 
@@ -38,7 +38,7 @@ Favorite items move to the top and are marked with a heart. **SELECT** continues
 
 ## Choose the game palette
 
-The engine's palette choice and BetterMenus' menu palette are separate settings.
+The engine's palette choice and Gen1Better's menu palette are separate settings.
 
 To choose the game's palette:
 
@@ -49,46 +49,42 @@ To choose the game's palette:
 
 The upstream screen provides **FULL COLOR**, **SINGLE COLOR**, **GREYSCALE**, **MONOCHROME**, and **OG** categories. The **OG** category contains the familiar Game Boy, Red, Blue, Yellow, SGB, and related original-style modes supplied by Gen1Recomp.
 
-That setting controls the game's normal palette selection. It is separate from the BetterMenus menu-palette choice below.
+That setting controls the game's normal palette selection. It is separate from the Gen1Better menu-palette choice below.
 
 ## Choose a BetterMenus menu palette
 
 1. Open **START > COLORS > BetterMenus**.
-2. Open one of the palette groups.
-3. Move through the choices with **LEFT** and **RIGHT** (or **UP** and **DOWN**).
-4. Press **A** or **START** to keep the selected palette. Press **B** to leave the group without keeping the temporary choice.
+2. Select one of the menu-palette entries:
 
-The available groups are:
-
-- **Default**: `GAME BOY`, `BLACK AND WHITE`, `OG RED`, `ADVANCED`, and `SGB`.
 - **BetterMenus**: `SOULSILVER`, `HEARTGOLD`, `FIRERED`, `LEAFGREEN`, `CRYSTAL`, and `EMERALD`.
-- **Groovy**: the installed Groovy Palette & Frames entries. This group is shown only when that mod is available.
+- **Default**: `GAMEBOY`, `BLACK & WHITE`, `OG RED`, `ADVANCED`, and `SGB`.
+- **Groovy**: the Groovy Palette entries, when available.
 
-For additional Groovy palettes and frames, see the [Groovy Palette & Frames repository](https://github.com/MadeinTaly/gen1recomp-groovy-palette-frames).
+The menu palette applies to the widescreen menu border, dialogue frames, BetterPC, BetterParty, BetterBag, and BetterBattle's menu overlays.
 
 ### Keep the original game palette on the menus
 
-If you want the classic Game Boy, Red, Blue, or Yellow palette to remain in control of the menus, leave BetterMenus' existing menu-palette override/unlock gate **disabled**. BetterMenus will then leave those menu colors to the upstream palette selected under **OPTIONS > GRAPHICS > COLORS**.
+If you want the classic Game Boy, Red, Blue, or Yellow palette to remain in control of the menus, leave Gen1Better's existing menu-palette override/unlock gate **disabled**. Gen1Better will then leave those menu colors to the upstream palette selected under **OPTIONS > GRAPHICS > COLORS**.
 
-When the gate is enabled, selecting a BetterMenus or Groovy entry allows that menu palette to color BetterMenus-owned menus and panels. The gate may be shown as **UNLOCK MENU PALETTE** in the mod options.
+When the gate is enabled, selecting a BetterMenus or Groovy entry allows that menu palette to color Gen1Better-owned menus and panels. The gate may be shown as **UNLOCK MENU PALETTE** in the mod options.
 
 The **Inverse** switch reverses the selected four-color menu ramp. It changes the light and dark order without changing the menu layout.
 
 ## Choose BetterPC, BetterParty, BetterBag, and BetterBattle
 
-BetterMenus itself supplies the widescreen menu layer. The BetterPC, BetterParty, BetterBag, and BetterBattle options select their respective interfaces. Turn off the Better option for any screen where you want BetterMenus' Game Boy-style widescreen presentation:
+Gen1Better itself supplies the widescreen menu layer. The BetterPC, BetterParty, BetterBag, and BetterBattle options select their respective interfaces. Turn off the Better option for any screen where you want Gen1Better's Game Boy-style widescreen presentation:
 
 | Setting | OFF keeps |
 | --- | --- |
-| **BetterPC** | BetterMenus' widescreen classic Bill's PC interface |
-| **BetterParty** | BetterMenus' widescreen classic Party menu |
-| **BetterBag** | BetterMenus' widescreen classic bag/list interface, including its larger visible item list |
-| **BetterBattle** | the upstream WIDE battle presentation with BetterMenus palette coverage |
+| **BetterPC** | Gen1Better's widescreen classic Bill's PC interface |
+| **BetterParty** | Gen1Better's widescreen classic Party menu |
+| **BetterBag** | Gen1Better's widescreen classic bag/list interface, including its larger visible item list |
+| **BetterBattle** | the upstream WIDE battle presentation with Gen1Better palette coverage |
 
-With BetterMenus enabled and these four options set to **OFF**, you get the Game Boy-style BetterMenus widescreen presentation with BetterPC, BetterParty, BetterBag, and BetterBattle disabled.
+With Gen1Better enabled and these four options set to **OFF**, you get the Game Boy-style Gen1Better widescreen presentation with BetterPC, BetterParty, BetterBag, and BetterBattle disabled.
 
 The BetterMenus options also include:
 
-- **Menu Scale**: scales supported stock menus. BetterPC, BetterParty, BetterBag, and BetterMenus' own responsive screens keep their responsive size.
+- **Menu Scale**: scales supported stock menus. BetterPC, BetterParty, BetterBag, and Gen1Better's own responsive screens keep their responsive size.
 - **Marquee Text**: enables or disables scrolling for labels that do not fit in a menu row.
 - **Pokédex Indicator**: chooses **OFF**, **DEFAULT**, or **RED** for the caught-Pokémon marker used by BetterBattle.

@@ -1,9 +1,9 @@
-# Gen1BetterMenus — Provider and Mod Compatibility
+# Gen1Better — Provider and Mod Compatibility
 
 This wiki reference describes the interfaces implemented in the current
-BetterMenus source. Feature files and public exports use the BetterBattle,
-BetterPC, BetterBag, and BetterParty names. Existing hook names and stored
-settings keys remain unchanged.
+Gen1Better source. Feature files and public exports use the BetterBattle,
+BetterScenes, BetterPC, BetterBag, and BetterParty names. Existing hook names
+and stored settings keys remain unchanged.
 
 ## Interface index
 
@@ -15,6 +15,7 @@ settings keys remain unchanged.
 | `bettermenus.ui_scale` | BetterMenus hook | Opt a custom menu into the user's Menu Scale, or keep native scale. |
 | `betterBattle` | Export | Query battle ownership, draw the BetterBattle HUD, inspect backdrop selection. |
 | `betterBattle.shadowSettings` | Export | Register custom species shadow profiles and scene-wide shadow adjustments. |
+| `betterScenes` | Export | Top-level 16:9 story stage for cutscenes, underlays, and narrative presentation. |
 | `isModOptions = true` | Screen marker | Identify a third-party settings screen. |
 | `ui.party.submenu` | Engine hook supported by BetterMenus | Add actions to party menus and BetterPC's party-side action list. |
 | `betterPC*` methods | BetterPC instance helpers | Operate the active PC screen through its existing controller. |
@@ -467,7 +468,39 @@ can be correct for disabled BetterBattle, an external provider, nickname blankin
 an opaque screen, an intentionally plain scene, or an unavailable image.
 Changing the returned diagnostic table does not change scene selection.
 
-## 6. Options-screen marker
+## 6. BetterScenes story stage exports
+
+`mod.exports.betterScenes` provides a standalone 16:9 story stage for cutscenes, underlays, and narrative presentation outside of combat:
+
+```lua
+local mod = ...
+local betterScenes = mod.find("gen1-better-menus").exports.betterScenes
+
+-- Register custom 320x180 story backdrop
+betterScenes.registerScene("ship_intro", { path = "assets/ship_320.png", underlay = "black" }, mod)
+
+-- Display story scene with animated transition
+betterScenes.show("ship_intro", { transition = "crossfade", duration = 0.5 })
+
+-- Present active underlay only (e.g. blackout or psychic void without an image)
+betterScenes.show(false, { underlay = "black" })
+
+-- Cleanly end cutscene and return screen ownership to the game
+betterScenes.hide({ transition = "crossfade", duration = 0.35 })
+```
+
+### Public API Contract
+
+| Function | Returns | Description |
+| :--- | :--- | :--- |
+| `registerScene(id, config, sourceMod)` | `true, id` or `false, err` | Register a 320×180 story scene. Reserved prefixes (`gen1_*`, `better_*`, `system_*`) are protected. |
+| `show(idOrFalse, opts)` | `true, id` or `false, err` | Transition into a registered scene (`string`) or active plain underlay (`false`). |
+| `hide(opts)` | `true, nil` or `false, err` | Transition toward inactive, clearing presentation and unhooking the renderer. Idempotent. |
+| `current()` | `string`, `false`, or `nil` | Current scene ID (`string` = image, `false` = active plain, `nil` = inactive). |
+| `isActive()` | `boolean` | `true` when BetterScenes is actively presenting an image, underlay, or transition. |
+| `diagnostics()` | `table` | Detached snapshot containing lifecycle state, underlay, transition status, and dimensions. |
+
+## 7. Options-screen marker
 
 ```lua
 local OptionsScreen = { isModOptions = true }
@@ -485,7 +518,7 @@ an automatic opt-in to Menu Scale. No BetterMenus dependency is required.
 
 See [Mod Options Screen Compatibility](Mod-Options-Screen-Compatibility.md).
 
-## 7. Party actions and BetterPC helpers
+## 8. Party actions and BetterPC helpers
 
 BetterParty retains the engine PartyMenu controller. BetterPC also calls the
 engine's `ui.party.submenu` hook when its **party-side** action list opens:
@@ -546,7 +579,7 @@ BetterMenus palette coverage separately even when BetterBattle's layout yields.
 BetterMenus also wraps engine hooks including `render.compose`, `render.letterbox`,
 `render.hud`, `render.zones`, `battle.overlay`, `screen.render_visible`,
 `ui.options.rows`, and `ui.start_menu.items`. Preserve their engine contracts and
-chain with `next`; they are not interchangeable with the three BetterMenus hooks.
+chain with `next`; they are not interchangeable with the BetterMenus hooks.
 
 ## Compatibility testing
 

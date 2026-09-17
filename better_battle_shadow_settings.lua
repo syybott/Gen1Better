@@ -1,31 +1,7 @@
--- Offsets and baseline dimensions are in sprite pixels.
--- All species start grounded. Set grounding = "flying" to opt in later.
--- bodyRegion is false or { left, right, top, bottom } using named fields
--- normalized to the frame's opaque bounds. It is a manual body mask,
--- not automatic wing detection; side overrides replace the whole region.
--- anchorMode is "contact" or "body". anchorX is an optional normalized
--- manual override within the measured opaque region.
--- manualAnchorX/manualContactY are sprite-local coordinates in the canonical
--- 56x56 front sprite. They are authored visual projections for reviewed
--- species; they do not come from automatic pixel measurements.
 local settings = {
   defaults = {
-    -- false retains the existing species configuration.
-    -- Explicit modes: manual, automatic, combined.
     shadowMode = false,
-    -- Ordered, unlimited list of independent ellipses.
-    -- Each shape has source (manual/detected), opacity and rotationDegrees.
-    -- Manual: x, y, width, height in canonical front-sprite pixels.
-    -- Detected: optional region (normalized opaque bounds), authored x/y,
-    -- offsetX/Y, widthScale/heightScale and minWidth/minHeight.
-    -- Optional animate(context) returns per-draw field overrides.
-    -- Context contains sprite, frame, side, species and measurement.
-    -- Manual shapes receive frame-relative response in manual/combined mode.
-    -- Optional animationRegion uses canonical 56x56 pixel bounds; region
-    -- retains normalized detection bounds. Callbacks override the response.
     shadowShapes = false,
-    -- Contribution > side > species > defaults. false disables a bound.
-    -- Manual ellipses never use these detection settings.
     detectionSizing = {
       contactWidthScale = 1.30,
       bodyWidthScale = 0.44,
@@ -35,8 +11,6 @@ local settings = {
       minimumHeight = 2.5,
       maximumHeight = 4.5,
     },
-    -- Automatic body detection only. Manual ellipses and detected wing
-    -- contributions do not use these values.
     automaticBody = {
       sizeScale = 2,
       spriteWidthScale = 0.44,
@@ -44,9 +18,6 @@ local settings = {
       minimumContactCoverage = 0.20,
       maximumContactOffset = 0.25,
     },
-    -- Additional detected contributions for wings. false disables wing
-    -- measurement. Each entry can override region, offsets, dimensions,
-    -- opacity, rotation and detectionSizing independently.
     wingShadows = false,
     offsetX = 0, offsetY = 0,
   widthScale = 1, heightScale = 1, opacityScale = 1,
@@ -65,8 +36,6 @@ local settings = {
   species = {},
   scenes = {},
 }
--- Initial size assignments informed by local Gen 1 height/weight data.
--- Explicit baselines only; no physical-size ranking runs during gameplay.
 local baselines = {
   BULBASAUR = { 16, 4.5 },
   IVYSAUR = { 20, 5.25 },
@@ -227,7 +196,6 @@ for species, size in pairs(baselines) do
   }
 end
 
--- Charmander's approved third preview: 5% smaller, one pixel toward viewer.
 settings.species.CHARMANDER.baseWidth = 41.8
 settings.species.CHARMANDER.baseHeight = 17.1
 settings.species.CHARMANDER.manualAnchorX = 26
@@ -240,7 +208,6 @@ settings.species.CHARMANDER.innerRing = {
   widthScale = 28.5 / 41.8, heightScale = 10.45 / 17.1,
 }
 
--- Charmeleon's approved third preview, shared by both battle sides.
 settings.species.CHARMELEON.baseWidth = 45.98
 settings.species.CHARMELEON.baseHeight = 18.81
 settings.species.CHARMELEON.manualAnchorX = 28
@@ -253,7 +220,6 @@ settings.species.CHARMELEON.innerRing = {
   widthScale = 31.35 / 45.98, heightScale = 11.495 / 18.81,
 }
 
--- Charizard's approved three-section preview, shared by both battle sides.
 settings.species.CHARIZARD.baseWidth = 62.1
 settings.species.CHARIZARD.baseHeight = 23
 settings.species.CHARIZARD.manualAnchorX = 30
@@ -266,8 +232,6 @@ settings.species.CHARIZARD.innerRing = {
   widthScale = 39.744 / 62.1, heightScale = 14.72 / 23,
 }
 
--- Starter central-body regions; visually calibrate these later.
--- Each species owns its region so editing one cannot change another.
 local function bodyRegions(names, left, right)
   for species in names:gmatch("%S+") do
     settings.species[species].bodyRegion = {
@@ -285,8 +249,6 @@ SCYTHER DRAGONITE CHARMANDER CHARMELEON PIKACHU RAICHU
 VULPIX NINETALES SLOWPOKE SLOWBRO MEWTWO MEW RATTATA RHYHORN
 ]], 0.20, 0.80)
 
--- Keep the central body detector intact and add independent left/right wing
--- measurements outside that body mask. Species can replace these defaults.
 local function detectedWings(names)
   for species in names:gmatch("%S+") do
     local body = settings.species[species].bodyRegion
@@ -320,8 +282,6 @@ SPEAROW FEAROW ZUBAT GOLBAT VENOMOTH FARFETCHD
 SCYTHER AERODACTYL ARTICUNO ZAPDOS MOLTRES DRAGONITE
 ]])
 
--- Side values override species values; missing values inherit defaults.
--- Keep dimensions positive and scale multipliers nonnegative.
 function settings.value(species, side, key)
   local entry = settings.species[species]
   local sideEntry = entry and entry[side]
@@ -386,7 +346,6 @@ function settings.automaticBodyValue(species, side, key)
   return settings.defaults.automaticBody[key]
 end
 
--- Existing detector sizing policy, shared by measured animation and shapes.
 function settings.measuredDimensions(species, side, shape, footprint)
   local function value(key)
     return settings.detectionSizing(species, side, shape, key)
@@ -404,8 +363,6 @@ function settings.measuredDimensions(species, side, shape, footprint)
   return width, height
 end
 
--- Authored dimensions are the reference pose; the shared renderer applies
--- measured frame deltas, including contraction, before optional callbacks.
 local function animatedBodyEllipse(x, y, width, height, opacity)
   return {
     source = "manual", detection = true, soft = false,
@@ -414,12 +371,8 @@ local function animatedBodyEllipse(x, y, width, height, opacity)
   }
 end
 
--- Unclamped frame response. Baselines calibrate the reference pose rather
--- than imposing a minimum on every frame of an animation.
 function settings.animationResponse(current, reference)
   if not current or not reference then return 1, 1, 0, 0 end
-  -- Silhouette spread also responds when limbs move inside unchanged
-  -- outer bounds. Only horizontal motion is projected onto the ground.
   return (current.animationWidth or current.visibleWidth)
       / math.max(0.5, reference.animationWidth or reference.visibleWidth),
     (current.animationHeight or current.visibleHeight)
@@ -443,7 +396,6 @@ settings.species.CHARMELEON.shadowShapes = {
   animatedBodyEllipse(28, 47, 31.35, 11.495, 0.075),
 }
 
--- Quadruped anchor modes: use body mass center rather than lowest front paws
 local quadrupeds = {
   "EEVEE", "VAPOREON", "JOLTEON", "VULPIX", "PERSIAN",
   "ARCANINE", "RHYHORN", "TAUROS", "RATTATA",
@@ -452,12 +404,9 @@ for _, sp in ipairs(quadrupeds) do
   settings.species[sp].anchorMode = "body"
 end
 
--- Starter body-mass anchors
 settings.species.BULBASAUR.anchorMode = "body"
 settings.species.IVYSAUR.anchorMode = "body"
 
--- Specific alignment / offset calibrations
--- Parasect: shift the ground shadow beneath the shell's body mass.
 settings.species.PARASECT.offsetX = 2
 settings.species.PARASECT.offsetY = -12
 settings.species.PARASECT.widthScale = 0.90
@@ -547,27 +496,23 @@ settings.species.SNORLAX.anchorMode = "body"
 settings.species.SNORLAX.offsetX = 6
 settings.species.SNORLAX.offsetY = -10
 
--- Persian: custom bread-loaf composite shadow matching crouching posture and paws
 settings.species.PERSIAN.shadowMode = "manual"
 settings.species.PERSIAN.shadowShapes = {
   { source = "manual", x = 43, y = 54, width = 18, height = 7.0, opacity = 0.065, rotationDegrees = 0 },
 }
 
--- Bellsprout: 2 small foot shadows on same Y axis (left foot grounded, right foot in air lighter)
 settings.species.BELLSPROUT.shadowMode = "manual"
 settings.species.BELLSPROUT.shadowShapes = {
   { source = "manual", x = 17, y = 47, width = 12, height = 4.0, opacity = 0.075 },
   { source = "manual", x = 44, y = 47, width = 11, height = 3.6, opacity = 0.04 },
 }
 
--- Diglett & Dugtrio: tight custom dirt mound rim shadow
 settings.species.DIGLETT.opacityScale = 0
 settings.species.DUGTRIO.shadowMode = "manual"
 settings.species.DUGTRIO.shadowShapes = {
   { source = "manual", x = 28, y = 47, width = 36, height = 10, opacity = 0.08, rotationDegrees = 0 },
 }
 
--- Exeggcute: distinct shadow underneath each of the 6 eggs
 settings.species.EXEGGCUTE.shadowMode = "manual"
 settings.species.EXEGGCUTE.shadowShapes = {
   { source = "manual", x = 15, y = 54, width = 14, height = 5.0, opacity = 0.07 },
@@ -578,7 +523,6 @@ settings.species.EXEGGCUTE.shadowShapes = {
   { source = "manual", x = 37, y = 25, width = 13, height = 4.2, opacity = 0.05 },
 }
 
--- Dual-shadow species: Main grounded foot + 2nd lighter shadow for raised limb
 local function dualLimbShadow(species, mainFoot, raisedFoot)
   settings.species[species].shadowMode = "manual"
   settings.species[species].shadowShapes = {
@@ -609,7 +553,6 @@ dualLimbShadow("STARYU",
   { x = 31, y = 51, w = 40, h = 12.0 },
   { x = 42, y = 49, w = 24, h = 7.5 })
 
--- Hitmonlee: Keep automatic body detection enabled + dynamic detected wing/foot shadow for kicking leg
 settings.species.HITMONLEE.bodyRegion = { left = 0.15, right = 0.60, top = 0, bottom = 1 }
 settings.species.HITMONLEE.wingShadows = {
   {
@@ -619,7 +562,6 @@ settings.species.HITMONLEE.wingShadows = {
   },
 }
 
--- Lickitung: body region mask + dynamic wing detection for extended tongue
 settings.species.LICKITUNG.bodyRegion = { left = 0.15, right = 0.65, top = 0.20, bottom = 1.0 }
 settings.species.LICKITUNG.wingShadows = {
   {
@@ -629,7 +571,6 @@ settings.species.LICKITUNG.wingShadows = {
   },
 }
 
--- Beedrill manual treatment with active wing detection
 settings.species.BEEDRILL.shadowMode = "manual"
 settings.species.BEEDRILL.shadowShapes = {
   { source = "manual", x = 36, y = 53, width = 34, height = 9.0, opacity = 0.06, rotationDegrees = 0 },
@@ -639,24 +580,12 @@ settings.species.BEEDRILL.wingShadows = {
   { region = { left = 0.65, right = 1.0, top = 0.05, bottom = 0.70 }, widthScale = 2.75, heightScale = 1.8, opacity = 0.032 },
 }
 
--- Ditto: Dynamic wing/fluid detector only
 settings.species.DITTO.shadowMode = "manual"
 settings.species.DITTO.shadowShapes = {}
 settings.species.DITTO.wingShadows = {
   { region = { left = 0.0, right = 1.0, top = 0.4, bottom = 1.0 }, widthScale = 1.0, heightScale = 1.0, opacity = 0.075 },
 }
 
--- ============================================================================
--- Public Shadow Customization API for Modders & Custom Scenes
--- ============================================================================
-
---- Register or update a scene-wide shadow configuration.
--- @param sceneId string Backdrop scene identifier (e.g. "custom_space")
--- @param config table Table of scene properties:
---   - enabled: boolean (false suppresses shadows completely in this scene)
---   - color: { r, g, b } tint table (0.0 to 1.0)
---   - opacityScale: number multiplier for shadow opacity
---   - offsetY: number vertical pixel offset
 function settings.registerScene(sceneId, config)
   assert(type(sceneId) == "string", "registerScene requires a string sceneId")
   assert(type(config) == "table", "registerScene requires a table config")
@@ -666,16 +595,11 @@ function settings.registerScene(sceneId, config)
   return current
 end
 
---- Get the shadow configuration for a scene, if defined.
--- @param sceneId string|false Backdrop scene identifier
 function settings.sceneConfig(sceneId)
   if not sceneId then return nil end
   return settings.scenes[sceneId]
 end
 
---- Register or update a species shadow profile (e.g. for Romhacks or Fakemon).
--- @param species string Uppercase species identifier
--- @param config table Species shadow configuration
 function settings.registerSpecies(species, config)
   assert(type(species) == "string", "registerSpecies requires a string species name")
   assert(type(config) == "table", "registerSpecies requires a table config")
@@ -704,10 +628,6 @@ function settings.registerSpecies(species, config)
   return entry
 end
 
---- Set a single shadow property on a species.
--- @param species string Uppercase species identifier
--- @param key string Property name
--- @param value any Property value
 function settings.setSpecies(species, key, value)
   assert(type(species) == "string", "setSpecies requires a string species name")
   local entry = settings.species[species]
@@ -718,11 +638,6 @@ function settings.setSpecies(species, key, value)
   entry[key] = value
 end
 
---- Set a single side-specific shadow property on a species.
--- @param species string Uppercase species identifier
--- @param side string "player" or "enemy"
--- @param key string Property name
--- @param value any Property value
 function settings.setSide(species, side, key, value)
   assert(type(species) == "string", "setSide requires a string species name")
   assert(side == "player" or side == "enemy", "side must be 'player' or 'enemy'")
@@ -735,10 +650,6 @@ function settings.setSide(species, side, key, value)
   entry[side][key] = value
 end
 
---- Add a shadow shape to a species' shadowShapes list.
--- @param species string Uppercase species identifier
--- @param shape table Shadow shape definition
--- @param side optional string "player", "enemy", or nil for both
 function settings.addShape(species, shape, side)
   assert(type(species) == "string", "addShape requires a string species name")
   assert(type(shape) == "table", "addShape requires a table shape")

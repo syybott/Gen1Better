@@ -1,6 +1,4 @@
--- A single party-and-box workspace inspired by the storage screens in newer
--- Pokémon games. The engine's compact list-shaped Gen 1 saves stay intact;
--- this screen is only a controller and presentation layer over those lists.
+
 return function(mod, genderExports, compatibility, menuColors,
     useStockOgMenuPalette, menuPaper, rawPaletteCopy)
   compatibility = compatibility or {}
@@ -67,7 +65,7 @@ return function(mod, genderExports, compatibility, menuColors,
   BetterPC.__index = BetterPC
   BetterPC.isOpaque = true
 
-  local inkShader -- false if the host has no shader support
+  local inkShader
   local fittedHgssIcons = {}
   local battleSpriteCache = {}
   local crystalSpriteRuns = setmetatable({}, { __mode = "k" })
@@ -138,9 +136,7 @@ return function(mod, genderExports, compatibility, menuColors,
 
   local function animationCounter(screen)
     local counter = tonumber(screen and screen.blink) or 0
-    -- Some compatibility wrappers draw the PC without advancing its local
-    -- update counter. Real time keeps two-frame HGSS icons moving in that
-    -- situation, while the counter remains the deterministic test fallback.
+
     if love.timer and love.timer.getTime then
       local ok, seconds = pcall(love.timer.getTime)
       if ok and tonumber(seconds) then
@@ -153,9 +149,7 @@ return function(mod, genderExports, compatibility, menuColors,
   local function animationFrame(screen, speed)
     if love.timer and love.timer.getTime then
       local ok, seconds = pcall(love.timer.getTime)
-      -- HGSS's own PC presentation uses a steady two-frame pulse. Prefer
-      -- that wall clock whenever it is running so a wrapped/frozen screen
-      -- controller cannot strand every boxed Pokémon on frame one.
+
       if ok and tonumber(seconds) and seconds > 0 then
         return math.floor(seconds * 2) % 2 == 1
       end
@@ -248,8 +242,6 @@ return function(mod, genderExports, compatibility, menuColors,
     end
   end
 
-  -- Match BetterBag's symmetric hard-pixel rounded geometry. Three stacked
-  -- rectangles produce identical two-pixel steps at all four corners.
   local function pixelRoundFill(x, y, width, height)
     x, y = math.floor(x), math.floor(y)
     width, height = math.floor(width), math.floor(height)
@@ -267,10 +259,6 @@ return function(mod, genderExports, compatibility, menuColors,
     return elapsed % SELECTOR_PERIOD_SECONDS < SELECTOR_ON_SECONDS
   end
 
-  -- One-pixel rounded outline matching pixelRoundFill(rect) minus
-  -- pixelRoundFill(rect inset by one). The stepped corner pixels are kept as
-  -- separate runs so only the selector ink, never the slot interior, is
-  -- protected from menu-palette conversion.
   local function selectorOutlineRuns(rect)
     local x, y = math.floor(rect.x), math.floor(rect.y)
     local w, h = math.floor(rect.w), math.floor(rect.h)
@@ -773,9 +761,6 @@ return function(mod, genderExports, compatibility, menuColors,
       }
       items[#items + 1] = { label = Strings("RELEASE"), action = "release" }
 
-      -- Party companion mods use this shared hook for utility actions such as
-      -- NICKNAME and FOLLOW. Boxed Pokémon are deliberately excluded: those
-      -- actions describe the active party and may alter overworld state.
       if screen.region == "party" then
         local original = items
         local hooked = Runtime.call("ui.party.submenu",
@@ -1050,9 +1035,6 @@ return function(mod, genderExports, compatibility, menuColors,
     love.graphics.pop()
   end
 
-  -- Draw through the shared renderer while collecting any full-colour claim
-  -- it publishes. The transform is anchored at the requested icon origin so
-  -- both enlarged details and a reduced compatibility fallback stay centred.
   local function drawSharedIcon(screen, mon, x, y, animate, scale,
       trueColorRegions, counter)
     scale = tonumber(scale) or 1
@@ -1082,10 +1064,6 @@ return function(mod, genderExports, compatibility, menuColors,
     if not ok then error(err, 0) end
   end
 
-  -- HGSS menu art is stored as two padded 32x32 frames. Cropping to each
-  -- frame's non-transparent bounds prevents the source canvas from covering
-  -- neighbouring slots. It also lets us protect only the pixels occupied by
-  -- the fitted sprite, instead of restoring a grey 32x32 rectangle afterward.
   local function drawFittedHgssIcon(screen, mon, entry, x, y, animate,
       target, trueColorRegions, background)
     if not (love.image and love.image.newImageData
@@ -1132,9 +1110,7 @@ return function(mod, genderExports, compatibility, menuColors,
               maxX = maxX, maxY = maxY, runs = runs }
           end
         end
-        -- Preserve the HGSS sheet's internal frame offset. Fitting each
-        -- frame to its own alpha bounds independently re-centres away the
-        -- common one-pixel bob and makes an animated sheet look static.
+
         local unionMinX, unionMinY, unionMaxX, unionMaxY
         for _, raw in pairs(rawFrames) do
           unionMinX = unionMinX and math.min(unionMinX, raw.minX) or raw.minX
@@ -1181,9 +1157,7 @@ return function(mod, genderExports, compatibility, menuColors,
     love.graphics.draw(cached.image, quad, drawX, drawY, 0,
       fittedScale, fittedScale)
     love.graphics.pop()
-    -- Protect only opaque source-pixel runs. Restoring one rectangular fitted
-    -- footprint also restores its transparent interior from the unpaletted
-    -- canvas, which appears as a darker square on type-coloured panels.
+
     for _, run in ipairs(bounds.runs or {}) do
       trueColorRegions[#trueColorRegions + 1] = {
         x = drawX + (run.x - bounds.x) * fittedScale,
@@ -1195,10 +1169,6 @@ return function(mod, genderExports, compatibility, menuColors,
     return true
   end
 
-  -- Icon mods may mark their own full-colour pixels from inside the shared
-  -- renderer. Hold those claims until the complete PC and its action popup
-  -- have been drawn. HGSS receives a dedicated alpha-bound path because its
-  -- native 32px contract is intentionally larger than Gen 1's 16px cells.
   local function drawMonIcon(screen, mon, x, y, animate, scale,
       trueColorRegions, background)
     if not mon then return end
@@ -1216,9 +1186,6 @@ return function(mod, genderExports, compatibility, menuColors,
         return
       end
 
-      -- Hosts without readable ImageData still get safe dimensions. Painting
-      -- the finished panel colour underneath the reduced source prevents its
-      -- full-canvas true-colour claim from becoming a grey backplate.
       fillTrueColorBacking(background, zoneX, zoneY, target, target)
       drawSharedIcon(screen, mon, zoneX, zoneY, animate,
         target / 32, trueColorRegions)
@@ -1336,8 +1303,6 @@ return function(mod, genderExports, compatibility, menuColors,
     drawTinyText(text, math.floor(centerX - width / 2), y, shade)
   end
 
-  -- A fixed 4x6 face keeps every ten-character nickname on even the narrowest
-  -- data pane while remaining visibly larger than the 3x5 metadata face.
   local function mediumTextWidth(text)
     local length = #cleanTinyText(text)
     return length > 0 and length * 5 - 1 or 0
@@ -1401,9 +1366,6 @@ return function(mod, genderExports, compatibility, menuColors,
       + (tonumber(color[3]) or 0) * 0.0722
   end
 
-  -- Data panes always use paper as shade one and light-to-dark ink as shades
-  -- two through four. Rebuilding by luminance makes their words independent
-  -- of the global inverse option without changing any type-owned border ramp.
   local function lockedDataPaper(game)
     local source = type(menuColors) == "function" and menuColors(game) or nil
     local paper = type(menuPaper) == "function" and menuPaper(game) or nil
@@ -1955,7 +1917,7 @@ return function(mod, genderExports, compatibility, menuColors,
       message = layout.compact and Strings("ARROWS BOX A DONE")
         or Strings("LEFT RIGHT BOX  A DONE")
     end
-	
+
 	local footerX = 4
 	local footerW = layout.width - 8
 	local textW = Font.width(message)
@@ -2020,9 +1982,6 @@ end
     end
   end
 
-  -- PaletteFX restores full-colour regions from the finished UI canvas. Split
-  -- any region intersecting the action card so its later restore cannot paint
-  -- an underlying icon or gender cell back over the popup.
   local function markTrueColorOutside(rect, cutout)
     if not cutout then
       PaletteFX.markTrueColor(rect.x, rect.y, rect.w, rect.h)
@@ -2193,8 +2152,6 @@ end
     return true
   end
 
-  -- Named helpers are intentionally exposed for compatibility tests and for
-  -- companion mods that want to add non-destructive PC shortcuts.
   function BetterPC:betterPCSelected()
     return selected(self)
   end

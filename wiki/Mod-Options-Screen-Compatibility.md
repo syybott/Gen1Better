@@ -1,14 +1,14 @@
-# Gen1BetterMenus — Mod Options Screen Compatibility
+# Gen1Better — Mod Options Screen Compatibility
 
-This page is part of the [Gen1BetterMenus compatibility reference](Compatibility.md).
+This page is part of the [Gen1Better compatibility reference](Compatibility.md).
 
-Gen1BetterMenus/Gen1Recomp supports third-party mod options and settings screens through a simple opt-in marker:
+Gen1Better supports third-party mod options and settings screens through a simple opt-in marker:
 
 ```lua
 isModOptions = true
 ```
 
-Adding this marker tells Gen1BetterMenus that the screen is an options-style interface, allowing it to apply the correct widescreen layout behavior without depending on your mod name or a specific `screenId`.
+Adding this marker tells Gen1Better that the screen is an options-style interface, allowing it to apply the correct widescreen layout behavior without depending on your mod name or a specific `screenId`.
 
 ## Recommended usage
 
@@ -94,14 +94,14 @@ This avoids:
 
 - UI mods needing prior knowledge of every options mod
 
-## No Gen1BetterMenus dependency is required
+## No Gen1Better dependency is required
 
-Your mod does not need to detect, require, or reference Gen1BetterMenus.
+Your mod does not need to detect, require, or reference Gen1Better.
 
 Do not do this:
 
 ```lua
-require("Gen1BetterMenus")
+require("Gen1Better")
 ```
 
 Simply mark your options screen:
@@ -110,9 +110,9 @@ Simply mark your options screen:
 isModOptions = true
 ```
 
-If Gen1BetterMenus is installed, it can recognize the marker.
+If Gen1Better is installed, it can recognize the marker.
 
-If Gen1BetterMenus is not installed, the extra Lua field has no effect.
+If Gen1Better is not installed, the extra Lua field has no effect.
 
 This keeps compatibility optional and avoids creating a dependency between the two mods.
 
@@ -214,7 +214,7 @@ game.stack:push(screen)
 
 ## Compatibility behavior
 
-Gen1BetterMenus supports the explicit `isModOptions` marker while retaining legacy detection for older mods whose screen IDs end in names such as:
+Gen1Better supports the explicit `isModOptions` marker while retaining legacy detection for older mods whose screen IDs end in names such as:
 
 ```text
 Options
@@ -231,7 +231,7 @@ If your options screen already includes:
 isModOptions = true
 ```
 
-and it still renders incorrectly with Gen1BetterMenus, please report the issue with either:
+and it still renders incorrectly with Gen1Better, please report the issue with either:
 
 - A link to the mod repository
 

@@ -1,5 +1,3 @@
--- BetterScenes — Story Stage & Narrative Presentation Subsystem
--- 320x180 integer-scaled story canvas, independent from combat states.
 
 local BetterScenes = {}
 
@@ -36,8 +34,6 @@ function BetterScenes.new(options)
 
   local registry = {}
 
-  -- Lifecycle state:
-  -- currentSceneId: nil (inactive), false (active plain), string (active registered scene)
   local currentSceneId = nil
   local currentUnderlay = "transparent"
   local transition = nil
@@ -88,7 +84,6 @@ function BetterScenes.new(options)
       return false, "duplicate-scene"
     end
 
-    -- Runtime dimension check if image or love image measurement is available
     if config.image then
       local img = config.image
       local w = (img.getWidth and img:getWidth()) or img.width
@@ -191,7 +186,6 @@ function BetterScenes.new(options)
       return true, idOrFalse
     end
 
-    -- Endpoint-aware animated transition
     local fromId = currentSceneId
     local toId = idOrFalse
     local fromImg = getImage(fromId)
@@ -218,7 +212,6 @@ function BetterScenes.new(options)
   end
 
   function api.hide(opts)
-    -- Idempotent if already fully inactive
     if currentSceneId == nil and transition == nil then
       return true, nil
     end
@@ -238,7 +231,6 @@ function BetterScenes.new(options)
       return true, nil
     end
 
-    -- Animated transition toward inactive
     local fromId = currentSceneId
     local fromImg = getImage(fromId)
     local fromUnderlay = currentUnderlay
@@ -293,7 +285,6 @@ function BetterScenes.new(options)
       elseif currentSceneId ~= nil then
         state = "image"
       elseif transition and transition.fromId then
-        -- During hide() crossfade/flash of an active scene
         state = (transition.fromId == false) and "plain" or "image"
       end
     end
@@ -361,7 +352,6 @@ function BetterScenes.new(options)
       activeUnderlay = transition.toUnderlay
     end
 
-    -- 1. Draw Underlay
     if activeUnderlay == "black" then
       love.graphics.setColor(0, 0, 0, 1)
       love.graphics.rectangle("fill", 0, 0, vw, vh)
@@ -371,7 +361,6 @@ function BetterScenes.new(options)
       love.graphics.rectangle("fill", 0, 0, vw, vh)
     end
 
-    -- 2. Draw Scene / Transition
     local r, g, b, a = love.graphics.getColor()
 
     local function drawImg(img, alpha)
@@ -392,13 +381,11 @@ function BetterScenes.new(options)
           drawImg(transition.toImg, t)
         end
       elseif transType == "flash" then
-        -- Render endpoint image based on midpoint
         if t < 0.5 then
           if transition.fromImg then drawImg(transition.fromImg, 1) end
         else
           if transition.toImg then drawImg(transition.toImg, 1) end
         end
-        -- White flash peaking at t = 0.5
         local flashAlpha = (t < 0.5) and (t * 2) or ((1 - t) * 2)
         love.graphics.setColor(1, 1, 1, flashAlpha)
         love.graphics.rectangle("fill", offsetX, offsetY, renderW, renderH)

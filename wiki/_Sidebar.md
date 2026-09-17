@@ -1,4 +1,4 @@
-# Gen1BetterMenus Wiki
+# Gen1Better Wiki
 
 - [Home](Home)
 - [Extra Features](Extra-Features)
@@ -44,15 +44,16 @@
     - [Species registration](Compatibility#species-registration-registerspecies)
   - [Custom-menu scaling](Compatibility#4-custom-menu-scaling)
   - [BetterBattle exports](Compatibility#5-betterbattle-exports)
-  - [Options-screen marker](Compatibility#6-options-screen-marker)
-  - [Party actions and BetterPC helpers](Compatibility#7-party-actions-and-betterpc-helpers)
+  - [BetterScenes story stage exports](Compatibility#6-betterscenes-story-stage-exports)
+  - [Options-screen marker](Compatibility#7-options-screen-marker)
+  - [Party actions and BetterPC helpers](Compatibility#8-party-actions-and-betterpc-helpers)
   - [Existing provider bridges and limits](Compatibility#existing-provider-bridges-and-limits)
   - [Compatibility testing](Compatibility#compatibility-testing)
 - [Mod Options Screen Compatibility](Mod-Options-Screen-Compatibility)
   - [Recommended usage](Mod-Options-Screen-Compatibility#recommended-usage)
   - [Manually-created screens](Mod-Options-Screen-Compatibility#manually-created-screens)
   - [Why this marker exists](Mod-Options-Screen-Compatibility#why-this-marker-exists)
-  - [No Gen1BetterMenus dependency is required](Mod-Options-Screen-Compatibility#no-gen1betterminus-dependency-is-required)
+  - [No Gen1Better dependency is required](Mod-Options-Screen-Compatibility#no-gen1better-dependency-is-required)
   - [Updating an existing screen](Mod-Options-Screen-Compatibility#updating-an-existing-screen)
   - [Screen module example](Mod-Options-Screen-Compatibility#screen-module-example)
   - [Direct screen example](Mod-Options-Screen-Compatibility#direct-screen-example)

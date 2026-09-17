@@ -1,5 +1,4 @@
--- Optional compatibility for Crystal Animated Sprites with Shiny Visuals.
--- Loaded only when that mod is active. The external mod is never modified.
+
 return function(mod, handle)
   local Assets = require("src.render.Assets")
   local PaletteFX = require("src.render.PaletteFX")
