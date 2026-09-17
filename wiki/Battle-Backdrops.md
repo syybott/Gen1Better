@@ -249,7 +249,51 @@ Available scene properties:
 - `enabled`: Set to `false` to disable shadows in this scene entirely.
 - `color`: `{ r, g, b }` table (normalized 0.0 to 1.0) for custom shadow tinting.
 - `opacityScale`: Multiplier applied to all shadow layers in this scene.
-- `offsetY`: Vertical pixel offset applied to shadow placement in this scene.
+- `offsetY`: **Shadow-only** vertical adjustment applied to the shadow contact anchor. (Does not move the Pokémon).
+- `playerOffsetY`: Side ground-plane adjustment lifting or lowering the player Pokémon sprite, battler-attached status panel, and shadow together (e.g. `+4` for sunken shoreline).
+- `enemyOffsetY`: Side ground-plane adjustment lifting or lowering the enemy Pokémon sprite, battler-attached status panel, and shadow together (e.g. `-12` for high cliff/podium).
+
+### Dynamic scene changes & transitions
+
+Modders can change the active backdrop mid-battle (for multi-phase boss fights, terrain destruction, or scripted weather):
+
+```lua
+-- Transition active scene mid-battle
+local ok, sceneId = api.backdrop.setScene(battle, "boss_phase2_ruins", {
+  transition = "crossfade", -- "crossfade" (default), "flash", or "cut"
+  duration = 0.5,           -- seconds
+  geometry = "lerp",        -- "immediate" (default) | "lerp" | "after"
+})
+-- Returns: true, sceneId | false, "unknown-scene" | false, "no-record" | false, "invalid-battle"
+
+-- Or re-evaluate the battle_backdrop hook if encounter state changed
+local ok, sceneId, status = api.backdrop.refresh(battle, { transition = "flash" })
+-- Returns: true, sceneId, "changed" | true, sceneId, "unchanged" | false, err
+```
+
+> [!NOTE]
+> **Cached vs. Dynamic Selection**: Normal scene selection is cached. `refresh()` is an explicit API escape hatch that re-runs selection against the captured context. This preserves standard single-evaluation efficiency during ordinary play while giving scripted battles, weather controllers, and multi-phase encounters full dynamic control.
+
+#### Scene identity vs. geometry presentation
+
+Scene identity switches immediately on `setScene()` (`diagnostics(battle).sceneId` resolves to the target scene right away for deterministic scripting). However, visible geometry timing can be configured via `opts.geometry`:
+
+- `geometry = "immediate"` *(default)*: Target scene offsets apply immediately on frame 0. Best when arena height does not change.
+- `geometry = "lerp"` *(recommended for elevation changes)*: Smoothly interpolates `playerOffsetY` and `enemyOffsetY` across the transition duration ($0.0 \to 1.0$), ensuring battlers and shadows glide into position with zero pops or floating in midair.
+- `geometry = "after"` *(niche fallback)*: Holds the origin scene ground offsets until the visual transition reaches 100%, then snaps to target offsets. Avoid unless you specifically want an old ground hold followed by a snap.
+
+**Creator Guidance for Arena Transitions**:
+- **Hard scene jumps**: Use `transition = "cut"` or `"flash"`. Flash masks height snaps naturally behind full-screen intensity.
+- **Elevation changes** (cliffs, platforms, podiums, water trenches, elevators, psychic lifts, abduction beams): Use `transition = "crossfade"` with `geometry = "lerp"`.
+- **Same-height transitions**: Use default `geometry = "immediate"`.
+
+#### Single source of truth: `effectiveGroundOffsets`
+
+To guarantee that battler sprites, battler-attached panels, and shadow footprints animate in perfect lockstep, both internal systems and external mods can query:
+```lua
+local playerOffsetY, enemyOffsetY = api.backdrop.effectiveGroundOffsets(battle)
+```
+Diagnostics also reports `effectivePlayerOffsetY` and `effectiveEnemyOffsetY` alongside the raw target `playerOffsetY` and `enemyOffsetY`.
 
 ### Dynamic battle shadow hook
 
@@ -261,7 +305,7 @@ for full hook specifications and examples.
 ## Diagnostics
 
 `mod.exports.betterBattle.backdrop` exposes `sceneIds()`, pure `resolve(context)`,
-and `diagnostics(battle)`. Diagnostics returns a detached table with the selected
+`setScene(battle, sceneId, opts)`, `refresh(battle, opts)`, and `diagnostics(battle)`. Diagnostics returns a detached table with the selected
 scene, reason, asset path, captured encounter context, whether the field was made
-transparent, whether the scene was rendered, viewport dimensions, and inactivity
+transparent, whether the scene was rendered, viewport dimensions, elevated ledge offsets (`playerOffsetY`, `enemyOffsetY`), transition status, and inactivity
 reason. Changing that table does not change the battle. False scene IDs mean plain.

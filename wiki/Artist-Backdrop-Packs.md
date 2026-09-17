@@ -202,8 +202,61 @@ shadows = {
 
 ---
 
-## 8. Advanced Integration & Next Steps
+## 8. Elevated Arena Ledges (High Cliffs & Podiums)
 
+When your artwork features uneven ground—such as an elevated mountain ledge, a gym leader's podium, or a sunken water trench—you can shift the Pokémon vertically so they stand naturally on the terrain:
+
+```lua
+bb.backdrop.registerArtistScene("gym_misty_pool", {
+  image = "assets/misty_pool_320.png",
+  enemyOffsetY = -8,   -- Enemy stands on the high diving platform (-8px up)
+  playerOffsetY = 4,   -- Player stands near the lower shoreline (+4px down)
+  shadows = {
+    color = { 0.05, 0.15, 0.30 },
+    opacityScale = 0.70,
+    offsetY = 1,       -- Shadow-only contact adjustment (does not move Pokémon)
+  }
+})
+```
+
+> [!TIP]
+> **Unified Ground-Plane Movement**:
+> - `playerOffsetY` / `enemyOffsetY`: Shifts the Pokémon battler sprite, its attached HUD status box, and its ground shadow together in lockstep.
+> - `offsetY` inside `shadows`: Minor shadow-only contact anchor adjustment (for tuning the shadow contact point against complex feet art).
+>
+> The Pokémon stays perfectly grounded on top of your elevated ledge without floating or sinking into its shadow.
+
+---
+
+## 9. Mid-Battle Arena Transformations
+
+If your mod includes multi-phase boss fights, scripted terrain changes (e.g. Earthquake breaking the floor), or dynamic weather transitions, you can change the active backdrop mid-battle:
+
+```lua
+-- Change active scene with a smooth crossfade and elevation lerp:
+bb.backdrop.setScene(battle, "boss_phase2_ruins", {
+  transition = "crossfade", -- "crossfade", "flash", or "cut"
+  duration = 0.5,           -- seconds
+  geometry = "lerp",        -- "immediate" (default), "lerp", or "after"
+})
+
+-- Or re-evaluate the battle_backdrop hook if battle conditions changed:
+bb.backdrop.refresh(battle, { transition = "flash" })
+```
+
+### Transition Geometry Timing
+- **Height changes** (cliffs, platforms, podiums, elevators): Use `transition = "crossfade"` with `geometry = "lerp"`. The Pokémon and shadows smoothly glide between heights in sync with the visual dissolve.
+- **Hard scene jumps**: Use `transition = "cut"` or `"flash"`.
+- **Same-height transitions**: Use the default `geometry = "immediate"`.
+
+---
+
+## 10. Advanced Integration & Next Steps
+ 
 When you need deeper engine control:
 - See [BetterBattle pixel-art backdrops](Battle-Backdrops.md) for the 63 built-in scene IDs and automatic matching rules.
 - See [Provider and mod compatibility](Compatibility.md) for dynamic per-frame shadow hooks (`bettermenus.battle_shadow`), Fakemon registration, and renderer ownership.
+
+> [!NOTE]
+> **API Stability Guarantee**:
+> `registerArtistScene`, `registerScene`, `bettermenus.battle_backdrop`, and scene shadow config are public compatibility surfaces that maintain backward compatibility across updates.

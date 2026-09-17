@@ -20,8 +20,9 @@ local settings = {
     -- offsetX/Y, widthScale/heightScale and minWidth/minHeight.
     -- Optional animate(context) returns per-draw field overrides.
     -- Context contains sprite, frame, side, species and measurement.
-    -- Manual shapes can opt into detection in combined mode with
-    -- detection = true; their animate callback owns the response.
+    -- Manual shapes receive frame-relative response in manual/combined mode.
+    -- Optional animationRegion uses canonical 56x56 pixel bounds; region
+    -- retains normalized detection bounds. Callbacks override the response.
     shadowShapes = false,
     -- Contribution > side > species > defaults. false disables a bound.
     -- Manual ellipses never use these detection settings.
@@ -48,8 +49,9 @@ local settings = {
     -- opacity, rotation and detectionSizing independently.
     wingShadows = false,
     offsetX = 0, offsetY = 0,
-    widthScale = 1, heightScale = 1, opacityScale = 1,
-    grounding = "grounded",
+  widthScale = 1, heightScale = 1, opacityScale = 1,
+  groundTangent = false,
+  grounding = "grounded",
     baseWidth = 12, baseHeight = 3.75,
     bodyRegion = false,
     anchorMode = "contact",
@@ -225,48 +227,6 @@ for species, size in pairs(baselines) do
   }
 end
 
--- First authored front-sprite calibration:
--- Bulbasaur's perceived body-mass projection and ground contact are
--- authored in canonical front-sprite pixels for both battle sides.
-settings.species.BULBASAUR.baseWidth = 48
-settings.species.BULBASAUR.baseHeight = 16
-settings.species.BULBASAUR.enemy.anchorMode = "body"
-settings.species.BULBASAUR.enemy.offsetX = 0
-settings.species.BULBASAUR.enemy.manualAnchorX = 28
-settings.species.BULBASAUR.enemy.manualContactY = 39
-settings.species.BULBASAUR.player.manualAnchorX = 28
-settings.species.BULBASAUR.player.manualContactY = 39
--- Inner-ring dimensions and offsets are fractions of the outer ellipse.
--- Authored in front-sprite orientation; the renderer mirrors X for the player.
-settings.species.BULBASAUR.innerRing = {
-  widthScale = 34.72 / 48, heightScale = 12.64 / 16,
-  offsetX = 2 / 48, offsetY = -1.2 / 16,
-}
-
--- Ivysaur's reviewed front-sprite calibration, shared by both sides.
-settings.species.IVYSAUR.baseWidth = 50
-settings.species.IVYSAUR.baseHeight = 16
-settings.species.IVYSAUR.manualAnchorX = 28
-settings.species.IVYSAUR.manualContactY = 45
-settings.species.IVYSAUR.innerRing = {
-  widthScale = 39 / 50, heightScale = 14 / 16,
-  offsetX = 0, offsetY = -1 / 16,
-}
-
--- Venusaur: approved stance with all three layers enlarged 20% after live review.
--- Rotation is authored in front-sprite orientation and mirrored for player.
-settings.species.VENUSAUR.baseWidth = 74.4
-settings.species.VENUSAUR.baseHeight = 28.8
-settings.species.VENUSAUR.manualAnchorX = 29.5
-settings.species.VENUSAUR.manualContactY = 46
-settings.species.VENUSAUR.rotationDegrees = -8
-settings.species.VENUSAUR.middleRing = {
-  widthScale = 55 / 62, heightScale = 20 / 24,
-}
-settings.species.VENUSAUR.innerRing = {
-  widthScale = 48 / 62, heightScale = 16 / 24,
-}
-
 -- Charmander's approved third preview: 5% smaller, one pixel toward viewer.
 settings.species.CHARMANDER.baseWidth = 41.8
 settings.species.CHARMANDER.baseHeight = 17.1
@@ -337,18 +297,18 @@ local function detectedWings(names)
           left = 0, right = body.left,
           top = 0, bottom = 1,
         },
-        widthScale = 1, heightScale = 1,
+        widthScale = 2.5, heightScale = 2,
         offsetX = 0, offsetY = 0,
-        opacity = 0.025, rotationDegrees = 0,
+        opacity = 0.010, rotationDegrees = 0,
       },
       {
         region = {
           left = body.right, right = 1,
           top = 0, bottom = 1,
         },
-        widthScale = 1, heightScale = 1,
+        widthScale = 2.5, heightScale = 2,
         offsetX = 0, offsetY = 0,
-        opacity = 0.025, rotationDegrees = 0,
+        opacity = 0.010, rotationDegrees = 0,
       },
     }
   end
@@ -444,29 +404,29 @@ function settings.measuredDimensions(species, side, shape, footprint)
   return width, height
 end
 
--- Preserve each approved ellipse. Detection modulates dimensions relative
--- to the first valid settled frame for this owner/region. It never moves
--- the authored center, changes opacity, or reduces the approved baseline.
+-- Authored dimensions are the reference pose; the shared renderer applies
+-- measured frame deltas, including contraction, before optional callbacks.
 local function animatedBodyEllipse(x, y, width, height, opacity)
-  local shape = {
+  return {
     source = "manual", detection = true, soft = false,
     x = x, y = y, width = width, height = height,
     rotationDegrees = 0, opacity = opacity,
   }
-  shape.animate = function(context)
-    local measurement = context.measurement
-    if not measurement or not measurement.reference then return end
-    local currentWidth, currentHeight = settings.measuredDimensions(
-      context.species, context.side, shape, measurement.footprint)
-    local referenceWidth, referenceHeight = settings.measuredDimensions(
-      context.species, context.side, shape, measurement.reference)
-    if referenceWidth <= 0 or referenceHeight <= 0 then return end
-    return {
-      width = shape.width * math.max(1, currentWidth / referenceWidth),
-      height = shape.height * math.max(1, currentHeight / referenceHeight),
-    }
-  end
-  return shape
+end
+
+-- Unclamped frame response. Baselines calibrate the reference pose rather
+-- than imposing a minimum on every frame of an animation.
+function settings.animationResponse(current, reference)
+  if not current or not reference then return 1, 1, 0, 0 end
+  -- Silhouette spread also responds when limbs move inside unchanged
+  -- outer bounds. Only horizontal motion is projected onto the ground.
+  return (current.animationWidth or current.visibleWidth)
+      / math.max(0.5, reference.animationWidth or reference.visibleWidth),
+    (current.animationHeight or current.visibleHeight)
+      / math.max(0.5, reference.animationHeight or reference.visibleHeight),
+    (current.animationCenterX or current.bodyCenterX or current.centerX)
+      - (reference.animationCenterX or reference.bodyCenterX or reference.centerX),
+    0
 end
 
 settings.species.CHARMANDER.shadowMode = "combined"
@@ -492,7 +452,19 @@ for _, sp in ipairs(quadrupeds) do
   settings.species[sp].anchorMode = "body"
 end
 
+-- Starter body-mass anchors
+settings.species.BULBASAUR.anchorMode = "body"
+settings.species.IVYSAUR.anchorMode = "body"
+
 -- Specific alignment / offset calibrations
+-- Parasect: shift the ground shadow beneath the shell's body mass.
+settings.species.PARASECT.offsetX = 2
+settings.species.PARASECT.offsetY = -12
+settings.species.PARASECT.widthScale = 0.90
+settings.species.PARASECT.heightScale = 1.60
+settings.species.PARASECT.rotationDegrees = 20
+settings.species.PARASECT.groundTangent = true
+settings.species.PARASECT.opacityScale = 0
 settings.species.PIDGEY.offsetY = 4
 settings.species.BLASTOISE.anchorMode = "body"
 settings.species.BLASTOISE.offsetY = -5
@@ -501,31 +473,36 @@ settings.species.PIDGEOTTO.offsetY = -3
 settings.species.PIDGEOT.offsetX = -2
 settings.species.PIDGEOT.offsetY = -1
 settings.species.RATTATA.offsetX = 4
-settings.species.RATTATA.offsetY = -8
+settings.species.RATTATA.offsetY = -6
 settings.species.RAICHU.offsetX = -4
-settings.species.SANDSHREW.offsetX = 3
-settings.species.SANDSHREW.offsetY = -3
+settings.species.SANDSHREW.offsetX = 2
+settings.species.SANDSHREW.offsetY = -2
 settings.species.NIDORAN_F.anchorMode = "body"
 settings.species.NIDORAN_F.offsetX = 8
+settings.species.NIDORAN_F.offsetY = -1
 settings.species.NIDORAN_M.anchorMode = "body"
 settings.species.NIDORAN_M.offsetX = 3
 settings.species.NIDORAN_M.offsetY = -3
+settings.species.NIDORAN_M.widthScale = 1.15
+settings.species.NIDORAN_M.heightScale = 1.15
+settings.species.NIDOKING.widthScale = 1.15
+settings.species.NIDOKING.heightScale = 1.15
 settings.species.VULPIX.offsetY = -3
 settings.species.ZUBAT.grounding = "flying"
 settings.species.ZUBAT.offsetY = 6
 settings.species.ZUBAT.wingShadows = false
 settings.species.VENOMOTH.offsetX = -4
 settings.species.VENOMOTH.wingShadows = {
-  { region = { left = 0.0, right = 0.40, top = 0.1, bottom = 0.9 }, widthScale = 0.9, heightScale = 0.8, opacity = 0.07 },
-  { region = { left = 0.60, right = 1.0, top = 0.1, bottom = 0.9 }, widthScale = 0.9, heightScale = 0.8, opacity = 0.07 },
+  { region = { left = 0.0, right = 0.40, top = 0.1, bottom = 0.9 }, widthScale = 2.25, heightScale = 1.6, opacity = 0.028 },
+  { region = { left = 0.60, right = 1.0, top = 0.1, bottom = 0.9 }, widthScale = 2.25, heightScale = 1.6, opacity = 0.028 },
 }
 settings.species.MANKEY.offsetX = -4
-settings.species.PRIMEAPE.offsetX = -4
+settings.species.PRIMEAPE.offsetX = 0
 settings.species.ARCANINE.offsetY = -5
 settings.species.MACHOKE.offsetY = -4
 settings.species.POLIWRATH.offsetY = -4
 settings.species.WIGGLYTUFF.offsetY = -3
-settings.species.GOLDUCK.offsetX = 6
+settings.species.GOLDUCK.offsetX = 3
 settings.species.GOLDUCK.offsetY = -1
 settings.species.GOLDUCK.baseWidth = 46
 settings.species.GOLDUCK.baseHeight = 11.5
@@ -557,7 +534,9 @@ settings.species.TAUROS.offsetY = -3
 settings.species.EEVEE.offsetY = -4
 settings.species.VAPOREON.offsetY = -11
 settings.species.JOLTEON.offsetY = -5
-settings.species.AERODACTYL.offsetX = 4
+settings.species.AERODACTYL.offsetX = 1
+settings.species.KABUTOPS.widthScale = 0.80
+settings.species.KABUTOPS.heightScale = 0.80
 settings.species.MOLTRES.offsetY = -3
 settings.species.MEWTWO.offsetY = -4
 settings.species.WEEZING.anchorMode = "body"
@@ -571,8 +550,6 @@ settings.species.SNORLAX.offsetY = -10
 -- Persian: custom bread-loaf composite shadow matching crouching posture and paws
 settings.species.PERSIAN.shadowMode = "manual"
 settings.species.PERSIAN.shadowShapes = {
-  { source = "manual", x = 20, y = 51, width = 26, height = 10.0, opacity = 0.07, rotationDegrees = -6 },
-  { source = "manual", x = 33, y = 52, width = 44, height = 13.0, opacity = 0.08, rotationDegrees = -3 },
   { source = "manual", x = 43, y = 54, width = 18, height = 7.0, opacity = 0.065, rotationDegrees = 0 },
 }
 
@@ -593,12 +570,12 @@ settings.species.DUGTRIO.shadowShapes = {
 -- Exeggcute: distinct shadow underneath each of the 6 eggs
 settings.species.EXEGGCUTE.shadowMode = "manual"
 settings.species.EXEGGCUTE.shadowShapes = {
-  { source = "manual", x = 15, y = 50, width = 14, height = 5.0, opacity = 0.07 },
-  { source = "manual", x = 28, y = 51, width = 15, height = 5.2, opacity = 0.07 },
-  { source = "manual", x = 43, y = 47, width = 14, height = 4.8, opacity = 0.06 },
-  { source = "manual", x = 22, y = 45, width = 12, height = 4.2, opacity = 0.05 },
-  { source = "manual", x = 13, y = 43, width = 12, height = 4.2, opacity = 0.05 },
-  { source = "manual", x = 37, y = 41, width = 13, height = 4.2, opacity = 0.05 },
+  { source = "manual", x = 15, y = 54, width = 14, height = 5.0, opacity = 0.07 },
+  { source = "manual", x = 28, y = 35, width = 15, height = 5.2, opacity = 0.07 },
+  { source = "manual", x = 43, y = 50, width = 14, height = 4.8, opacity = 0.06 },
+  { source = "manual", x = 48, y = 30, width = 12, height = 4.2, opacity = 0.05 },
+  { source = "manual", x = 11, y = 22, width = 12, height = 4.2, opacity = 0.05 },
+  { source = "manual", x = 37, y = 25, width = 13, height = 4.2, opacity = 0.05 },
 }
 
 -- Dual-shadow species: Main grounded foot + 2nd lighter shadow for raised limb
@@ -625,8 +602,8 @@ dualLimbShadow("PRIMEAPE",
   { x = 36, y = 50, w = 22, h = 7.5 })
 
 dualLimbShadow("EXEGGUTOR",
-  { x = 25, y = 52, w = 40, h = 12.5 },
-  { x = 41, y = 51, w = 26, h = 8.5 })
+  { x = 25, y = 55, w = 40, h = 12.5 },
+  { x = 41, y = 54, w = 26, h = 8.5 })
 
 dualLimbShadow("STARYU",
   { x = 31, y = 51, w = 40, h = 12.0 },
@@ -658,8 +635,8 @@ settings.species.BEEDRILL.shadowShapes = {
   { source = "manual", x = 36, y = 53, width = 34, height = 9.0, opacity = 0.06, rotationDegrees = 0 },
 }
 settings.species.BEEDRILL.wingShadows = {
-  { region = { left = 0.0, right = 0.35, top = 0.05, bottom = 0.70 }, widthScale = 1.1, heightScale = 0.9, opacity = 0.08 },
-  { region = { left = 0.65, right = 1.0, top = 0.05, bottom = 0.70 }, widthScale = 1.1, heightScale = 0.9, opacity = 0.08 },
+  { region = { left = 0.0, right = 0.35, top = 0.05, bottom = 0.70 }, widthScale = 2.75, heightScale = 1.8, opacity = 0.032 },
+  { region = { left = 0.65, right = 1.0, top = 0.05, bottom = 0.70 }, widthScale = 2.75, heightScale = 1.8, opacity = 0.032 },
 }
 
 -- Ditto: Dynamic wing/fluid detector only

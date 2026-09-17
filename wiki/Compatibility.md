@@ -23,6 +23,10 @@ settings keys remain unchanged.
 The `render.*`, `pokemon.sprite`, and `ui.*` engine hooks mentioned below are
 engine interfaces, not additional BetterMenus-owned hooks.
 
+> [!NOTE]
+> **API Stability & Contract Guarantee**:
+> `registerArtistScene`, `registerScene`, `bettermenus.battle_backdrop`, `bettermenus.battle_shadow`, and scene shadow config are public compatibility surfaces that maintain backward compatibility across updates.
+
 ## Registering hooks and finding exports
 
 Examples belong in your mod's entry script, where `mod` is the API object supplied
@@ -220,6 +224,38 @@ mod.hooks:wrap("bettermenus.battle_backdrop", function(next, ctx)
   return next(ctx)
 end)
 ```
+
+### Mid-battle scene changes (`setScene` & `refresh`)
+
+To change the active backdrop mid-battle (for multi-phase boss fights, scripted floor collapses, or dynamic weather shifts):
+
+```lua
+-- Shift active scene with transition and elevation lerp
+local ok, sceneId = api.backdrop.setScene(battle, "boss_ruins", {
+  transition = "crossfade", -- "crossfade" (default), "flash", or "cut"
+  duration = 0.5,           -- seconds
+  geometry = "lerp",        -- "immediate" (default), "lerp", or "after"
+})
+-- Returns: true, sceneId | false, "unknown-scene" | false, "no-record" | false, "invalid-battle"
+
+-- Or re-evaluate the battle_backdrop hook if encounter state changed
+local ok, sceneId, status = api.backdrop.refresh(battle, { transition = "crossfade" })
+-- Returns: true, sceneId, "changed" | true, sceneId, "unchanged" | false, err
+```
+
+Normal scene selection is cached. `refresh()` is an explicit API escape hatch that re-runs selection against the captured context.
+
+#### Geometry timing vs. scene identity
+Scene identity switches immediately (`diagnostics(battle).sceneId` updates to target scene on call), while visible geometry moves according to `opts.geometry`:
+- `immediate`: Target offsets apply immediately on frame 0 (default).
+- `lerp`: Smoothly glides `playerOffsetY` and `enemyOffsetY` across transition duration ($0.0 \to 1.0$). Essential for cliffs, platforms, and sunken trenches to prevent battlers from snapping in midair during crossfades.
+- `after`: Retains origin offsets until transition completes ($100\%$), then switches.
+
+Query presentation-time values using:
+```lua
+local playerOffsetY, enemyOffsetY = api.backdrop.effectiveGroundOffsets(battle)
+```
+Diagnostics also reports `effectivePlayerOffsetY` and `effectiveEnemyOffsetY` alongside target `playerOffsetY` and `enemyOffsetY`.
 
 Selection does not enable BetterBattle or override an external renderer.
 The 320×180 art retains its full colors; front sprites are required for

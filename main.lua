@@ -3836,6 +3836,34 @@ return function(mod, menuColors)
     mod.log:error("BetterBattle backdrops missing: %s", tostring(betterBattleBackdropReadErr))
   end
 
+  local betterScenesSource, betterScenesReadErr = mod:read("better_scenes.lua")
+  local betterScenesInstance = nil
+  if betterScenesSource then
+    local betterScenesChunk, betterScenesCompileErr = load(betterScenesSource,
+      "@" .. mod.path .. "/better_scenes.lua")
+    local ok, scenesModule = pcall(function()
+      assert(betterScenesChunk, betterScenesCompileErr)
+      return betterScenesChunk()
+    end)
+    if ok and scenesModule and type(scenesModule.new) == "function" then
+      betterScenesInstance = scenesModule.new({
+        isSelfMod = function(sourceMod, key)
+          return key == mod.id or key == "gen1-better-menus" or sourceMod == mod
+        end,
+        getPalettePaperColor = function()
+          local palette = PaletteFX.effectiveColors(effectiveMenuPalette())
+          local paper = palette and palette[1] or { 255, 255, 255 }
+          return (paper[1] or 255) / 255, (paper[2] or 255) / 255, (paper[3] or 255) / 255, 1
+        end,
+      })
+      mod.exports.betterScenes = betterScenesInstance
+    else
+      mod.log:error("BetterScenes failed to load: %s", tostring(scenesModule))
+    end
+  else
+    mod.log:error("BetterScenes source missing: %s", tostring(betterScenesReadErr))
+  end
+
   local frameGame
   local nicknameBackdrop
 
@@ -4893,6 +4921,10 @@ end
 
     -- Detached BetterBattle panels need no stock-position paper overpaint.
     -- That late fill could otherwise cover the top-right trainer band.
+
+    if betterScenesInstance and betterScenesInstance.isActive() then
+      betterScenesInstance.draw()
+    end
   end)
   mod.hooks:wrap("render.zones", function(next, game, zones)
     frameGame = game
