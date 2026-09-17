@@ -332,6 +332,9 @@ local YELLOW_TITLE_PIKACHU = {
 
 local activeMod
 local activeGame
+local LOCATION_OVERLAY_KEY = "__qolLocationBannerOverlay"
+local locationStates = setmetatable({}, { __mode = "k" })
+local locationOverlays = setmetatable({}, { __mode = "k" })
 
 local SCALE_STEPS = { "100", "90", "80", "70" }
 local SCALE_FACTORS = {
@@ -407,6 +410,7 @@ local function defaultMenuScaleEnabled(game)
       return false
     elseif state and (SCALABLE_MENU_STATES[getmetatable(state)]
         or state.gen1BetterMenusSavePanel
+        or state.gen1BetterMenusWide
         or state.isPCLoginTransition) then
       supported = true
     elseif state then
@@ -431,8 +435,15 @@ local function menuScaleFactor(game)
   end
 
   local top = game.stack:top()
-  if not hasOverworld or hasBattle or not top or top == game.overworld
-      or top.isOverworld then
+  if not hasOverworld or hasBattle or not top then
+    return 1
+  end
+
+  if top == game.overworld or top.isOverworld then
+    local location = locationStates[game.overworld]
+    if location and love.timer.getTime() < location.expiresAt then
+      return factor
+    end
     return 1
   end
 
@@ -499,9 +510,6 @@ local function betterBattleUIEnabled(game, battle)
   end
   return true
 end
-local LOCATION_OVERLAY_KEY = "__qolLocationBannerOverlay"
-local locationStates = setmetatable({}, { __mode = "k" })
-local locationOverlays = setmetatable({}, { __mode = "k" })
 
 -- PaletteFX normally applies the engine's active display mode after a state
 -- supplies its zones. Under BetterMenus ownership, BetterMenus-owned menu

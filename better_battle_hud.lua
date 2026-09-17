@@ -69,6 +69,7 @@ return function(mod, menuColors, useStockOgMenuPalette, betterBattleUIMode,
     "DRAMATIC_SHAPE",
     "BATTLE_ART_VOXEL_FORK",
     "DRAMALESS_SHAPE",
+    "potato_voxel",
   }
   local hudGame
   local providerStates = setmetatable({}, { __mode = "k" })
@@ -1493,8 +1494,36 @@ end
     return lines
   end
 
-  local function drawBetterCommandMenu(battle)
-    Font.drawBox(22, 8, 16, 4)
+	local function drawBetterCommandMenu(battle)
+	  if not battle.safari and not battle.demo
+	      and battle._betterCommandMenuOpen == true then
+	    Font.drawBox(22, 8, 16, 5)
+	    love.graphics.setColor(0, 0, 0, 1)
+	    Font.draw(Strings("FIGHT"), 192, 72)
+	    Font.drawCode(0xE1, 256, 72)
+	    Font.drawCode(0xE2, 264, 72)
+	    Font.draw(Strings("ITEM"), 192, 83)
+	    Font.draw(Strings("RUN"), 256, 83)
+
+	    local index = battle.menuIndex or 1
+	    local col, row = (index - 1) % 2, math.floor((index - 1) / 2)
+	    Font.drawCode(0xED, col == 0 and 184 or 248, 72 + row * 11)
+	    return 176, 64, 128, 40, "top"
+	  end
+
+	  if not battle.safari and not battle.demo then
+	    Font.drawBox(22, 8, 16, 4)
+	    love.graphics.setColor(0, 0, 0, 1)
+	    local who = battle.player and battle.player.name or ""
+	    local prompt = Strings("What will") .. " "
+	      .. tostring(who) .. Strings(" do?")
+	    for i, line in ipairs(wrapWords(prompt, 112)) do
+	      Font.draw(line, 184, 72 + (i - 1) * 8)
+	    end
+	    return 176, 64, 128, 32, "top"
+	  end
+
+	  Font.drawBox(22, 8, 16, 4)
 	  love.graphics.setColor(0, 0, 0, 1)
 	  if not battle.demo then
 	    local who = battle.player and battle.player.name or ""
@@ -1586,11 +1615,30 @@ end
   local originalUpdate = BattleState.update
   BattleState.update = function(battle, ...)
     local previous = inputBattle
-    inputBattle = setting(battle) and battle or nil
+    local active = setting(battle)
+    local previousPhase = battle.phase
+    inputBattle = active and battle or nil
     local ok, result = pcall(originalUpdate, battle, ...)
     inputBattle = previous
     if not ok then error(result, 0) end
+    if active and previousPhase == "messages"
+        and battle.phase == "menu" then
+      battle._betterCommandMenuOpen = false
+    end
     return result
+  end
+
+  local originalChooseMenu = BattleState.chooseMenu
+  BattleState.chooseMenu = function(battle, choice)
+    if inputBattle == battle
+        and battle.phase == "menu"
+        and not battle.safari
+        and not battle.demo
+        and battle._betterCommandMenuOpen ~= true then
+      battle._betterCommandMenuOpen = true
+      return true
+    end
+    return originalChooseMenu(battle, choice)
   end
   local originalNavigate = WideBattle.navigate
   WideBattle.navigate = function(index, count, input)
@@ -1668,6 +1716,187 @@ end
   local BETTER_BATTLE_SPRITE_SCALE = 0.85
   local spriteLayerCache = setmetatable({}, { __mode = "k" })
 
+  -- Measure the completed detached sprite, not its nominal 64x64 slot.
+  -- The contact band determines vertical grounding. A separate torso
+  -- window determines the stable body-center X anchor.
+  local function measureShadowFootprint(canvas, region)
+    local g = love.graphics
+    local ok, data = pcall(function()
+      if type(g.readbackTexture) == "function" then
+        return g.readbackTexture(canvas)
+      end
+      if type(canvas.newImageData) == "function" then
+        return canvas:newImageData()
+      end
+    end)
+    if not ok or not data then return nil end
+
+    local width, height = data:getDimensions()
+    local left, right, firstY, lastY = 0, width - 1, 0, height - 1
+    local fullLeft, fullRight = width, -1
+    local fullTop, fullBottom = height, -1
+    local fullXSum, fullPixelCount = 0, 0
+    if region then
+      local x0, x1, y0, y1 = width, -1, height, -1
+      for y = 0, height - 1 do
+        for x = 0, width - 1 do
+          local _, _, _, alpha = data:getPixel(x, y)
+          if alpha > 0.05 then
+            x0, x1 = math.min(x0, x), math.max(x1, x)
+            y0, y1 = math.min(y0, y), math.max(y1, y)
+            fullXSum = fullXSum + x + 0.5
+            fullPixelCount = fullPixelCount + 1
+          end
+        end
+      end
+      if x1 < x0 then data:release(); return nil end
+      fullLeft, fullRight = x0, x1
+      fullTop, fullBottom = y0, y1
+      local w, h = x1 - x0 + 1, y1 - y0 + 1
+      left = math.max(x0, math.floor(x0 + w * region.left))
+      right = math.min(x1, math.ceil(x0 + w * region.right) - 1)
+      firstY = math.max(y0, math.floor(y0 + h * region.top))
+      lastY = math.min(y1, math.ceil(y0 + h * region.bottom) - 1)
+    end
+    local minX, maxX = width, -1
+    local top, absoluteBottom = height, -1
+    local regionXSum, regionPixelCount = 0, 0
+    local rows = {}
+
+    for y = firstY, lastY do
+      local count, longest, run = 0, 0, 0
+      local rowLeft, rowRight = right + 1, left - 1
+      for x = left, right do
+        local _, _, _, alpha = data:getPixel(x, y)
+        if alpha > 0.05 then
+          count = count + 1
+          run = run + 1
+          longest = math.max(longest, run)
+          minX, maxX = math.min(minX, x), math.max(maxX, x)
+          rowLeft, rowRight = math.min(rowLeft, x), math.max(rowRight, x)
+          top, absoluteBottom = math.min(top, y), math.max(absoluteBottom, y)
+          regionXSum = regionXSum + x + 0.5
+          regionPixelCount = regionPixelCount + 1
+        else
+          run = 0
+        end
+      end
+      rows[y] = {
+        count = count,
+        longest = longest,
+        left = rowLeft,
+        right = rowRight,
+      }
+    end
+
+    if absoluteBottom < 0 then data:release(); return nil end
+    if not region then
+      fullLeft, fullRight = minX, maxX
+      fullTop, fullBottom = top, absoluteBottom
+      fullXSum, fullPixelCount = regionXSum, regionPixelCount
+    end
+
+    local visibleWidth = maxX - minX + 1
+    local visibleHeight = absoluteBottom - top + 1
+    local fullVisibleWidth = fullRight - fullLeft + 1
+    local fullVisibleHeight = fullBottom - fullTop + 1
+    local boundsCenterX = (fullLeft + fullRight + 1) / 2
+    local opaqueCentroidX = fullXSum / fullPixelCount
+    local supportPixels = math.max(
+      3, math.floor(visibleWidth * 0.08 + 0.5))
+    local contactY = absoluteBottom
+
+    -- Ignore a lowest row made only from isolated decorative pixels.
+    for y = absoluteBottom, top, -1 do
+      local row = rows[y]
+      if row.count >= supportPixels and row.longest >= 2 then
+        contactY = y
+        break
+      end
+    end
+
+    local contactHeight = contactY - top + 1
+    local bandDepth = math.max(
+      2, math.min(5, math.floor(contactHeight * 0.10 + 0.5)))
+    local samples = {}
+
+    for y = math.max(top, contactY - bandDepth + 1), contactY do
+      for x = minX, maxX do
+        local _, _, _, alpha = data:getPixel(x, y)
+        if alpha > 0.05 then
+          samples[#samples + 1] = x
+        end
+      end
+    end
+
+    data:release()
+    if #samples == 0 then return nil end
+    table.sort(samples)
+
+    local function sampleAt(fraction)
+      local index = math.floor((#samples - 1) * fraction + 1.5)
+      return samples[math.max(1, math.min(#samples, index))]
+    end
+
+    local contactLeft = sampleAt(0.15)
+    local contactRight = sampleAt(0.85)
+    local contactCenterX = (contactLeft + contactRight + 1) / 2
+
+    local bodyCenters = {}
+    local bodyPixelThreshold = math.max(
+      2, math.floor(visibleWidth * 0.12 + 0.5))
+    local bodyTop = top + math.floor(visibleHeight * 0.25)
+    local bodyBottom = math.min(
+      contactY - bandDepth,
+      top + math.floor(visibleHeight * 0.75))
+
+    if bodyBottom >= bodyTop then
+      for y = bodyTop, bodyBottom do
+        local row = rows[y]
+        if row
+            and row.count >= bodyPixelThreshold
+            and row.longest >= 2 then
+          bodyCenters[#bodyCenters + 1] =
+            (row.left + row.right + 1) / 2
+        end
+      end
+    end
+
+    local bodyCenterX = contactCenterX
+    if #bodyCenters > 0 then
+      table.sort(bodyCenters)
+      local middle = (#bodyCenters + 1) / 2
+      if #bodyCenters % 2 == 1 then
+        bodyCenterX = bodyCenters[math.ceil(middle)]
+      else
+        bodyCenterX = (
+          bodyCenters[math.floor(middle)]
+          + bodyCenters[math.ceil(middle)]) / 2
+      end
+    end
+
+    return {
+      automatic = true,
+      centerX = contactCenterX,
+      contactCenterX = contactCenterX,
+      bodyCenterX = bodyCenterX,
+      contactY = contactY + 0.5,
+      contactWidth = math.max(1, contactRight - contactLeft + 1),
+      visibleWidth = visibleWidth,
+      visibleHeight = visibleHeight,
+      visibleLeft = minX,
+      visibleRight = maxX,
+      fullVisibleWidth = fullVisibleWidth,
+      fullVisibleHeight = fullVisibleHeight,
+      fullVisibleLeft = fullLeft,
+      fullVisibleRight = fullRight,
+      fullVisibleTop = fullTop,
+      fullVisibleBottom = fullBottom,
+      boundsCenterX = boundsCenterX,
+      opaqueCentroidX = opaqueCentroidX,
+    }
+  end
+
   local function betterBattleGeometry(battle)
     local r = battle.game.renderer:frameRects()
     local step = math.max(1, math.floor(r.Up * BETTER_BATTLE_SCALE + 1e-6))
@@ -1675,11 +1904,34 @@ end
     -- Leave the complete 48px player panel, including XP, below its feet.
     local playerGround = math.min(142, math.floor(
       (r.vuy + r.vuh - r.uoy - 50 * hudY) / r.Uy))
+    local baseEnemyGround = playerGround - 32
+    local playerOffY = 0
+    local enemyOffY = 0
+    local backdropApi = betterBattleApi and betterBattleApi.backdrop
+    if backdropApi and backdropApi.effectiveGroundOffsets then
+      playerOffY, enemyOffY = backdropApi.effectiveGroundOffsets(battle)
+      playerOffY = tonumber(playerOffY) or 0
+      enemyOffY = tonumber(enemyOffY) or 0
+    else
+      local diag = backdropApi and backdropApi.diagnostics and backdropApi.diagnostics(battle)
+      local sceneId = diag and diag.sceneId
+      local shadowApi = betterBattleApi and betterBattleApi.shadowSettings
+      local cfg = shadowApi and shadowApi.sceneConfig and shadowApi.sceneConfig(sceneId)
+      if cfg then
+        playerOffY = tonumber(cfg.playerOffsetY) or 0
+        enemyOffY = tonumber(cfg.enemyOffsetY) or 0
+      end
+    end
+    playerGround = playerGround + playerOffY
+    local enemyGround = baseEnemyGround + enemyOffY
     return {
+      playerX = 52,
+      enemyX = 260,
       playerGround = playerGround,
-      enemyGround = playerGround - 32,
+      enemyGround = enemyGround,
       playerShift = playerGround - 104,
-      enemyShift = playerGround - 32 - 56,
+      enemyShift = enemyGround - 56,
+      spriteScale = BETTER_BATTLE_SPRITE_SCALE,
     }
   end
 
@@ -1758,6 +2010,7 @@ end
   local function withBetterBattleField(battle, draw)
     local geometry = betterBattleGeometry(battle)
     local renderer = battle.game.renderer
+    renderer.gen1BetterBattleFieldGeometry = geometry
     renderer.gen1BetterBattleSpriteLayers = nil
     local cached = spriteLayerCache[battle]
     if not cached then
@@ -1779,7 +2032,7 @@ end
       return cached[key]
     end
 
-    local function captureSprite(side, callback)
+    local function captureSprite(side, callback, footprintState)
       local g = love.graphics
       local previous = g.getCanvas()
       if previous ~= renderer.canvas then return callback() end
@@ -1805,17 +2058,65 @@ end
       end
 
       local layer = layerFor(side)
+      layer.betterBattleSide = side
       layer.gen1BetterMenusPlacement = {
         owner = "betterbattle",
         edge = "field-sprite",
         scale = BETTER_BATTLE_SPRITE_SCALE,
-        fieldX = side == "player" and 52 or 260,
+        fieldX = side == "player" and geometry.playerX or geometry.enemyX,
         fieldY = side == "player"
           and geometry.playerGround or geometry.enemyGround,
       }
       layer.zones = WideBattle.zones()
       local marks = PaletteFX.trueColorRects("ui")
       local first = #marks + 1
+      local settings = betterBattleApi.shadowSettings
+      local shadowProfile = settings and settings.shadowProfile(
+        footprintState.species, side)
+      local wingSettings = settings and settings.wingShadows(
+        footprintState.species, side)
+      local manualAnchorX = settings and settings.value(
+        footprintState.species, side, "manualAnchorX")
+      local manualContactY = settings and settings.value(
+        footprintState.species, side, "manualContactY")
+      local manualOrigin
+      local spriteTransform
+      local previousDrawBattlerPic = rawget(battle, "drawBattlerPic")
+      local originalDrawBattlerPic = battle.drawBattlerPic
+      local manualWrapperInstalled = false
+
+      -- Manual coordinates are authored in the canonical 56x56 front
+      -- sprite. Use the actual draw origin and active transform so both
+      -- sides follow their sprite placement without measuring alpha bounds.
+      if (shadowProfile or wingSettings or (type(manualAnchorX) == "number"
+          and type(manualContactY) == "number"))
+          and type(originalDrawBattlerPic) == "function" then
+        battle.drawBattlerPic = function(self, battler, x, y, scale, ...)
+          if battler == self[side] and not spriteTransform then
+            local image = battler.sprite and self:picImage(battler.sprite)
+            if image and type(x) == "number" and type(y) == "number" then
+              local spriteScale = tonumber(scale) or 1
+              local px, py = g.transformPoint(x, y)
+              local qx, qy = g.transformPoint(
+                x + spriteScale, y + spriteScale)
+              spriteTransform = {
+                x = px, y = py, scaleX = qx - px, scaleY = qy - py,
+              }
+              if type(manualAnchorX) == "number"
+                  and type(manualContactY) == "number" then
+                local spriteX = side == "player"
+                  and 56 - manualAnchorX or manualAnchorX
+                local ax, ay = g.transformPoint(
+                  x + spriteX * spriteScale,
+                  y + manualContactY * spriteScale)
+                manualOrigin = { centerX = ax, contactY = ay }
+              end
+            end
+          end
+          return originalDrawBattlerPic(self, battler, x, y, scale, ...)
+        end
+        manualWrapperInstalled = true
+      end
       g.push("all")
       g.setCanvas(layer.canvas)
       local clipX, clipY, clipW, clipH = g.getScissor()
@@ -1823,6 +2124,13 @@ end
       g.clear(0, 0, 0, 0)
       if clipX then g.setScissor(clipX, clipY, clipW, clipH) end
       local ok, result = pcall(callback)
+      if manualWrapperInstalled then
+        if previousDrawBattlerPic == nil then
+          battle.drawBattlerPic = nil
+        else
+          battle.drawBattlerPic = previousDrawBattlerPic
+        end
+      end
       g.setCanvas(previous)
       g.pop()
       for i = first, #marks do
@@ -1832,6 +2140,266 @@ end
       end
       for i = #marks, first, -1 do marks[i] = nil end
       if not ok then error(result, 0) end
+
+      layer.detectedWingShadows = nil
+      if wingSettings and spriteTransform then
+        local state = layer.detectedWingShadowState
+        if not state
+            or state.owner ~= footprintState.owner
+            or state.species ~= footprintState.species
+            or state.shift ~= footprintState.shift
+            or state.settings ~= wingSettings then
+          state = {
+            owner = footprintState.owner,
+            species = footprintState.species,
+            shift = footprintState.shift,
+            settings = wingSettings,
+            regions = {},
+          }
+          layer.detectedWingShadowState = state
+        end
+        state.transform = spriteTransform
+        local measurements = {}
+        for index, wing in ipairs(wingSettings) do
+          local region = wing.region
+          assert(type(region) == "table",
+            "Wing shadow requires a detection region")
+          if side == "player" then
+            region = {
+              left = 1 - region.right,
+              right = 1 - region.left,
+              top = region.top,
+              bottom = region.bottom,
+            }
+          end
+          local entry = state.regions[index]
+          if not entry or entry.settings ~= wing then
+            entry = {
+              settings = wing,
+              frames = setmetatable({}, { __mode = "k" }),
+            }
+            state.regions[index] = entry
+          end
+          if footprintState.settled and footprintState.sprite then
+            local measured = entry.frames[footprintState.sprite]
+            if measured == nil then
+              measured = measureShadowFootprint(layer.canvas, region) or false
+              entry.frames[footprintState.sprite] = measured
+            end
+            if measured then entry.last = measured end
+          end
+          measurements[index] = entry.last
+        end
+        layer.detectedWingShadows = {
+          settings = wingSettings,
+          measurements = measurements,
+          transform = state.transform,
+        }
+      else
+        layer.detectedWingShadowState = nil
+      end
+
+      layer.authoredShadow = nil
+      if shadowProfile then
+        local state = layer.authoredShadowState
+        if not state
+            or state.owner ~= footprintState.owner
+            or state.species ~= footprintState.species
+            or state.shift ~= footprintState.shift
+            or state.mode ~= shadowProfile.mode
+            or state.shapes ~= shadowProfile.shapes then
+          state = {
+            owner = footprintState.owner, species = footprintState.species,
+            shift = footprintState.shift, mode = shadowProfile.mode,
+            shapes = shadowProfile.shapes, regions = {},
+          }
+          layer.authoredShadowState = state
+        end
+        if spriteTransform then
+          local previousTransform = state.transform
+          if previousTransform
+              and (previousTransform.x ~= spriteTransform.x
+                or previousTransform.y ~= spriteTransform.y
+                or previousTransform.scaleX ~= spriteTransform.scaleX
+                or previousTransform.scaleY ~= spriteTransform.scaleY) then
+            state.regions = {}
+          end
+          state.transform = spriteTransform
+        end
+        local measurements, activeRegions = {}, {}
+        for index, shape in ipairs(shadowProfile.shapes) do
+          if settings.shadowShapeEnabled(shadowProfile, shape)
+              and (shape.source == "detected"
+                or (shadowProfile.mode == "combined" and shape.detection)) then
+            local region = shape.region
+            if region == nil then
+              region = settings.value(
+                footprintState.species, side, "bodyRegion")
+            end
+            local key = "full"
+            if region then
+              key = table.concat({
+                region.left, region.right, region.top, region.bottom,
+              }, ":")
+              if side == "player" then
+                region = {
+                  left = 1 - region.right, right = 1 - region.left,
+                  top = region.top, bottom = region.bottom,
+                }
+              end
+            end
+            activeRegions[key] = true
+            local entry = state.regions[key]
+            if not entry then
+              entry = { frames = setmetatable({}, { __mode = "k" }) }
+              state.regions[key] = entry
+            end
+            if footprintState.settled and footprintState.sprite
+                and state.transform then
+              local measured = entry.frames[footprintState.sprite]
+              if measured == nil then
+                measured = measureShadowFootprint(layer.canvas, region) or false
+                entry.frames[footprintState.sprite] = measured
+              end
+              if measured then
+                entry.last = measured
+                entry.reference = entry.reference or measured
+                entry.anchor = entry.anchor or {
+                  centerX = measured.centerX, contactY = measured.contactY,
+                }
+              end
+            end
+            if entry.last then
+              measurements[index] = {
+                footprint = entry.last, anchor = entry.anchor,
+                reference = entry.reference,
+              }
+            end
+          end
+        end
+        for key in pairs(state.regions) do
+          if not activeRegions[key] then state.regions[key] = nil end
+        end
+        layer.authoredShadow = {
+          profile = shadowProfile, transform = state.transform,
+          measurements = measurements, sprite = footprintState.sprite,
+          frame = battle.frame,
+        }
+        layer.shadowFootprint, layer.shadowAnchor = nil, nil
+        local layers = renderer.gen1BetterBattleSpriteLayers
+        layers[#layers + 1] = layer
+        return result
+      end
+      layer.authoredShadowState = nil
+      local sprite = footprintState.sprite
+      local region = settings and settings.value(
+        footprintState.species, side, "bodyRegion")
+      local anchorMode = settings and settings.value(
+        footprintState.species, side, "anchorMode")
+      local anchorX = settings and settings.value(
+        footprintState.species, side, "anchorX")
+      local left, right = region and region.left or 0, region and region.right or 1
+      local top, bottom = region and region.top or 0, region and region.bottom or 1
+      if not layer.shadowFootprints
+          or layer.shadowFootprintShift ~= footprintState.shift
+          or layer.shadowOwner ~= footprintState.owner
+          or layer.shadowSpecies ~= footprintState.species
+          or layer.shadowLeft ~= left or layer.shadowRight ~= right
+          or layer.shadowTop ~= top or layer.shadowBottom ~= bottom
+          or layer.shadowAnchorMode ~= anchorMode
+          or layer.shadowAnchorX ~= anchorX
+          or layer.shadowManualAnchorX ~= manualAnchorX
+          or layer.shadowManualContactY ~= manualContactY then
+        layer.shadowFootprints = setmetatable({}, { __mode = "k" })
+        layer.shadowFootprint, layer.shadowAnchor = nil, nil
+        layer.shadowFootprintShift = footprintState.shift
+        layer.shadowOwner, layer.shadowSpecies =
+          footprintState.owner, footprintState.species
+        layer.shadowLeft, layer.shadowRight = left, right
+        layer.shadowTop, layer.shadowBottom = top, bottom
+        layer.shadowAnchorMode, layer.shadowAnchorX = anchorMode, anchorX
+        layer.shadowManualAnchorX = manualAnchorX
+        layer.shadowManualContactY = manualContactY
+      end
+
+      -- Frame changes retain the last valid footprint until a replacement
+      -- is available. Never measure transient slides, shakes or effects.
+      local hasManualAnchor = type(manualAnchorX) == "number"
+        and type(manualContactY) == "number"
+      if hasManualAnchor and manualOrigin and footprintState.settled then
+        -- Keep the measured fields deliberately neutral: authored baseWidth
+        -- and baseHeight control the ellipse instead of frame alpha bounds.
+        local footprint = {
+          automatic = false,
+          centerX = manualOrigin.centerX,
+          contactCenterX = manualOrigin.centerX,
+          bodyCenterX = manualOrigin.centerX,
+          contactY = manualOrigin.contactY,
+          contactWidth = 1,
+          visibleWidth = 1,
+          visibleLeft = manualOrigin.centerX,
+          visibleRight = manualOrigin.centerX,
+        }
+        layer.shadowFootprint = footprint
+        -- Keep the authored body projection stable while frames animate.
+        layer.shadowAnchor = layer.shadowAnchor or {
+          centerX = manualOrigin.centerX,
+          contactY = manualOrigin.contactY,
+        }
+      elseif not hasManualAnchor and sprite and footprintState.settled then
+        local footprint = layer.shadowFootprints[sprite]
+        if not footprint then
+          footprint = measureShadowFootprint(layer.canvas, region)
+          layer.shadowFootprints[sprite] = footprint
+        end
+        if footprint then
+          layer.shadowFootprint = footprint
+          local centerX = footprint.contactCenterX or footprint.centerX
+
+          local fullWidth =
+            footprint.fullVisibleWidth or footprint.visibleWidth
+          local fullHeight =
+            footprint.fullVisibleHeight or footprint.visibleHeight or 1
+          local boundsCenter =
+            footprint.boundsCenterX or footprint.centerX
+          local contactCoverage =
+            footprint.contactWidth / math.max(1, fullWidth)
+          local contactOffset =
+            math.abs(centerX - boundsCenter) / math.max(1, fullWidth)
+          local minimumCoverage = settings.automaticBodyValue(
+            footprintState.species, side, "minimumContactCoverage")
+          local maximumOffset = settings.automaticBodyValue(
+            footprintState.species, side, "maximumContactOffset")
+          local contactReliable =
+            contactCoverage >= minimumCoverage
+            and contactOffset <= maximumOffset
+
+          if anchorMode == "body" then
+            centerX = footprint.bodyCenterX or centerX
+          elseif not contactReliable then
+            if fullWidth >= fullHeight then
+              centerX = boundsCenter
+            else
+              centerX = footprint.bodyCenterX
+                or footprint.opaqueCentroidX
+                or boundsCenter
+            end
+          end
+          if type(anchorX) == "number" then
+            centerX = footprint.visibleLeft
+              + (footprint.visibleRight - footprint.visibleLeft) * anchorX
+          end
+
+          -- Keep the chosen body anchor stable; animation changes
+          -- dimensions and contact rows without making the shadow jump.
+          layer.shadowAnchor = layer.shadowAnchor or {
+            centerX = centerX,
+            contactY = footprint.contactY,
+          }
+          footprint.contactReliable = contactReliable
+        end
+      end
+
       local layers = renderer.gen1BetterBattleSpriteLayers
       layers[#layers + 1] = layer
       return result
@@ -1866,7 +2434,21 @@ end
         (side == "player" and not self.showPlayerBack
           and not self.safari and not self.demo)
         or (side == "enemy" and not self.showEnemyTrainer)
-      if pokemonSide then return captureSprite(side, drawSide) end
+      if pokemonSide then
+        local battler = self[side]
+        return captureSprite(side, drawSide, {
+          sprite = battler and battler.sprite,
+          owner = battler and battler.mon,
+          species = battler and battler.mon and battler.mon.species,
+          shift = dy,
+          settled = (slide or 0) == 0
+            and (sx or 0) == 0
+            and (sy or 0) == 0
+            and not self.animPlaying
+            and not self.sendingOut
+            and not self.enemySendingOut,
+        })
+      end
       return drawSide()
     end
     battle.drawAnimLayer = function(self, colorized)

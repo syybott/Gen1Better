@@ -1,9 +1,9 @@
 # Gen1BetterMenus — Provider and Mod Compatibility
 
 This wiki reference describes the interfaces implemented in the current
-BetterMenus source. Feature files use the BetterBattle, BetterPC, BetterBag,
-and BetterParty names; existing hook names, settings keys, and exports retain
-their compatibility names.
+BetterMenus source. Feature files and public exports use the BetterBattle,
+BetterPC, BetterBag, and BetterParty names. Existing hook names and stored
+settings keys remain unchanged.
 
 ## Interface index
 
@@ -11,8 +11,10 @@ their compatibility names.
 | --- | --- | --- |
 | `bettermenus.betterbattle_provider` | BetterMenus hook | Declare who owns battle rendering and whether BetterBattle may draw its HUD. |
 | `bettermenus.battle_backdrop` | BetterMenus hook | Select a registered 2D scene for a normal or custom-spawn battle. |
+| `bettermenus.battle_shadow` | BetterMenus hook | Modify, tint, reposition, or suppress species shadows during battle rendering. |
 | `bettermenus.ui_scale` | BetterMenus hook | Opt a custom menu into the user's Menu Scale, or keep native scale. |
 | `betterBattle` | Export | Query battle ownership, draw the BetterBattle HUD, inspect backdrop selection. |
+| `betterBattle.shadowSettings` | Export | Register custom species shadow profiles and scene-wide shadow adjustments. |
 | `isModOptions = true` | Screen marker | Identify a third-party settings screen. |
 | `ui.party.submenu` | Engine hook supported by BetterMenus | Add actions to party menus and BetterPC's party-side action list. |
 | `betterPC*` methods | BetterPC instance helpers | Operate the active PC screen through its existing controller. |
@@ -176,12 +178,182 @@ All 63 supplied scenes are selectable, including `custom_desert`,
 `custom_mountain_snow`, `custom_snow_grass`, `custom_space`, and `custom_spaceship`.
 See [the full scene registry and location rules](Battle-Backdrops.md#registered-scenes).
 
-This is a selector for registered BetterMenus assets, not an arbitrary image-path
-or new-scene registration API. Selection does not enable BetterBattle or override
-an external renderer. The 320×180 art retains its full colors; front sprites are
-required for BetterBattle to display properly. No mon-paper backing is added.
+### Registering new custom 320×180 scenes
 
-## 3. Custom-menu scaling
+See the [Artist Backdrop Pack Quickstart](Artist-Backdrop-Packs.md) for a complete,
+beginner-friendly guide to building standalone backdrop mods.
+
+Other mods can register their own custom 320×180 battle backdrops using the unified
+`betterBattle.backdrop.registerArtistScene` or direct `registerScene`:
+
+```lua
+local function registerCustomBackdrops()
+  local other = mod.find("gen1-better-menus")
+  local api = other and other.exports and other.exports.betterBattle
+  if not api or not api.backdrop then return end
+
+  -- One-stop registration (image + optional shadow style):
+  api.backdrop.registerArtistScene("my_custom_arena", {
+    image = "assets/arena_320.png",
+    shadows = {
+      color = { 0.45, 0.32, 0.18 }, -- warm earth tint
+      opacityScale = 0.85,
+    },
+  }, mod)
+
+  -- Or direct image registration:
+  -- api.backdrop.registerScene("my_custom_arena", "assets/arena_320.png", mod)
+end
+```
+
+Images must be strictly 320×180 pixels. See [Verifying backdrops for 1080p and 4K](Battle-Backdrops.md#verifying-backdrops-for-1080p-and-4k-python)
+for the Python validation script.
+
+Alternatively, `bettermenus.battle_backdrop` can return a dynamic table containing
+an instantiated LÖVE `Image`:
+
+```lua
+mod.hooks:wrap("bettermenus.battle_backdrop", function(next, ctx)
+  if ctx.mapId == "MY_CUSTOM_MAP" then
+    return { id = "my_custom_arena", image = myLoveImage }
+  end
+  return next(ctx)
+end)
+```
+
+Selection does not enable BetterBattle or override an external renderer.
+The 320×180 art retains its full colors; front sprites are required for
+BetterBattle to display properly. No mon-paper backing is added.
+
+## 3. Battle shadows and custom scenes
+
+BetterBattle includes an extensible battle shadow system that renders soft,
+feathered shadows beneath combatants across all 2D battle scenes. Shadows
+automatically accommodate grounding, dynamic wings, manual limb ellipses, and
+sprite scaling.
+
+Modders can manipulate shadows dynamically using the `bettermenus.battle_shadow`
+hook, register scene-wide adjustments via `betterBattle.shadowSettings.registerScene`,
+or register custom species using `betterBattle.shadowSettings.registerSpecies`.
+
+### Hook: `bettermenus.battle_shadow`
+
+Dispatched per shadow shape during the backdrop composition pass before drawing.
+
+```lua
+mod.hooks:wrap("bettermenus.battle_shadow", function(next, ctx)
+  -- Suppress shadows for underground or airborne states:
+  if ctx.flying and ctx.battle.flyingTurn then
+    return false
+  end
+
+  -- Tint shadows blue when fighting over water:
+  if ctx.sceneId == "env_ocean_water" or ctx.sceneId == "env_lake_water" then
+    ctx.color = { 0.05, 0.15, 0.30 }
+    ctx.alpha = ctx.alpha * 0.7
+    return ctx
+  end
+
+  return next(ctx)
+end)
+```
+
+#### Context fields
+
+| Field | Meaning |
+| --- | --- |
+| `game` | The battle's live game instance. |
+| `battle` | The live `BattleState` object. |
+| `sceneId` | Selected backdrop ID (e.g. `"custom_space"`), or `false` for plain field. |
+| `side` | `"player"` or `"enemy"`. |
+| `species` | Pokémon species identifier string (e.g. `"CHARIZARD"`). |
+| `battler` | Active battler state (`battle[side]`). |
+| `flying` | Whether the Pokémon is currently airborne/flying. |
+| `kind` | Shape type: `"configured"` (manual/authored ellipse), `"wing"` (detected wing), or `"footprint"` (automatic body fallback). |
+| `shapeIndex` | 1-based index of this shape within its profile or wing list. |
+| `x`, `y` | Canvas coordinates of shadow center in virtual screen pixels. |
+| `width`, `height` | Pixel dimensions of the outer ellipse. |
+| `alpha` | Effective opacity multiplier (0.0 to 1.0). |
+| `color` | Current RGB tint `{ r, g, b }` (0.0 to 1.0), or nil for standard black. |
+| `rotationDegrees` | Ellipse rotation angle in degrees. |
+| `innerRing`, `middleRing` | Feathering ring configurations, or false/nil. |
+
+#### Return contract
+
+| Return | Behavior |
+| --- | --- |
+| `false` | Cancel and suppress this shadow shape completely. |
+| Context table or override table | Apply modified shadow properties (`x`, `y`, `width`, `height`, `alpha`, `color`, `rotationDegrees`, `innerRing`, `middleRing`). |
+| `next(ctx)` or nil | Delegate through remaining hook wrappers or keep default drawing. |
+
+### Declarative scene shadows: `registerScene`
+
+Use `betterBattle.shadowSettings.registerScene(sceneId, config)` to apply persistent
+adjustments for custom battle backgrounds:
+
+```lua
+local function setupSceneShadows()
+  local other = mod.find("gen1-better-menus")
+  local shadowSettings = other and other.exports and other.exports.betterBattle
+      and other.exports.betterBattle.shadowSettings
+  if not shadowSettings then return end
+
+  -- Space / void: completely disable floor shadows:
+  shadowSettings.registerScene("custom_space", {
+    enabled = false,
+  })
+
+  -- Dark cave: faint purple-tinted shadows:
+  shadowSettings.registerScene("env_cave", {
+    color = { 0.10, 0.05, 0.15 },
+    opacityScale = 0.60,
+  })
+end
+```
+
+### Species registration: `registerSpecies`
+
+Romhacks and Pokémon expansion mods can register shadow dimensions, grounding,
+body regions, and wing detectors for custom species or Fakemon:
+
+```lua
+local function registerCustomSpeciesShadows()
+  local other = mod.find("gen1-better-menus")
+  local shadowSettings = other and other.exports and other.exports.betterBattle
+      and other.exports.betterBattle.shadowSettings
+  if not shadowSettings then return end
+
+  -- Grounded custom Pokémon with baseline dimensions:
+  shadowSettings.registerSpecies("MY_FAKEMON", {
+    baseWidth = 26,
+    baseHeight = 7.0,
+    grounding = "grounded",
+    manualAnchorX = 28,
+    manualContactY = 48,
+  })
+
+  -- Flying custom Pokémon with dynamic wing detection:
+  shadowSettings.registerSpecies("MY_BIRD", {
+    baseWidth = 20,
+    baseHeight = 5.5,
+    grounding = "flying",
+    bodyRegion = { left = 0.25, right = 0.75, top = 0.1, bottom = 0.9 },
+    wingShadows = {
+      { region = { left = 0, right = 0.25, top = 0, bottom = 1 }, opacity = 0.05 },
+      { region = { left = 0.75, right = 1.0, top = 0, bottom = 1 }, opacity = 0.05 },
+    },
+  })
+end
+```
+
+Helper methods on `betterBattle.shadowSettings`:
+- `registerSpecies(species, config)`: Register or merge species configuration.
+- `registerScene(sceneId, config)`: Register or merge scene shadow configuration.
+- `setSpecies(species, key, value)`: Set a species property.
+- `setSide(species, side, key, value)`: Set a side-specific property (`player` or `enemy`).
+- `addShape(species, shape, side)`: Append a manual shadow shape to `shadowShapes`.
+
+## 4. Custom-menu scaling
 
 **Hook:** `bettermenus.ui_scale`
 
@@ -210,7 +382,7 @@ registered mod-owned screens, and unknown screen types default to native scale.
 There is no current detached-battle-HUD dispatch for this hook. BetterBattle's
 own panels use their separate internal half-size target and pixel snapping.
 
-## 4. BetterBattle exports
+## 5. BetterBattle exports
 
 Resolve `game.mods.exports["gen1-better-menus"].betterBattle` with nil checks, or
 use the `mod.find` helper above. Call these functions with dot syntax:
@@ -222,7 +394,10 @@ use the `mod.find` helper above. Call these functions with dot syntax:
 | `activeProvider(battle)` | Normalized cached provider claim, or nil. Treat the returned table as read-only. |
 | `drawLayer(battle, bottomVisible)` | Draw BetterBattle's detached HUD and register its anchors. Requires the appropriate HUD pass and eligible topmost battle. |
 | `expPixels(battle)` | Current animated XP-display pixel count, floored and nonnegative. |
-| `backdrop.sceneIds()` | Sorted copy of all registered scene IDs. |
+| `shadowSettings` | Shadow configuration table exposing `registerSpecies`, `registerScene`, `setSpecies`, `setSide`, `addShape`, and species profiles. |
+| `backdrop.sceneIds()` | Sorted copy of all registered scene IDs (including custom registered scenes). |
+| `backdrop.registerArtistScene(id, config, sourceMod)` | One-stop registration helper for custom 320×180 backdrops and their shadow styles. |
+| `backdrop.registerScene(id, imageOrPath, sourceMod)` | Direct registration helper for custom 320×180 backdrops. |
 | `backdrop.resolve(context)` | Pure automatic resolver: returns scene ID or false, plus a reason string. Does not invoke the custom hook. |
 | `backdrop.diagnostics(battle)` | Detached diagnostic table, or nil before context was captured. |
 
@@ -256,7 +431,7 @@ can be correct for disabled BetterBattle, an external provider, nickname blankin
 an opaque screen, an intentionally plain scene, or an unavailable image.
 Changing the returned diagnostic table does not change scene selection.
 
-## 5. Options-screen marker
+## 6. Options-screen marker
 
 ```lua
 local OptionsScreen = { isModOptions = true }
@@ -274,7 +449,7 @@ an automatic opt-in to Menu Scale. No BetterMenus dependency is required.
 
 See [Mod Options Screen Compatibility](Mod-Options-Screen-Compatibility.md).
 
-## 6. Party actions and BetterPC helpers
+## 7. Party actions and BetterPC helpers
 
 BetterParty retains the engine PartyMenu controller. BetterPC also calls the
 engine's `ui.party.submenu` hook when its **party-side** action list opens:

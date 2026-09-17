@@ -134,6 +134,130 @@ variants are not loaded.
 | Caves/water | `env_cave`, `env_water_cave`, `env_ice_cave`, `env_lava_cave`, `env_desert_cave`, `env_ocean_water`, `env_lake_water`, `env_beach`, `env_shoreline` |
 | Custom | `custom_desert`, `custom_mountain_snow`, `custom_snow_grass`, `custom_space`, `custom_spaceship` |
 
+## Custom backdrop registration
+
+> [!TIP]
+> **Creating an artist backdrop pack?** See the [Artist Backdrop Pack Quickstart](Artist-Backdrop-Packs.md)
+> for a beginner-friendly 5-minute guide with one-stop registration, encounter recipes, and folder structure.
+
+In addition to the 63 built-in scenes, other mods can register their own custom
+320×180 battle backdrops using `betterBattle.backdrop.registerScene` or the unified
+`betterBattle.backdrop.registerArtistScene`:
+
+```lua
+local function registerCustomBackdrops()
+  local other = mod.find("gen1-better-menus")
+  local backdropApi = other and other.exports and other.exports.betterBattle
+      and other.exports.betterBattle.backdrop
+  if not backdropApi then return end
+
+  -- One-stop registration (image + shadow styling together):
+  backdropApi.registerArtistScene("my_custom_arena", {
+    image = "assets/arena_320.png",
+    shadows = {
+      color = { 0.45, 0.32, 0.18 }, -- warm sunset earth tint
+      opacityScale = 0.85,
+    },
+  }, mod)
+
+  -- Or direct registration:
+  -- backdropApi.registerScene("my_custom_arena", "assets/arena_320.png", mod)
+end
+```
+
+Once registered, your scene ID is recognized by `bettermenus.battle_backdrop`,
+`betterBattle.backdrop.sceneIds()`, and `betterBattle.shadowSettings.registerScene`.
+
+You can also return a dynamic table directly from `bettermenus.battle_backdrop`:
+
+```lua
+mod.hooks:wrap("bettermenus.battle_backdrop", function(next, ctx)
+  if ctx.mapId == "MY_CUSTOM_MAP" then
+    return { id = "my_custom_arena", image = myLoveImage }
+  end
+  return next(ctx)
+end)
+```
+
+## Verifying backdrops for 1080p and 4K (Python)
+
+All BetterBattle 2D backdrops must be **strictly 320×180 pixels**.
+
+### Why 320×180 scales cleanly
+
+In 16:9 widescreen, 180 is an exact integer factor of all standard viewport heights:
+- **720p**: $180 \times 4 = 720$ ($320 \times 4 = 1280$) $\to$ **$4\times$ integer scale**
+- **1080p**: $180 \times 6 = 1080$ ($320 \times 6 = 1920$) $\to$ **$6\times$ integer scale**
+- **1440p**: $180 \times 8 = 1440$ ($320 \times 8 = 2560$) $\to$ **$8\times$ integer scale**
+- **4K (2160p)**: $180 \times 12 = 2160$ ($320 \times 12 = 3840$) $\to$ **$12\times$ integer scale**
+
+With nearest-neighbor sampling (`nearest`, `nearest`), every single virtual pixel maps to
+an exact, uniform $6\times 6$ square of screen pixels at 1080p and a $12\times 12$ square
+at 4K. There is zero sub-pixel distortion, fractional pixel shimmering, or interpolation blur.
+
+### Validation script
+
+BetterMenus includes `tools/verify_backdrop.py` to inspect and validate artwork before release.
+Run it against any image file or directory:
+
+```bash
+python tools/verify_backdrop.py path/to/my_backdrop_320.png
+```
+
+The script verifies:
+1. **Dimensions**: Must be exactly $320 \times 180$.
+2. **Aspect Ratio**: Must be strictly 16:9 ($1.\bar{7}$).
+3. **Integer Multipliers**: Confirms $4\times$, $6\times$, $8\times$, and $12\times$ alignments.
+4. **Opacity**: Warns if the backdrop contains accidental semi-transparent pixels that would reveal the clear background.
+5. **Pixel Grid Integrity**: Verifies that nearest-neighbor upscaling to 1080p ($6\times$) and 4K ($12\times$) creates uniform, sharp texel blocks without edge interpolation artifacts.
+
+## Shadow system and scene interaction
+
+BetterBattle renders soft, multi-layered feathered shadows beneath battlers when
+a 2D backdrop is active. Each species has baseline dimensions, grounding rules,
+and optional manual limb shapes or dynamic wing-feathering detectors.
+
+Because different battle scenes represent different environments (e.g. solid ground,
+water, dark interiors, or weightless outer space), BetterBattle provides two ways
+for modders to customize shadows for custom scenes:
+
+### Declarative scene configuration
+
+Modders can configure scene-wide shadow behavior using `shadowSettings.registerScene(sceneId, config)`:
+
+```lua
+local function setupSceneShadows()
+  local other = mod.find("gen1-better-menus")
+  local api = other and other.exports and other.exports.betterBattle
+  local shadowSettings = api and api.shadowSettings
+  if not shadowSettings then return end
+
+  -- Suppress ground shadows entirely for space / void scenes:
+  shadowSettings.registerScene("custom_space", {
+    enabled = false,
+  })
+
+  -- Water surface: tint shadows oceanic blue and soften opacity:
+  shadowSettings.registerScene("env_ocean_water", {
+    color = { 0.05, 0.15, 0.30 },
+    opacityScale = 0.70,
+  })
+end
+```
+
+Available scene properties:
+- `enabled`: Set to `false` to disable shadows in this scene entirely.
+- `color`: `{ r, g, b }` table (normalized 0.0 to 1.0) for custom shadow tinting.
+- `opacityScale`: Multiplier applied to all shadow layers in this scene.
+- `offsetY`: Vertical pixel offset applied to shadow placement in this scene.
+
+### Dynamic battle shadow hook
+
+For dynamic or conditional shadow behavior (e.g. reacting to battle state, weather,
+or Pokémon actions), use the `bettermenus.battle_shadow` hook. See the
+[Provider and Mod Compatibility guide](Compatibility.md#3-battle-shadows-and-custom-scenes)
+for full hook specifications and examples.
+
 ## Diagnostics and visual driver
 
 `mod.exports.betterBattle.backdrop` exposes `sceneIds()`, pure `resolve(context)`,
