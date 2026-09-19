@@ -47,11 +47,14 @@ sprites. Active external battle renderers take priority over BetterBattle's
 
 ### BetterScenes
 
-A dedicated story stage and presentation overlay for narrative cutscenes outside
-of combat. Built with the same 320×180 integer-scaled pixel-art discipline,
-BetterScenes provides endpoint-aware transitions (`cut`, `crossfade`, `flash`),
-underlays (`black`, `paper`, `transparent`), and a clean foundation for
-cutscenes, character staging, and dialogue bubbles.
+A dedicated 16:9 story stage and cinematic presentation subsystem for narrative cutscenes outside of combat. Built with the same 320×180 integer-scaled pixel-art discipline, BetterScenes provides full theatrical control:
+- 320×180 pixel-art backdrops with `cut`, `crossfade`, and `flash` transitions.
+- Solid `black`, palette `paper`, and `transparent` underlays.
+- Actor staging with feet coordinates, mirror/scale anchors, enter/exit animations, and soft ground contact shadows (shared species profiles or custom schema).
+- Dynamic comic dialogue bubbles (speech, thought, shout) with live anchor tracking, letterbox subtitles, and floating emote puffs.
+- Declarative multi-step timeline runner (`playSequence`) with player input barriers and skipping.
+- 320×180 native camera shake, ambient color tints, flash pulses, restomod dither vignettes, and deterministic weather particles.
+- Decoupled battle handoff (`prepareBattleHandoff`), pre-battle visual transitions, atmosphere inheritance into combat, and outcome resumption (`resumeFromBattle`).
 
 ## More features
 
@@ -61,6 +64,14 @@ favorites, scrolling labels, and configurable Pokédex caught indicators.
 See [Extra Features](Extra-Features) for the player guide and
 [BetterBattle Pixel-Art Backdrops](Battle-Backdrops) for backdrop behavior,
 scene mappings, and sprite requirements.
+
+## For artists & creators
+
+Looking to create custom art, cutscenes, or encounters? Check the **[Artist & Creator Launch Pad](Artists)** for a quick "what do you want to build" guide:
+- **[Make a Custom Battle Backdrop Pack](Artist-Backdrop-Packs)**: 3 Safe Doors, zero-code quickstart, and copy-paste templates.
+- **[Make a Cinematic Story Cutscene](BetterScenes)**: Choreograph narrative scenes outside of battle with speech bubbles, character staging, and weather.
+- **[Customize Floor Shadows (BetterShadows)](Battle-Backdrops#shadow-system-and-scene-interaction)**: Tune ground contact shadows, scene tints, or custom species profiles.
+- **[Script Custom Battles & Arena Transitions](Battle-Backdrops#custom-spawn-hook)**: Trigger custom spawns, boss arenas, or mid-battle elevation shifts.
 
 ## For mod authors
 

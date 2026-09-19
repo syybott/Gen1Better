@@ -495,6 +495,9 @@ return function(mod, menuColors, useStockOgMenuPalette, betterBattleUIMode,
     end
   end
 
+  -- A dark-HUD companion may whiten the native bar's dark tinted fill while
+  -- it flips black glyphs. Re-seat just the two interior fill rows afterward
+  -- with the same GREENBAR/YELLOWBAR/REDBAR palette decision as HudTiles.
   local function drawSemanticHpFill(battle, battler, tx, ty, segments,
       pixels)
     local hp = shownHP(battler)
@@ -546,6 +549,11 @@ return function(mod, menuColors, useStockOgMenuPalette, betterBattleUIMode,
 	  return img
 	end
 
+  -- Add a real EXP row directly above the HUD's native lower rule. Keep each
+  -- native font tile on the integer pixel grid, but use a compact seven-pixel
+  -- advance so the three glyphs fit beside the full-size numeric readout.
+  -- The progress track spans the entire rule so its unfilled portion seats
+  -- into the existing black line.
   local function drawExpMark(x, y)
     for i, glyph in ipairs({ "E", "X", "P" }) do
       Font.draw(glyph, x + (i - 1) * 7, y)
@@ -574,6 +582,7 @@ local function drawExpProgress(battle, battler, x, y, width, barY,
     stats = { hp = fakeMax },
   }, barType, false, segments)
 
+  -- Replace HP green fill with EXP blue
   if fill > 0 then
     local fillShader = love.graphics.getShader()
     love.graphics.setShader()
@@ -588,6 +597,7 @@ local function drawExpProgress(battle, battler, x, y, width, barY,
     love.graphics.setShader(fillShader)
   end
 
+  -- Cover only the H portion of the stock HP label
   love.graphics.setColor(1, 1, 1, 1)
   love.graphics.rectangle(
     "fill",
@@ -597,6 +607,7 @@ local function drawExpProgress(battle, battler, x, y, width, barY,
     4
   )
 
+  -- Draw our custom X in the exact same spot
   local xpMark = getXpMarkImage()
 
   if xpMark then
@@ -647,6 +658,12 @@ end
       and not battle.showPlayerBack
   end
 
+  -- Classic colorized battles run their finished 160x144 background through
+  -- a second, internal SGB zone pass before the renderer's normal frame pass.
+  -- HP can enter that pass as native shade gray, but a deliberately blue EXP
+  -- pixel cannot. Re-seat only its filled pixels immediately after the battle
+  -- zone pass; this is still part of the original HUD draw, before pics and
+  -- animations are composited.
   local function drawClassicExpFill(battle)
     if not playerVisible(battle) then return end
     local fill, state = advanceExpDisplay(battle, 80)
@@ -675,7 +692,10 @@ end
   local function layoutFor(battle)
     if not battle or battle.blankForAskName
         or (battle.introSlide or 0) > 0 then return nil end
-
+    -- Staged/3-D providers own their detached HUD texture.  They still pass
+    -- through BetterMenus palette coverage even when BetterBattle is OFF or
+    -- has yielded to the provider, so install the bridge independently of
+    -- the BetterBattle layout gate.
     if stagedLayout(battle) then return "staged" end
     if setting(battle) and wideLayout(battle) then return "wide" end
     return nil
@@ -737,6 +757,12 @@ end
     HudTiles.tile(0x6F, 56, y)
   end
 
+  -- The stock player HUD uses five 8px rows and spends its last row on the
+  -- curve. Grow that same shape upward by one tile and leftward by two,
+  -- leaving its
+  -- lower and right edges fixed so it still meets Dramatic Shape's anchors.
+  -- The extra row creates genuine EXP space; the extra width lets the native
+  -- font keep a gap between the EXP label and current/required readout.
   local function drawStagedPlayerHud(battle, markColor, grayFill)
     local battler = battle.player
     love.graphics.setColor(0, 0, 0, 1)
@@ -760,6 +786,9 @@ end
     if type(g.setBlendMode) == "function" then g.setBlendMode("alpha") end
   end
 
+  -- These coordinates are the engine's original 160x144 HUD coordinates.
+  -- This function is called while Dramatic Shape's native HUD texture is the
+  -- active canvas, before that texture is snapped to the window edges.
   local function drawStagedHudContent(battle, alreadyCleared, markColor,
       grayFill)
     if enemyVisible(battle) then
@@ -820,6 +849,11 @@ end
     local state = api.state and api.state(gender) or (type(gender) == "table" and gender.state or gender)
     x, y = math.floor(x), math.floor(y)
 
+    -- Genderless (e.g. Mew) follows the menu palette system naturally.
+    -- Drawing it as a standard black glyph into the HUD canvas allows the
+    -- palette shader pass to shade it to darkest ink (pal[4]) on menu paper (pal[1]).
+    -- No trueColor exemption or background rectangle is used, eliminating any
+    -- fractional scissor seams around the glyph.
     if state ~= "M" and state ~= "F" then
       love.graphics.push("all")
       love.graphics.setColor(0, 0, 0, 1)
@@ -838,6 +872,9 @@ end
       if okPalette and type(exported) == "table" then color = exported end
     end
 
+    -- For Male and Female, fill the background with a 1-pixel bleed so the
+    -- subpixel scissor expansion of the trueColor pass samples the menu
+    -- paper color instead of the raw unshaded canvas white.
     love.graphics.setColor(bg[1], bg[2], bg[3], 1)
     love.graphics.rectangle("fill", x - 1, y - 1, 10, 10)
 
@@ -887,6 +924,9 @@ end
     end
   end
 
+-- Both framed panels use the same meter geometry.
+-- Two frame tiles and two label tiles leave 13 track tiles.
+-- The cap's visible pixel sits immediately after the track.
 local WIDE_PANEL_TILES = 17
 local WIDE_METER_SEGMENTS = WIDE_PANEL_TILES - 4
 local WIDE_METER_CAP_TYPE = 0
@@ -1028,7 +1068,7 @@ end
       local ok, value = pcall(image.getFilename, image)
       if ok then path = value end
     end
-
+    -- Never infer a link opponent's portrait from the local player's choice.
     if battle.kind == "link" then
       local crop = path and (CRYSTAL_PLAYER_CROPS[basename(path)]
         or CRYSTAL_OPPONENT_CROPS[basename(path)])
@@ -1074,6 +1114,9 @@ end
 	  if trueColor then PaletteFX.markTrueColor(x, y, 32, 24) end
 	end
 
+  -- Use Crystal's supplied 8x8 party-ball art when available. The row still
+  -- follows the stock six-slot draw behavior and caller-provided spacing.
+  -- Without Crystal, call the engine's native drawBallRow unchanged.
   local function drawPartyRow(battle, party, x, y, dx, nativeRow)
     if crystalSprites and type(crystalSprites.partyBall) == "function" then
       local images = {}
@@ -1120,8 +1163,7 @@ end
 	  if not battle or battle.safari or battle.demo or battle.oakDemo
 	      or battle.blankForAskName or battle.fieldCleared or battle.result
 	      or battle.showPlayerBack
-	      or battle.showEnemyTrainer or battle.enemySendingOut
-	      or battle.growIn or battle.shrinkOut then return false end
+	      or battle.showEnemyTrainer or battle.enemySendingOut then return false end
 	  if battle.introBalls then
 	    return battle.player ~= nil
 	  end
@@ -1129,19 +1171,83 @@ end
 	  return battle.player ~= nil
 	end
 
+  -- Two adjacent canvas regions form one frame; neither draws over the other.
+  local PLAYER_JOIN_Y = 32
+  local PLAYER_PANE_H = 40
+
+  local function drawPlayerFrame(x, y, h, section)
+    local g, B = love.graphics, Font.BORDER
+    g.setColor(1, 1, 1, 1)
+    for row = 0, h - 1 do
+      local edge = section == "head" and row
+        or math.min(row, h - 1 - row)
+      if section == "lower" and row < 3 then
+        g.rectangle("fill", x + 3, y + row, 122, 1)
+      elseif edge == 1 then
+        g.rectangle("fill", x + 3, y + row, 2, 1)
+        g.rectangle("fill", x + 123, y + row, 2, 1)
+      elseif edge == 2 then
+        g.rectangle("fill", x + 2, y + row, 4, 1)
+        g.rectangle("fill", x + 7, y + row, 114, 1)
+        g.rectangle("fill", x + 122, y + row, 4, 1)
+      elseif edge == 3 or edge == 4 then
+        g.rectangle("fill", x + 1, y + row, 126, 1)
+      elseif edge == 5 then
+        g.rectangle("fill", x + 2, y + row, 124, 1)
+      elseif edge >= 6 then
+        g.rectangle("fill", x + 3, y + row, 122, 1)
+      end
+    end
+    g.setColor(0, 0, 0, 1)
+    Font.drawCode(B.tl, x, y)
+    Font.drawCode(B.tr, x + 120, y)
+    for col = 8, 112, 8 do Font.drawCode(B.h, x + col, y) end
+    local sideEnd = section == "head" and h - 8 or h - 16
+    for row = 8, sideEnd, 8 do
+      Font.drawCode(B.v, x + 1, y + row)
+      Font.drawCode(B.v, x + 120, y + row)
+    end
+    if section == "lower" then
+      -- Continue the upper stems into the top-corner junction glyphs.
+      for _, dx in ipairs({ 3, 5, 122, 124 }) do
+        g.rectangle("fill", x + dx, y, 1, 2)
+      end
+      Font.drawCode(B.bl, x, y + h - 8)
+      Font.drawCode(B.br, x + 120, y + h - 8)
+      for col = 8, 112, 8 do
+        Font.drawCode(B.h, x + col, y + h - 8)
+      end
+    end
+  end
+
+  local displayedMessagePane
+  local function playerPaneJoined(battle)
+    return not battle.safari and not battle.demo
+      and (battle.phase == "menu"
+        or battle.phase == "moveSelect"
+        or battle.phase == "mimicSelect"
+        or (displayedMessagePane(battle) == "player"
+          and (battle.current or battle.animPlaying or battle.msgHold)))
+  end
+
 	local function renderHeadPanels(battle, nativeRow)
 	  if not headPanelsVisible(battle) then return false, false end
 	  love.graphics.setColor(0, 0, 0, 1)
-	  love.graphics.push()
-	  love.graphics.translate(0, 1)
-	  Font.drawBox(0, 0, 16, 4)
-  love.graphics.pop()
+    local joined = playerPaneJoined(battle)
+    if joined then
+      drawPlayerFrame(0, 0, PLAYER_JOIN_Y, "head")
+    else
+      Font.drawBox(0, 0, 16, 4)
+    end
+    love.graphics.push("all")
+    love.graphics.intersectScissor(8, 8, 112, joined and 24 or 16)
   local playerImage, playerCrop, playerTrueColor = playerHead(battle)
-  drawHeadImage(playerImage, playerCrop, 8, 3, playerTrueColor)
+  drawHeadImage(playerImage, playerCrop, 8, 11, playerTrueColor)
 	  drawPartyRow(
 	    battle,
 	    battle.playerParty or battle.game.save.party,
-	    48, 16, 9, nativeRow)
+	    48, 21, 9, nativeRow)
+    love.graphics.pop()
 
 	  local enemyDrawn = battle.kind == "trainer" or battle.kind == "link"
 	  if enemyDrawn then
@@ -1160,6 +1266,10 @@ end
 	  local WIDE_MESSAGE_WIDTH = 288
 	  local MESSAGE_VISIBLE_LINES = 2
 
+
+	  -- Message rows are tagged at the point where battle actions enqueue them.
+	  -- This keeps pane ownership stable while the queue advances through
+	  -- animation/hold rows (where transient battle fields are unavailable).
 	  local function routeQueuedMessages(methodName, destinationFor)
 	    local original = BattleState[methodName]
 	    if type(original) ~= "function" then return end
@@ -1186,7 +1296,7 @@ end
 	    return battle.result == "win" and "center" or "generic"
 	  end)
 
-	  local function displayedMessagePane(battle)
+	  displayedMessagePane = function(battle)
 	    if battle.phase ~= "messages"
 	        or battle.shown ~= battle._betterMessageShown
 	        or #(battle.shown or {}) == 0 then
@@ -1195,6 +1305,9 @@ end
 	    return battle._betterMessagePane
 	  end
 
+	  -- Reflow the engine's decoded message lines before the first glyph is
+	  -- revealed. Player messages use the compact pane width; centered and
+	  -- generic messages use the full available width.
 	  local originalStartMessage = BattleState.startMessage
 	  BattleState.startMessage = function(battle, item)
 	    local active = setting(battle)
@@ -1224,6 +1337,11 @@ end
     local lines, total = {}, 0
     local groups, group = {}, nil
 
+    -- The engine has already split stock text at its original narrow
+    -- textbox width. Rejoin ordinary newline-separated chunks so the
+    -- widened BetterMenus message pane can wrap them again.
+    -- A line marked cont=true follows \v and must remain a separate
+    -- continuation/page segment.
     local function appendSourceLine(line)
       if line.cont then
         if group then groups[#groups + 1] = group end
@@ -1276,6 +1394,9 @@ end
 
 		local continuation = first == 1 and group.cont or false
 
+		-- A stock \v marker should only pause after a full two-line
+		-- player pane. It must not pause after the first visual line
+		-- when the second line still fits in the same pane.
 		if continuation and (#lines % MESSAGE_VISIBLE_LINES) ~= 0 then
 		  continuation = false
 		end
@@ -1358,6 +1479,7 @@ end
 	  return math.max(3, math.min(38, math.ceil(maxWidth / 8) + 2))
 	end
 
+	-- Centered, content-sized pane for wild intro and post-battle messages.
 	local function drawCenteredMessageBox(battle)
 	  local widthTiles = battleMessageWidthTiles(battle)
 	  local lineCount = math.max(
@@ -1395,11 +1517,13 @@ end
 	  return tx * 8, ty * 8, widthTiles * 8, heightTiles * 8, "bottom"
 	end
 
+	-- Player send-out and move messages use the same compact pane as
+	-- "What will <PLAYER POKEMON> do?".
 	local function drawPlayerMessageBox(battle)
 	  local tx, ty, tw, th = 22, 8, 16, 4
 
 	  love.graphics.setColor(0, 0, 0, 1)
-	  Font.drawBox(tx, ty, tw, th)
+	  drawPlayerFrame(tx * 8, ty * 8, PLAYER_PANE_H, "lower")
 
 	  drawShownMessageLines(
 	    battle,
@@ -1415,7 +1539,7 @@ end
 	    Font.drawCode(0xEE, 296, 88)
 	  end
 
-	  return 176, 64, 128, 32, "top"
+	  return 176, 64, 128, PLAYER_PANE_H, "top"
 	end
 
   local function wrapWords(text, maxWidth)
@@ -1436,7 +1560,7 @@ end
 	local function drawBetterCommandMenu(battle)
 	  if not battle.safari and not battle.demo
 	      and battle._betterCommandMenuOpen == true then
-	    Font.drawBox(22, 8, 16, 5)
+	    drawPlayerFrame(176, 64, PLAYER_PANE_H, "lower")
 	    love.graphics.setColor(0, 0, 0, 1)
 	    Font.draw(Strings("FIGHT"), 192, 72)
 	    Font.drawCode(0xE1, 256, 72)
@@ -1451,7 +1575,7 @@ end
 	  end
 
 	  if not battle.safari and not battle.demo then
-	    Font.drawBox(22, 8, 16, 4)
+	    drawPlayerFrame(176, 64, PLAYER_PANE_H, "lower")
 	    love.graphics.setColor(0, 0, 0, 1)
 	    local who = battle.player and battle.player.name or ""
 	    local prompt = Strings("What will") .. " "
@@ -1459,7 +1583,7 @@ end
 	    for i, line in ipairs(wrapWords(prompt, 112)) do
 	      Font.draw(line, 184, 72 + (i - 1) * 8)
 	    end
-	    return 176, 64, 128, 32, "top"
+	    return 176, 64, 128, PLAYER_PANE_H, "top"
 	  end
 
 	  Font.drawBox(22, 8, 16, 4)
@@ -1526,7 +1650,8 @@ end
 	end
 
   local function drawBetterMoveMenu(battle, moves, selected)
-    Font.drawBox(22, 8, 16, 10)
+    love.graphics.setColor(0, 0, 0, 1)
+    drawPlayerFrame(176, 64, 80, "lower")
     for i = 1, 4 do
       local move = moves and moves[i]
 	    local y = 73 + (i - 1) * 12
@@ -1548,6 +1673,8 @@ end
 	  return 176, 64, 128, 80, "top"
   end
 
+  -- WideBattle.navigate has no battle argument. Scope the list mapping to
+  -- this battle's update only; command-menu and stock-grid input stay native.
   local inputBattle
   local originalUpdate = BattleState.update
   BattleState.update = function(battle, ...)
@@ -1649,10 +1776,13 @@ end
 	  return not (stack and stack.top) or stack:top() == battle
 	end
 
-  local BETTER_BATTLE_SCALE = 0.50
+  local BETTER_BATTLE_SCALE = 0.50 -- internal only; no options entry
   local BETTER_BATTLE_SPRITE_SCALE = 0.85
   local spriteLayerCache = setmetatable({}, { __mode = "k" })
 
+  -- Measure the completed detached sprite, not its nominal 64x64 slot.
+  -- The contact band determines vertical grounding. A separate torso
+  -- window determines the stable body-center X anchor.
   local function measureShadowFootprint(canvas, region)
     local g = love.graphics
     local ok, data = pcall(function()
@@ -1740,6 +1870,7 @@ end
       3, math.floor(visibleWidth * 0.08 + 0.5))
     local contactY = absoluteBottom
 
+    -- Ignore a lowest row made only from isolated decorative pixels.
     for y = absoluteBottom, top, -1 do
       local row = rows[y]
       if row.count >= supportPixels and row.longest >= 2 then
@@ -1834,7 +1965,7 @@ end
     local r = battle.game.renderer:frameRects()
     local step = math.max(1, math.floor(r.Up * BETTER_BATTLE_SCALE + 1e-6))
     local hudY = step / r.dpiY
-
+    -- Leave the complete 48px player panel, including XP, below its feet.
     local playerGround = math.min(142, math.floor(
       (r.vuy + r.vuh - r.uoy - 50 * hudY) / r.Uy))
     local baseEnemyGround = playerGround - 32
@@ -1895,7 +2026,8 @@ end
 	      renderBetterBattleBottom(battle, bottomVisible)
     end)
     love.graphics.pop()
-
+    -- Semantic fills/icons mark canvas-local bounds. Move just this draw's
+    -- marks into the HUD list, including on an error, never onto the field.
     for i = firstMark, #marks do
       if PaletteFX.honorsTrueColor() then zones[#zones + 1] = marks[i] end
     end
@@ -1906,7 +2038,7 @@ end
 
     if playerHeadDrawn then
       anchorWideHud(battle, 0, 0, 128, 32, "top",
-        betterBattlePlacement("top-left", 4, -12))
+	        betterBattlePlacement("top-left", 4, 0))
     end
     if enemyHeadDrawn then
       anchorWideHud(battle, 176, 0, 128, 32, "topright",
@@ -1927,6 +2059,8 @@ end
 	      placement = betterBattlePlacement("center", 0, 0)
 	    elseif bottomAnchor == "bottom" then
 	      placement = betterBattlePlacement("center-bottom", 0, 0)
+	    elseif playerPaneJoined(battle) then
+	      placement = betterBattlePlacement("top-left", 4, PLAYER_JOIN_Y)
 	    else
 	      placement = betterBattlePlacement("top-left", 4, 20)
 	    end
@@ -1937,6 +2071,8 @@ end
     return true
   end
 
+  -- Keep native sprite drawing intact, then scale its finished layer through
+  -- the same placement function used by the panels.
   local function withBetterBattleField(battle, draw)
     local geometry = betterBattleGeometry(battle)
     local renderer = battle.game.renderer
@@ -1967,6 +2103,8 @@ end
       local previous = g.getCanvas()
       if previous ~= renderer.canvas then return callback() end
 
+      -- Preserve the field already painted before the first Pokémon.
+      -- Subsequent native drawing remains above the detached sprites.
       if not renderer.gen1BetterBattleSpriteLayers then
         local field = layerFor("field")
         field.nativeField = true
@@ -2013,6 +2151,9 @@ end
       local originalDrawBattlerPic = battle.drawBattlerPic
       local manualWrapperInstalled = false
 
+      -- Manual coordinates are authored in the canonical 56x56 front
+      -- sprite. Use the actual draw origin and active transform so both
+      -- sides follow their sprite placement without measuring alpha bounds.
       if (shadowProfile or wingSettings or (type(manualAnchorX) == "number"
           and type(manualContactY) == "number"))
           and type(originalDrawBattlerPic) == "function" then
@@ -2247,10 +2388,13 @@ end
         layer.shadowManualContactY = manualContactY
       end
 
+      -- Frame changes retain the last valid footprint until a replacement
+      -- is available. Never measure transient slides, shakes or effects.
       local hasManualAnchor = type(manualAnchorX) == "number"
         and type(manualContactY) == "number"
       if hasManualAnchor and manualOrigin and footprintState.settled then
-
+        -- Keep the measured fields deliberately neutral: authored baseWidth
+        -- and baseHeight control the ellipse instead of frame alpha bounds.
         local footprint = {
           automatic = false,
           centerX = manualOrigin.centerX,
@@ -2263,7 +2407,7 @@ end
           visibleRight = manualOrigin.centerX,
         }
         layer.shadowFootprint = footprint
-
+        -- Keep the authored body projection stable while frames animate.
         layer.shadowAnchor = layer.shadowAnchor or {
           centerX = manualOrigin.centerX,
           contactY = manualOrigin.contactY,
@@ -2312,6 +2456,8 @@ end
               + (footprint.visibleRight - footprint.visibleLeft) * anchorX
           end
 
+          -- Keep the chosen body anchor stable; animation changes
+          -- dimensions and contact rows without making the shadow jump.
           layer.shadowAnchor = layer.shadowAnchor or {
             centerX = centerX,
             contactY = footprint.contactY,
@@ -2333,7 +2479,8 @@ end
       local first = #marks + 1
       local x, _, w = g.getScissor()
       g.push("all")
-
+      -- Native WideBattle clips at FIELD_BOTTOM. The compact layout uses
+      -- that formerly reserved message area for the Pokémon's lower rows.
       g.setScissor(x or 0, 0, w or 304, 144)
       g.translate(0, dy)
       local ok, result = pcall(callback)
@@ -2467,7 +2614,10 @@ end
 
 	love.graphics.pop()
 	end
-
+  -- Draw-time presentation shim: while the engine paints its own HUD, expose
+  -- the native level instead of the mutually-exclusive status label. The
+  -- matching renderer then adds that saved status just to the left. No panel
+  -- pixels are cleared or replaced, preserving the frosted background.
   local function withNativeLevels(battle, shortenNames, draw)
     local restores = {}
     local result
@@ -2559,7 +2709,9 @@ end
 	  local ok, result
 	  if betterBattle then
 		ok, result = pcall(function()
-
+		  -- BetterBattle renders the widened status panels itself. Do not let
+		  -- the native-HUD compatibility wrapper shorten those names before the
+		  -- custom renderer sees them.
 		  return withNativeLevels(battle, false, function()
           return withBetterBattleField(battle, function()
             return originalWideDraw(battle, unpack(args))
@@ -2595,6 +2747,11 @@ end
 	  return result
 	end
 
+  -- In the normal 160x144 renderer the battle sprites and native HUD share
+  -- one canvas. Render the native HUD into a transparent 160x144 layer first,
+  -- edit that layer in place, then composite it where the original draw would
+  -- have happened. This keeps the game's own tiles and drawing order without
+  -- clearing holes through the battlefield underneath the player panel.
   local originalClassicDrawHUDs = BattleState.drawHUDs
   local classicHudLayer
 
@@ -2682,6 +2839,11 @@ end
     return result
   end
 
+  -- Gender Mod 0.3.5 anchors the player glyph to the stock level row at
+  -- y=64. Our player panel moves that level row to y=56, so teach its public
+  -- BattleHUD contract the new coordinate while this HUD is enabled. Its
+  -- overlay also normally hides the glyph whenever a status is present;
+  -- expose the level slot just for that draw because our layout shows both.
   local function installGenderBridge(game)
     local _, hud = genderCompatibility(game)
     if not hud or hud.betterBattleHudCoordinatesV10 then return end
@@ -2692,16 +2854,21 @@ end
         local x, y = originalClassicXY(side, level)
         if setting() and (nativeStagedHudDepth > 0
             or nativeStagedOverlayDepth > 0) then
-
+          -- The authored gender art ends two transparent pixels before the
+          -- level glyph. At Battle Art's large integer scale that reads as a
+          -- loose gap, so close it by one native pixel without resampling.
           x = x + NATIVE_STAGED_GENDER_X_NUDGE
           if side == "player" then
-
+            -- Force the stock level row even if this bridge was hot-reloaded
+            -- on top of an older Battle Info HUD coordinate wrapper.
             y = 64
           end
           return x, y
         end
         if setting() and side == "player" then
-
+          -- Battle Art 1.8+ captures the stock HUD unchanged. Its player
+          -- name is still on y=56 and its level is still on y=64, so moving
+          -- the gender tile to our enhanced y=56 row would split the name.
           if stagedGenderCaptureDepth > 0 then
             return STAGED_GENDER_SCRATCH_X, STAGED_GENDER_SCRATCH_Y
           end
@@ -2767,7 +2934,9 @@ end
         end
         local result
         if nativeStagedOverlay then
-
+          -- Gender Mod draws a second coloured glyph after Battle Art has
+          -- captured the HUD. Keep that pass on the same stock level row as
+          -- the captured glyph instead of repainting it through the name.
           nativeStagedOverlayDepth = nativeStagedOverlayDepth + 1
         end
         local ok, err = xpcall(function()
@@ -2825,7 +2994,8 @@ end
         or type(g.draw) ~= "function" or type(g.getCanvas) ~= "function"
         or type(g.setCanvas) ~= "function" then return nil end
     if not genderCellLayer then
-
+      -- The authored icon is 8x8. Dramatic Shape can add a one-pixel shadow
+      -- down/right while baking the HUD, so retain that ninth edge too.
       local okCanvas, canvas = pcall(g.newCanvas,
         STAGED_GENDER_CAPTURE_SIZE, STAGED_GENDER_CAPTURE_SIZE)
       if not okCanvas or not canvas then return nil end
@@ -2859,7 +3029,9 @@ end
     g.push("all")
     g.setCanvas(layer)
     if genderCell then
-
+      -- Gender Mod originally paints into a clean scratch cell so rebuilding
+      -- the player HUD cannot copy name, underline or panel pixels along with
+      -- its authored icon. Remove that staging cell before the band is moved.
       if type(g.setBlendMode) == "function" then
         g.setBlendMode("replace", "premultiplied")
       end
@@ -2870,7 +3042,10 @@ end
     end
     if type(g.setBlendMode) == "function" then g.setBlendMode("alpha") end
     if inkPass then
-
+      -- Some Dramatic Shape forks bake white-on-dark HUD ink through a
+      -- shader while creating the texture. Clear the original player block
+      -- on the finished layer, then send our replacement glyphs through that
+      -- same pass so they inherit the fork's current contrast treatment.
       if playerVisible(battle) then clearStagedPlayerHud() end
       inkPass(function() drawStagedHudContent(battle, true, false) end)
       drawStagedSemanticHpFills(battle)
@@ -2885,6 +3060,11 @@ end
     if previous then g.setCanvas(previous) else g.setCanvas() end
   end
 
+  -- Staged battle providers publish their HUD as a separate transparent
+  -- texture. Palette that texture in isolation so BetterMenus can cover the
+  -- provider's panels without ever sending the battle scene or its sprites
+  -- through the menu shader. Re-seat native HP fills afterward so their
+  -- semantic green/yellow/red colors remain intact.
   local providerPaletteLayers = setmetatable({}, { __mode = "k" })
   local providerPaletteFailures = {}
 
@@ -2950,6 +3130,9 @@ end
     return record.canvas
   end
 
+  -- Dramatic Shape snapshots the original classic HUD into a 160x144 texture
+  -- and then moves that texture to the window edges. Edit that texture before
+  -- it is placed; staged battles never draw these additions afterward.
   local function installDramaticBridge(game, companionId)
     local exports = game and game.mods and game.mods.exports
     local api = exports and exports[companionId]
@@ -2972,6 +3155,12 @@ end
     if usesNativeStagedHud then nativeStagedHudOwner = true end
     if overworld.betterBattleHudTextureEditorV6 then return end
 
+    -- Battle Art 1.8+ publishes and owns a complete snapped HUD pipeline.
+    -- Repainting its private 160x144 capture through the older 1.7 bridge
+    -- changes the block dimensions after the fork has already calculated its
+    -- window-edge placement; in move selection that pulls names and HP bars
+    -- back into the arena. Leave the fork's HUD capture and placement intact.
+    -- The classic and engine-WIDE renderers remain enhanced below.
     if usesNativeStagedHud then
       overworld.hudTexture = function(liveBattle, ...)
         local args = { ... }
@@ -2995,13 +3184,18 @@ end
       return
     end
 
+    -- Dramatic Shape normally frosts the stock 40px-tall player HUD. Our
+    -- texture keeps the same bottom/right edges but grows upward by one tile
+    -- and leftward by two, so extend only the matching panel rect while it is
+    -- enabled. OFF immediately restores Dramatic Shape's untouched geometry.
     if type(innerSnapRects) == "function" then
       overworld.snapRects = function(shot)
         local rects, bandPlacement = innerSnapRects(shot)
         if setting() and rects and rects.player and shot then
           local placement = bandPlacement and bandPlacement.player
           if type(placement) == "table" then
-
+            -- BATTLE_ART_VOXEL_FORK can scale the snapped HUD separately
+            -- from the battle letterbox and reports that exact placement.
             local scale = placement.scale or shot.scale or 1
             rects.player[1] = (placement.x or 0) + 56 * scale
             rects.player[2] = placement.y
@@ -3009,7 +3203,8 @@ end
             rects.player[3] = 104 * scale
             rects.player[4] = 48 * scale
           else
-
+            -- Upstream Dramatic Shape keeps the band at shot.scale. Grow the
+            -- returned native panel left/up without assuming its absolute x.
             local scale = shot.scale or 1
             rects.player[1] = rects.player[1] - 16 * scale
             rects.player[2] = rects.player[2] - 8 * scale
@@ -3076,7 +3271,8 @@ local originalBattlePalettes = BattleState.sgbPalettes
 
 BattleState.sgbPalettes = function(battle, ...)
   local zones = originalBattlePalettes(battle, ...) or {}
-
+  -- BetterBattle supplies its palette directly to its HUD-canvas blit.
+  -- Its atlas rectangles must never recolor the main Pokémon canvas.
   if setting(battle) then return zones end
 
   if not (battle and battle:wideLayout() and menuColors) then
@@ -3087,6 +3283,9 @@ BattleState.sgbPalettes = function(battle, ...)
   local battleMode = effectiveBattleMode(battle)
   local betterBattle = setting(battle)
 
+	-- BetterBattle owns five detached regions in the extended HUD canvas. The
+	-- stock/provider regions remain untouched here; their palette coverage is
+	-- supplied by the renderer hook below.
 	if betterBattle and battle:extendedHUD() then
 	  zones[#zones + 1] = PaletteFX.zone(palette, 0, 0, 15, 3)
 	  zones[#zones + 1] = PaletteFX.zone(palette, 22, 0, 37, 3)
@@ -3102,6 +3301,10 @@ BattleState.sgbPalettes = function(battle, ...)
 	  end
 	end
 
+	-- The HUD panels use the menu palette, but HP and EXP fills are semantic
+	-- colors. Re-blit only those two-pixel fills without the shade shader so
+	-- inverse mode cannot turn green/blue into a menu shade. Keeping the
+	-- opt-out this narrow also lets the custom XP X follow the menu palette.
   local function trueColorFill(battler, x, y, segments, pixels)
     local hp = shownHP(battler)
     local maxHp = battler.mon.stats.hp
@@ -3134,7 +3337,8 @@ BattleState.sgbPalettes = function(battle, ...)
 		end
 	  end
   elseif battleMode == "off" then
-
+    -- Stock WIDE uses a 48-pixel animated HP value. Exempt only its
+    -- two-pixel semantic fill from the BetterMenus palette.
     if enemyVisible(battle) then
       trueColorFill(battle.enemy, 24, 19, 11, battle.enemy.shownPx)
     end
@@ -3142,7 +3346,7 @@ BattleState.sgbPalettes = function(battle, ...)
       trueColorFill(battle.player, 208, 75, 11, battle.player.shownPx)
     end
   else
-
+    -- MOD provider HUDs retain their existing provider-owned exemption.
     if enemyVisible(battle) then
       zones[#zones + 1] = { colors = false, x = 8, y = 16, w = 112, h = 8 }
 	  end

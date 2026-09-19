@@ -1,5 +1,32 @@
-
+-- Pixel-art scenes are an outer, true-color layer. Never palette-map this art.
 local BetterBattleBackdrops = {}
+local ShadowEngine = nil
+
+local function loadShadowEngine(mod)
+  if ShadowEngine then return ShadowEngine end
+  if mod and type(mod.read) == "function" then
+    local source = mod:read("better_shadow_engine.lua")
+    if source then
+      local chunk, err = load(source, "better_shadow_engine.lua", "t")
+      if chunk then
+        local ok, result = pcall(chunk)
+        if ok and result then
+          ShadowEngine = result
+          return ShadowEngine
+        else
+          print("[Gen1Better] Failed to load better_shadow_engine.lua: " .. tostring(result))
+        end
+      else
+        print("[Gen1Better] Failed to compile better_shadow_engine.lua: " .. tostring(err))
+      end
+    end
+  end
+  if not ShadowEngine then
+    pcall(function() ShadowEngine = require("better_shadow_engine") end)
+  end
+  return ShadowEngine
+end
+BetterBattleBackdrops.loadShadowEngine = loadShadowEngine
 local sceneNames = [[
 boss_agatha boss_bruno boss_lorelei boss_lance boss_champion
 boss_giovanni_silph boss_giovanni_hideout boss_giovanni_gym
@@ -46,7 +73,50 @@ local WING_SHADOW_RINGS = {
   { scale = 0.90, alpha = 0.018 },
   { scale = 0.82, alpha = 0.022 },
 }
+-- Reduce the prior 1.15 global multiplier by 10% while preserving ring
+-- proportions and per-species opacityScale overrides.
 local SHADOW_GLOBAL_OPACITY = 1.035
+
+local function drawSoftShadow(g, x, y, width, height, alphaScale,
+    innerRing, side, middleRing, rotationDegrees, color, customRings)
+  if ShadowEngine and ShadowEngine.drawSoftShadow then
+    return ShadowEngine.drawSoftShadow(g, x, y, width, height, alphaScale,
+      innerRing, side, middleRing, rotationDegrees, color, customRings)
+  end
+  -- Safety net fallback: inline BetterBattle feathered oval loop
+  local rings = customRings or SHADOW_RINGS
+  local direction = side == "player" and -1 or 1
+  local rotation = math.rad(rotationDegrees or 0) * direction
+  local cr, cg, cb = 0, 0, 0
+  if type(color) == "table" then
+    cr = tonumber(color[1] or color.r) or 0
+    cg = tonumber(color[2] or color.g) or 0
+    cb = tonumber(color[3] or color.b) or 0
+  end
+  if rotation ~= 0 then
+    g.push()
+    g.translate(x, y)
+    g.rotate(rotation)
+    x, y = 0, 0
+  end
+  for index, ring in ipairs(rings) do
+    local ringX, ringY = x, y
+    local ringWidth, ringHeight = width * ring.scale, height * ring.scale
+    local tuning = index == #rings and innerRing
+      or (index == 2 and middleRing)
+    if type(tuning) == "table" then
+      ringX = x + width * (tuning.offsetX or 0) * direction
+      ringY = y + height * (tuning.offsetY or 0)
+      ringWidth = width * (tuning.widthScale or ring.scale)
+      ringHeight = height * (tuning.heightScale or ring.scale)
+    end
+    g.setColor(cr, cg, cb, ring.alpha * alphaScale)
+    g.ellipse("fill", ringX, ringY, ringWidth / 2, ringHeight / 2)
+  end
+  if rotation ~= 0 then g.pop() end
+end
+BetterBattleBackdrops.drawSoftShadow = drawSoftShadow
+
 local landmarks = {
   AGATHAS_ROOM = "boss_agatha", BRUNOS_ROOM = "boss_bruno",
   LORELEIS_ROOM = "boss_lorelei", LANCES_ROOM = "boss_lance", CHAMPIONS_ROOM = "boss_champion",
@@ -79,6 +149,7 @@ local seas = { ROUTE_12=true, ROUTE_13=true, ROUTE_19=true, ROUTE_20=true, ROUTE
   PALLET_TOWN=true, VERMILION_CITY=true, CINNABAR_ISLAND=true, VERMILION_DOCK=true }
 local function starts(s, prefix) return s:sub(1, #prefix) == prefix end
 
+-- Pure: false is an intentional plain scene, distinct from no matching rule.
 function BetterBattleBackdrops.resolve(c)
   local map, water = c.mapId or "", c.surfing or c.fishing
   if landmarks[map] then return landmarks[map], "landmark" end
@@ -142,6 +213,8 @@ function BetterBattleBackdrops.sceneIds()
 end
 
 function BetterBattleBackdrops.install(mod, api)
+  local shadowEngine = loadShadowEngine(mod)
+  api.shadowEngine = shadowEngine
   local source, readErr = mod:read("better_battle_shadow_settings.lua")
   assert(source, readErr)
   local chunk, compileErr = load(source,
@@ -185,7 +258,7 @@ function BetterBattleBackdrops.install(mod, api)
       trainerClass=battle.oppClass, partyIndex=battle.partyIndex }
     local def = game and game.data and game.data.maps and game.data.maps[c.mapId]
     c.tileset = def and def.tileset or c.tileset
-
+    -- The off-bridge junior trainer at x=5 must not inherit Nugget Bridge.
     if c.mapId == "ROUTE_24" and c.kind == "trainer" then
       for _, o in ipairs(def and def.objects or {}) do
         if o.trainerClass == c.trainerClass and o.trainerParty == c.partyIndex
@@ -319,39 +392,6 @@ function BetterBattleBackdrops.install(mod, api)
     end
     return not battle.showEnemyTrainer and not battle.enemyHidden
       and not battle.enemySendingOut
-  end
-  local function drawSoftShadow(g, x, y, width, height, alphaScale,
-      innerRing, side, middleRing, rotationDegrees, color, customRings)
-    local rings = customRings or SHADOW_RINGS
-    local direction = side == "player" and -1 or 1
-    local rotation = math.rad(rotationDegrees or 0) * direction
-    local cr, cg, cb = 0, 0, 0
-    if type(color) == "table" then
-      cr = tonumber(color[1] or color.r) or 0
-      cg = tonumber(color[2] or color.g) or 0
-      cb = tonumber(color[3] or color.b) or 0
-    end
-    if rotation ~= 0 then
-      g.push()
-      g.translate(x, y)
-      g.rotate(rotation)
-      x, y = 0, 0
-    end
-    for index, ring in ipairs(rings) do
-      local ringX, ringY = x, y
-      local ringWidth, ringHeight = width * ring.scale, height * ring.scale
-      local tuning = index == #rings and innerRing
-        or (index == 2 and middleRing)
-      if type(tuning) == "table" then
-        ringX = x + width * (tuning.offsetX or 0) * direction
-        ringY = y + height * (tuning.offsetY or 0)
-        ringWidth = width * (tuning.widthScale or ring.scale)
-        ringHeight = height * (tuning.heightScale or ring.scale)
-      end
-      g.setColor(cr, cg, cb, ring.alpha * alphaScale)
-      g.ellipse("fill", ringX, ringY, ringWidth / 2, ringHeight / 2)
-    end
-    if rotation ~= 0 then g.pop() end
   end
 
   local function clamp(value, minimum, maximum)
@@ -762,6 +802,7 @@ function BetterBattleBackdrops.install(mod, api)
             alphaScale = alphaScale * SHADOW_SHAPE.flyingAlphaScale
           end
 
+          -- Apply tuning without changing the cached animation footprint.
           local sourceX = anchor.centerX
             + shadowSettings.value(species, side, "offsetX")
           sourceY = sourceY + shadowSettings.value(species, side, "offsetY")
@@ -900,7 +941,7 @@ function BetterBattleBackdrops.install(mod, api)
     local own = rawget(battle, "extendedWorldHUD")
     local g = love.graphics
     g.push("all")
-
+    -- This is the actor canvas, not the outer art canvas. No white field survives.
     g.clear(0, 0, 0, 0)
     battle.extendedWorldHUD = function() return true end
     local ok, result = pcall(wideDraw, battle, ...)
@@ -972,9 +1013,11 @@ function BetterBattleBackdrops.install(mod, api)
         local toImg = toRecord and imageFor(toRecord)
 
         if not fromImg and not toImg then
+          -- Plain -> Plain: no-op / clear to plain field
           drawPlainField(1.0)
           r.transition = nil
         elseif fromImg and toImg then
+          -- Image -> Image
           if t.type == "crossfade" then
             drawBackdropImg(fromImg, 1.0)
             drawBackdropImg(toImg, progress)
@@ -994,6 +1037,7 @@ function BetterBattleBackdrops.install(mod, api)
             drawBackdropImg(toImg, 1.0)
           end
         elseif fromImg and not toImg then
+          -- Image -> Plain: draw plain field underneath, fade out fromImg
           drawPlainField(1.0)
           if t.type == "crossfade" then
             drawBackdropImg(fromImg, 1.0 - progress)
@@ -1010,6 +1054,7 @@ function BetterBattleBackdrops.install(mod, api)
             end
           end
         elseif not fromImg and toImg then
+          -- Plain -> Image: draw plain field underneath, fade in toImg
           drawPlainField(1.0)
           if t.type == "crossfade" then
             drawBackdropImg(toImg, progress)
@@ -1046,7 +1091,7 @@ function BetterBattleBackdrops.install(mod, api)
     end)
     g.setCanvas(previous); g.pop()
     if not ok then error(err, 0) end
-
+    -- Claim only after downstream providers have had their chance this frame.
     renderer:setWorldOverride(outerCanvas)
     renderer.battleDim = 0
     r.rendered, r.inactiveReason = true, nil

@@ -1,3 +1,6 @@
+-- Expanded storage for BetterBag.  The engine already stores inventory
+-- as item-id dictionaries, so native saves do not need a migration; only the
+-- cartridge-era validation limits and quantity box width need to change.
 
 local SLOT_MAX = 255
 local STACK_MAX = 999
@@ -23,6 +26,9 @@ return function(mod, betterBagScreen, compatibility)
     return ids
   end
 
+  -- Respect a larger capacity installed before this mod instead of reducing
+  -- it. Kanto Reforged deliberately owns a 60-slot pocket system, so keep its
+  -- limit rather than replacing that controller contract with our 255 slots.
   local currentSlots = tonumber(mod.content.constants:get("bagSize")) or 20
   local activeSlots = compatibility.kantoReforged
     and currentSlots or math.max(currentSlots, SLOT_MAX)
@@ -30,13 +36,17 @@ return function(mod, betterBagScreen, compatibility)
     mod.content.constants:patch("bagSize", activeSlots)
   end
 
+  -- Bag.add is the engine's single acquisition/withdrawal guard.  Keep its
+  -- original behavior through 99, then extend the same slot/order rules up
+  -- to the configured stack maximum.  Module tags make dev hot reload safe.
   Bag.__betterBagStackMax = math.max(
     tonumber(Bag.__betterBagStackMax) or 99, STACK_MAX)
   if not Bag.__betterBagStackLimitPatched then
     Bag.__betterBagStackLimitPatched = true
     Bag.__betterBagOriginalAdd = Bag.add
     Bag.add = function(save, id, qty, data)
-
+      -- If a previously loaded inventory mod already accepts this addition,
+      -- retain its behavior (including any limit higher than ours).
       if Bag.__betterBagOriginalAdd(save, id, qty, data) then return true end
 
       local amount = qty or 1
@@ -57,6 +67,8 @@ return function(mod, betterBagScreen, compatibility)
     end
   end
 
+  -- A three-digit quantity needs one extra tile.  This also covers PC
+  -- withdraw/toss selectors for any existing expanded stack.
   if not QuantityBox.__betterBagWideQuantityPatched then
     QuantityBox.__betterBagWideQuantityPatched = true
     QuantityBox.__betterBagOriginalNew = QuantityBox.new
@@ -88,6 +100,9 @@ return function(mod, betterBagScreen, compatibility)
     end
   end
 
+  -- PC item capacity is not yet a public content constant.  Delegate to the
+  -- complete native PlayerPC screen, raising its existing field limit and
+  -- constraining deposits so a stored stack cannot pass x999.
   local playerPC = {
     new = function(game)
       game.data.field = game.data.field or {}

@@ -214,8 +214,12 @@ The script verifies:
 ## Shadow system and scene interaction
 
 BetterBattle renders soft, multi-layered feathered shadows beneath battlers when
-a 2D backdrop is active. Each species has baseline dimensions, grounding rules,
+a 2D backdrop is active, powered by the shared Actor Shadow Engine (`schemaVersion = 1`, `profileVersion = 1`). Each species has baseline dimensions, grounding rules,
 and optional manual limb shapes or dynamic wing-feathering detectors.
+
+Because shadow profiles are unified across the mod, species definitions registered
+via `betterBattle.shadowSettings.registerSpecies` are immediately available in both
+combat backdrops and [BetterScenes narrative cutscenes](BetterScenes.md#actor-shadows--floor-contact).
 
 Because different battle scenes represent different environments (e.g. solid ground,
 water, dark interiors, or weightless outer space), BetterBattle provides two ways

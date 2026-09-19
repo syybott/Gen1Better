@@ -264,14 +264,16 @@ BetterBattle to display properly. No mon-paper backing is added.
 
 ## 3. Battle shadows and custom scenes
 
-BetterBattle includes an extensible battle shadow system that renders soft,
-feathered shadows beneath combatants across all 2D battle scenes. Shadows
-automatically accommodate grounding, dynamic wings, manual limb ellipses, and
-sprite scaling.
+BetterBattle and BetterScenes share a unified, decoupled Actor Shadow Engine
+(`schemaVersion = 1`, `profileVersion = 1`) that renders soft, feathered contact
+shadows beneath combatants and story cutscene actors across all 320×180 scenes.
+Shadows automatically accommodate grounding, dynamic wings, manual limb ellipses,
+stance tilts, and sprite scaling.
 
-Modders can manipulate shadows dynamically using the `bettermenus.battle_shadow`
+Modders can manipulate shadows dynamically in combat using the `bettermenus.battle_shadow`
 hook, register scene-wide adjustments via `betterBattle.shadowSettings.registerScene`,
-or register custom species using `betterBattle.shadowSettings.registerSpecies`.
+or register custom species using `betterBattle.shadowSettings.registerSpecies`. Registered
+species profiles are immediately accessible to both BetterBattle and BetterScenes.
 
 ### Hook: `bettermenus.battle_shadow`
 
@@ -390,6 +392,25 @@ Helper methods on `betterBattle.shadowSettings`:
 - `setSide(species, side, key, value)`: Set a side-specific property (`player` or `enemy`).
 - `addShape(species, shape, side)`: Append a manual shadow shape to `shadowShapes`.
 
+#### Unified Shadow Configuration Schema
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `baseWidth` | number | Baseline ellipse width in virtual pixels. |
+| `baseHeight` | number | Baseline ellipse height in virtual pixels. |
+| `widthScale` / `heightScale` | number | Scaling multipliers applied to base dimensions (default `1.0`). |
+| `offsetX` / `offsetY` | number | Positional offsets relative to ground contact point. |
+| `rotationDegrees` | number | Stance tilt angle in degrees. |
+| `opacity` / `alpha` | number | Shadow opacity (0.0 to 1.0). |
+| `color` | table | Normalized RGB `{ r, g, b }` for environment tinting. |
+| `grounding` | string | Stance behavior: `"grounded"`, `"hovering"`, `"floating"`, `"flying"`. |
+| `anchorMode` | string | Anchor resolution: `"feet"`, `"manual"`, or `"auto"`. |
+| `manualAnchorX` / `manualContactY` | number | Explicit sprite pixel coordinates for contact anchor. |
+| `bodyRegion` | table | Normalized sub-rectangle `{ left, right, top, bottom }` for measurement. |
+| `wingShadows` | table | Array of wing detector zones `{ region = { left, right, top, bottom }, opacity }`. |
+| `shadowShapes` | table | Array of explicit custom shapes (`{ width, height, offsetX, offsetY, alpha, ... }`). |
+| `innerRing` / `middleRing` | table | Concentric inner feathering ring specifications. |
+| `soft` | boolean | Enables cosine multi-ring soft edge feathering (default `true`). |
+
 ## 4. Custom-menu scaling
 
 **Hook:** `bettermenus.ui_scale`
@@ -470,7 +491,7 @@ Changing the returned diagnostic table does not change scene selection.
 
 ## 6. BetterScenes story stage exports
 
-`mod.exports.betterScenes` provides a standalone 16:9 story stage for cutscenes, underlays, and narrative presentation outside of combat:
+`mod.exports.betterScenes` provides a standalone 16:9 widescreen story stage (320×180 native integer-scaled pixels) decoupled from combat states. It allows modders and story authors to create narrative cutscenes, character staging, comic dialogue bubbles, camera effects, atmospheric weather, and seamless transitions into battle.
 
 ```lua
 local mod = ...
@@ -489,16 +510,181 @@ betterScenes.show(false, { underlay = "black" })
 betterScenes.hide({ transition = "crossfade", duration = 0.35 })
 ```
 
-### Public API Contract
+### Complete Public API Reference
+
+#### 1. Scene Presentation & Underlays
 
 | Function | Returns | Description |
 | :--- | :--- | :--- |
 | `registerScene(id, config, sourceMod)` | `true, id` or `false, err` | Register a 320×180 story scene. Reserved prefixes (`gen1_*`, `better_*`, `system_*`) are protected. |
-| `show(idOrFalse, opts)` | `true, id` or `false, err` | Transition into a registered scene (`string`) or active plain underlay (`false`). |
-| `hide(opts)` | `true, nil` or `false, err` | Transition toward inactive, clearing presentation and unhooking the renderer. Idempotent. |
-| `current()` | `string`, `false`, or `nil` | Current scene ID (`string` = image, `false` = active plain, `nil` = inactive). |
-| `isActive()` | `boolean` | `true` when BetterScenes is actively presenting an image, underlay, or transition. |
-| `diagnostics()` | `table` | Detached snapshot containing lifecycle state, underlay, transition status, and dimensions. |
+| `show(idOrFalse, opts)` | `true, id` or `false, err` | Transition into a registered scene (`string`) or plain underlay (`false`). Transitions: `"cut"`, `"crossfade"`, `"flash"`. |
+| `hide(opts)` | `true, nil` or `false, err` | Transition toward inactive, clearing presentation and unhooking renderer. |
+| `current()` | `string`, `false`, or `nil` | Current scene ID (`string` = image, `false` = active plain underlay, `nil` = inactive). |
+| `isActive()` | `boolean` | `true` when BetterScenes is actively presenting an image, underlay, actor, sequence, or effect. |
+
+#### 2. Actor Staging & Relative Anchors
+
+Theatrical cast layer positioned in 320×180 stage coordinates. The actor base point (`x`, `y`) represents the actor's feet / bottom-center. Relative anchors (`head`, `mouth`, `top`) automatically scale and mirror with the actor. Staged actors can automatically inherit species shadow profiles or render custom soft floor contact shadows.
+
+| Function | Returns | Description |
+| :--- | :--- | :--- |
+| `setActor(slot, config, opts)` | `true, slot` or `false, err` | Stage an actor in preset slot (`"left"`, `"center"`, `"right"`) or custom named slot with explicit coordinates (`x`, `y`). Supports `path`, `species`, `shadow` (`true`, `false`, or schema table), and relative `anchors`. Transitions: `"cut"`, `"fade"`, `"slide"`. |
+| `clearActor(slot, opts)` | `true, slot` or `false, err` | Remove actor from stage with optional exit transition (`fade`, `slide`). |
+| `clearActors(opts)` | `true, count` | Remove all active actors from stage. |
+| `getActor(slot)` | `table` or `nil` | Query actor state (`x`, `y`, `scale`, `mirror`, `transitionActive`, `exiting`, `shadowState`). |
+| `getActorAnchor(slot, anchorName)` | `x, y` or `nil, err` | Resolve live stage coordinates for anchor (`"mouth"`, `"head"`, `"top"`). |
+
+```lua
+-- Stage trainer on the left with custom shadow, and Charizard on the right with calibrated species shadow:
+betterScenes.setActor("left", {
+  path = "assets/red.png",
+  mirror = false,
+  shadow = { baseWidth = 24, baseHeight = 6, offsetY = 1 },
+}, { transition = "fade", duration = 0.3 })
+
+betterScenes.setActor("right", {
+  path = "assets/charizard.png",
+  species = "CHARIZARD",
+  shadow = true,
+  scale = 1.0,
+}, { transition = "slide", duration = 0.4 })
+```
+
+#### 3. Comic Dialogue Bubbles, Subtitles & Emotes
+
+Anchored dialogue bubbles dynamically track speaker mouth coordinates live, clamping within stage bounds while the tail points directly to the speaker.
+
+| Function | Returns | Description |
+| :--- | :--- | :--- |
+| `showBubble(speaker, text, opts)` | `true, bubbleId` or `false, err` | Show dialogue bubble. `speaker` can be actor slot string, `{ x, y }`, or `"narrator"`. Styles: `"speech"`, `"thought"`, `"shout"`. Transitions: `"cut"`, `"fade"`, `"pop"`. |
+| `hideBubble(opts)` | `true, nil` or `false, err` | Hide active dialogue bubble. |
+| `getBubble()` | `table` or `nil` | Query active bubble layout, text, lines, tail coordinates, and state. |
+| `setSubtitle(text, opts)` | `true, nil` or `false, err` | Display widescreen cinematic letterbox subtitle (`bar = true`, `position = "bottom"|"top"|"center"`). |
+| `clearSubtitle(opts)` | `true, nil` or `false, err` | Clear active subtitle with optional fade transition. |
+| `getSubtitle()` | `table` or `nil` | Query active subtitle state. |
+| `showEmote(target, emoteType, opts)` | `true, emoteKey` or `false, err` | Display floating animated bounce emote over actor or coordinate (`"exclamation"`, `"question"`, `"heart"`, `"anger"`, `"sweat"`, `"dots"`, `"music"`). |
+| `clearEmote(target)` | `true, count` | Clear active emote by target, or all emotes if target is nil. |
+| `getEmotes()` | `table` | Query all active emotes. |
+
+```lua
+-- Oak speaks with an anchored comic bubble
+betterScenes.showBubble("left", "Welcome to the world of Pokémon!", { style = "speech" })
+
+-- Mew reacts with an emote puff
+betterScenes.showEmote("right", "exclamation", { duration = 1.5 })
+```
+
+#### 4. Declarative Story Sequence Runner
+
+Choreograph multi-step cutscenes using a linear step queue. Sequences handle pauses, player interaction, skipping, and clean resource scoping.
+
+| Function | Returns | Description |
+| :--- | :--- | :--- |
+| `playSequence(steps, opts)` | `true, seqId` or `false, err` | Run array of timeline steps. Options: `skippable = true/false`, `cleanup = true`, `onComplete = fn`, `onAbort = fn`. |
+| `stopSequence(opts)` | `true, nil` | Halts active sequence immediately and triggers `onAbort`. If `cleanup = true`, clears sequence-owned elements. |
+| `skipSequence()` | `true, nil` or `false, err` | Fast-forwards remaining instant steps to land safely on intended final scene state. |
+| `advanceSequence()` | `true, nextStep` or `false, err` | Unblocks player input barriers (`waitInput`) or fast-forwards timed waits. |
+| `getSequence()` | `table` or `nil` | Query sequence progress (`stepIndex`, `totalSteps`, `waitingInput`, `currentAction`, `skippable`). |
+
+**Supported Sequence Actions**:
+- `show` / `hide`: Background scenes and transitions (supports `wait = true`).
+- `actor` / `clearActor` / `clearActors`: Cast staging (supports `wait = true`).
+- `bubble` / `hideBubble`: Anchored dialogue bubbles.
+- `subtitle` / `clearSubtitle`: Cinematic letterbox narration.
+- `emote` / `clearEmote`: Floating reaction emotes.
+- `shake` / `stopShake`: Screen camera trauma (supports `wait = true`).
+- `flash`: Momentary combat strobe pulse (supports `wait = true`).
+- `tint` / `clearTint`: Ambient color grading (supports `wait = true`).
+- `vignette` / `clearVignette`: Restomod framing masks (supports `wait = true`).
+- `weather` / `clearWeather`: Atmospheric particle simulation.
+- `battle`: Decoupled combat transition (halts progression until battle concludes).
+- `wait`: Timed pause `{ action = "wait", duration = 0.5 }`.
+- `waitInput`: Player button prompt barrier `{ action = "waitInput" }`.
+- `call`: Custom script callback `{ action = "call", fn = function(api, seq) ... end }` (pcall-guarded).
+
+```lua
+betterScenes.playSequence({
+  { action = "show", scene = "dock_scene", transition = "crossfade", duration = 0.5, wait = true },
+  { action = "actor", slot = "left", path = "assets/oak.png", transition = "fade", wait = true },
+  { action = "bubble", speaker = "left", text = "Are you ready for your journey?" },
+  { action = "waitInput" },
+  { action = "hideBubble" },
+  { action = "weather", type = "rain", count = 25 },
+  { action = "shake", intensity = 4, duration = 0.5, wait = true },
+}, {
+  skippable = true,
+  cleanup = true,
+})
+```
+
+#### 5. 320×180 Stage FX & Camera Dynamics
+
+Atmospheric effects run natively in 320×180 integer space before scaling, preserving crisp pixel-art restomod visuals without subpixel blur.
+
+| Function | Returns | Description |
+| :--- | :--- | :--- |
+| `shakeScreen(opts)` | `true, nil` or `false, err` | Trigger deterministic camera shake. Options: `intensity`, `duration`, `direction` (`"both"`, `"horizontal"`, `"vertical"`), `pixelSnap = true`, `shakeUI = false`. |
+| `stopShake()` | `true, nil` | Immediately cancel active camera shake. |
+| `getShake()` | `table` | Query shake active state, offsets (`offsetX`, `offsetY`), and decay progress. |
+| `setTint(colorOrPreset, opts)` | `true, nil` or `false, err` | Apply full-stage ambient color wash. Presets: `"sunset"`, `"night"`, `"cave"`, `"underwater"`, `"poison"`, `"sepia"`, or custom `{ r, g, b, a }`. Supports smooth fade `duration`. |
+| `clearTint(opts)` | `true, nil` or `false, err` | Clear ambient tint back to neutral with optional fade duration. |
+| `getTint()` | `table` | Query active tint color, alpha, and transition progress. |
+| `flashScreen(colorOrPreset, opts)` | `true, nil` or `false, err` | High-impact momentary pulse. Modes: `"out"` (instant peak, decays to 0), `"inout"` (fades in, peaks at midpoint, decays to 0). Scope: `"stage"` or `"full"`. |
+| `stopFlash()` | `true, nil` | Immediately clear active flash. |
+| `getFlash()` | `table` | Query flash alpha and status. |
+| `setVignette(style, opts)` | `true, nil` or `false, err` | Apply framing mask: `"letterbox"` (top/bottom bars), `"spotlight"` (circle focus on coordinate/slot), `"dither"` (restomod Bayer border fade). |
+| `clearVignette(opts)` | `true, nil` or `false, err` | Clear vignette with optional fade duration. |
+| `getVignette()` | `table` | Query vignette style and alpha. |
+| `setWeather(weatherType, opts)` | `true, nil` or `false, err` | Simulate atmospheric retro particles (`"rain"`, `"snow"`, `"leaves"`, `"cherry_blossom"`, `"embers"`, `"dust"`). Supports isolated deterministic `seed`. |
+| `clearWeather(opts)` | `true, nil` or `false, err` | Clear weather with optional fade duration. |
+| `getWeather()` | `table` | Query weather active state, particle count, and particle positions. |
+
+#### 6. Decoupled Battle Handoff
+
+Seamlessly transition from a narrative cutscene into active combat (`BetterBattle`) using a decoupled, data-only token protocol.
+
+| Function | Returns | Description |
+| :--- | :--- | :--- |
+| `prepareBattleHandoff(opts)` | `true, token` or `false, err` | Generate serializable handoff token and begin pre-battle transition (`"swirl"`, `"blinds"`, `"mosaic"`, `"flash"`, `"cut"`). Snapshots atmosphere (`tint`, `weather`) into combat. |
+| `getBattleHandoff()` | `table` or `nil` | Query active or latest handoff token (`id`, `state`, `storySceneId`, `battleBackdropId`, `battleType`, `transitionProgress`, `outcome`). |
+| `cancelBattleHandoff()` | `true, nil` or `false, err` | Safely cancel handoff prior to combat handoff lock (`state = "cancelled"`). |
+| `resumeFromBattle(resultToken)` | `true, outcome` or `false, err` | Consume combat outcome (`"win"`, `"lose"`, `"flee"`, `"draw"`). Dispatches author callbacks and unblocks paused sequence. |
+
+```lua
+-- Trigger battle handoff from cutscene
+betterScenes.prepareBattleHandoff({
+  battleType = "boss",
+  trainerId = "giovanni",
+  battleBackdropId = "boss_giovanni_gym",
+  transition = "swirl",
+  duration = 0.8,
+  onHandoff = function(token)
+    -- BetterBattle consumes the token and starts combat
+  end,
+  onWin = function(api, result)
+    -- Play victory cutscene upon return
+    api.showBubble("left", "You have bested me...", { style = "speech" })
+  end,
+})
+
+-- When combat concludes, BetterBattle resumes the story:
+betterScenes.resumeFromBattle({
+  handoffId = "bh_1",
+  outcome = "win",
+})
+```
+
+#### 7. Diagnostics
+
+`betterScenes.diagnostics()` returns a detached, comprehensive snapshot of stage activity:
+- `active`: Boolean indicating if any visual element, transition, sequence, or effect is live.
+- `state`: `"inactive"`, `"plain"`, or `"image"`.
+- `sceneId`, `underlay`, `assetPath`: Active scene and underlay configuration.
+- `actors`: Table of all currently staged actors (including coordinates, scaling, mirroring, and `shadowState` telemetry: `mode`, `profileId`, `profileVersion`, `schemaVersion`, `shapes`).
+- `bubble`, `subtitle`, `emotes`: Active dialogue and reaction elements.
+- `sequence`: Active sequence status and step indices.
+- `shake`, `tint`, `flash`, `vignette`, `weather`: Active camera and atmosphere FX.
+- `battleHandoff`: Active or last battle handoff token state.
 
 ## 7. Options-screen marker
 

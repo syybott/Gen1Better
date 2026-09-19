@@ -78,11 +78,29 @@ See [Battle Backdrops](wiki/Battle-Backdrops.md) for the scene list and location
 
 ### BetterScenes
 
-A dedicated story stage and presentation overlay for narrative cutscenes outside of combat. Built with the same 320×180 integer-scaled pixel-art discipline, BetterScenes gives modders and creators full theatrical control:
+A dedicated 16:9 story stage and cinematic presentation subsystem for narrative cutscenes outside of combat. Built with the same 320×180 integer-scaled pixel-art discipline, BetterScenes gives modders and story authors complete theatrical choreography:
 
-- **Endpoint-Aware Transitions**: Seamless `cut`, `crossfade`, and whiteout `flash` transitions.
+- **Backdrops & Transitions**: Full-color 320×180 pixel-art story backdrops with seamless `cut`, `crossfade`, and whiteout `flash` transitions.
 - **Underlays**: Support for solid `black` (blackouts, space, psychic voids), `paper` (palette-reactive parchment), and `transparent` overlays.
-- **Narrative Staging**: Decoupled from combat states so event scripts can choreograph story intros, preludes, and visual novel sequences before a battle begins.
+- **Actor Staging Layer**: Theatrical character positioning with feet-based coordinates, predefined presets (`left`, `center`, `right`) or custom slots, relative mouth/head anchors with automatic mirroring and scaling, enter/exit animations (`cut`, `fade`, `slide`), and soft ground contact shadows (calibrated species profiles or custom schema).
+- **Dialogue Bubbles & Subtitles**: Anchored speech, thought, and shout bubbles dynamically tracking character mouth anchors, widescreen cinematic letterbox subtitles, and animated floating emote puffs (`!`, `?`, heart, anger, sweat, dots, music).
+- **Declarative Sequence Runner**: Choreograph multi-step cutscenes, dialogues, blocking camera transitions, and player choices using clean timeline steps instead of timer spaghetti. Supports player input barriers (`A`/`Space`), skipping (`B`/`Esc`), and scoped resource cleanup.
+- **Stage FX & Camera Dynamics**: Native 320×180 integer-snapped screen shake (with UI decoupling so dialogue remains rock-solid), ambient color tints (`sunset`, `night`, `cave`, `underwater`, `poison`, `sepia`), combat flash pulses, restomod dither/spotlight/letterbox vignettes, and deterministic retro weather particles (`rain`, `snow`, `leaves`, `embers`, `dust`).
+- **Decoupled Battle Handoff**: Seamless transitions from story cutscenes directly into combat (`BetterBattle`), preserving scene backdrops, music, and ambient atmosphere into the arena, with clean resumption and outcome branching (`win`, `lose`, `flee`) once the battle concludes.
+
+See [Provider and Mod Compatibility](wiki/Compatibility.md#6-betterscenes-story-stage-exports) for the full API and integration guide.
+
+## 🎨 For Artists & Creators: Launch Pad
+
+Want to add your own artwork, cutscenes, or custom battles to Gen1Better? Choose what you want to do:
+
+- **[Make a Custom Battle Backdrop Pack](wiki/Artist-Backdrop-Packs.md)**: Zero engine coding required. Learn the 3 Safe Doors, grab copy-paste `main.lua` templates, and drop your 320×180 PNGs into a standalone mod folder.
+- **[Make a Cinematic Story Cutscene (BetterScenes)](wiki/BetterScenes.md)**: Direct narrative scenes outside of battle with dialogue bubbles, character staging, camera shakes, and weather.
+- **[Style & Customize Floor Shadows (BetterShadows)](wiki/Battle-Backdrops.md#shadow-system-and-scene-interaction)**: Tune feathered contact shadows for water, caves, space, or custom Pokémon species.
+- **[Trigger Custom Battles & Dynamic Arena Transitions](wiki/Battle-Backdrops.md#custom-spawn-hook)**: Script custom wild/boss encounter arenas or lerp elevations mid-battle.
+- **[Full Developer & API Contract](wiki/Compatibility.md)**: Complete Lua exports, provider hooks, and screen markers.
+
+👉 **Browse the full [Artist & Creator Launch Pad](wiki/Artists.md) on the Wiki.**
 
 ## Colors and options
 
@@ -121,7 +139,7 @@ Start Menu favorites and item favorites are saved with your game. Use **SAVE** a
 - **Groovy Palette & Frames:** exposes additional palette choices when available.
 - **Separate Modern PC UI:** disable it before using this mod; the two are declared incompatible.
 
-Mod authors can find the provider hooks, custom battle scenes, and integration examples in [Provider and Mod Compatibility](wiki/Compatibility.md). Custom settings-screen support is covered in [Mod Options Screen Compatibility](wiki/Mod-Options-Screen-Compatibility.md).
+Mod authors and artists can find the [Artist & Creator Launch Pad](wiki/Artists.md), provider hooks, custom battle scenes, and integration examples in [Provider and Mod Compatibility](wiki/Compatibility.md). Custom settings-screen support is covered in [Mod Options Screen Compatibility](wiki/Mod-Options-Screen-Compatibility.md).
 
 ## Troubleshooting
 
