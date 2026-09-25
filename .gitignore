@@ -1,2 +1,41 @@
-Gen1BetterMenus.zip
-betterMenus.png
+NON PUBLIC TOOLS/agents.md
+assets/fonts/Gen1BetterTiny.ttf
+tools/betterscenes_contract_driver.lua
+NON PUBLIC TOOLS/run_bettermenus_contract_driver.ps1
+NON PUBLIC TOOLS/run_betterbattle_shadow_visual.ps1
+NON PUBLIC TOOLS/run_betterbattle_backdrops.ps1
+NON PUBLIC TOOLS/old/gen1bettermenus_xp_statbox_capture.lua
+NON PUBLIC TOOLS/old/gen1bettermenus_xp_animation_capture.lua
+NON PUBLIC TOOLS/old/gen1bettermenus_test_options.lua
+NON PUBLIC TOOLS/old/gen1bettermenus_normal_battle_visual.lua
+NON PUBLIC TOOLS/old/gen1bettermenus_nickname_palette_capture.lua
+NON PUBLIC TOOLS/old/gen1bettermenus_levelup_statbox_capture.lua
+NON PUBLIC TOOLS/old/gen1bettermenus_hud_palette_pair_capture.lua
+NON PUBLIC TOOLS/old/gen1bettermenus_full_capture.lua
+NON PUBLIC TOOLS/old/betterMenus_TESTS.bat
+NON PUBLIC TOOLS/old/bettermenus_options_palette_visual.lua
+NON PUBLIC TOOLS/gen1bettermenus_summary_truecolor_visual_20260827.lua
+NON PUBLIC TOOLS/gen1bettermenus_red_indicator_visual_20260827_144537.lua
+NON PUBLIC TOOLS/gen1bettermenus_pokedex_data_visual_20260827.lua
+NON PUBLIC TOOLS/gen1bettermenus_default_indicator_visual_20260827_144619.lua
+NON PUBLIC TOOLS/gen1bettermenus_battle_stats_visual.lua
+NON PUBLIC TOOLS/center_pc_startup_skip_20260902.lua
+NON PUBLIC TOOLS/betterscenes_contract_driver.lua
+NON PUBLIC TOOLS/bettermenus_options_palette_visual.lua
+NON PUBLIC TOOLS/bettermenus_contract_drift_driver.lua
+NON PUBLIC TOOLS/bettermenus_classic_battle_bars_visual.lua
+NON PUBLIC TOOLS/betterbattle_shadow_visual.lua
+NON PUBLIC TOOLS/betterbattle_shadow_extraction_test.lua
+NON PUBLIC TOOLS/betterbattle_shadow_all_species.lua
+NON PUBLIC TOOLS/betterbattle_party_visibility_trace.lua
+NON PUBLIC TOOLS/betterbattle_joined_pane_visual.lua
+NON PUBLIC TOOLS/betterbattle_backdrops_visual.lua
+NON PUBLIC TOOLS/betterbattle_backdrops_tests.lua
+NON PUBLIC TOOLS/betterbattle_backdrops_options.lua
+NON PUBLIC TOOLS/betterbattle_backdrops_cases.lua
+NON PUBLIC TOOLS/better_pc_layout_visual_20260902.lua
+NON PUBLIC TOOLS/better_bag_use_toss_visual.lua
+NON PUBLIC TOOLS/better_bag_toss_quantity_visual.lua
+NON PUBLIC TOOLS/better_bag_post_use_visual.lua
+NON PUBLIC TOOLS/better_bag_palette_visual.lua
+NON PUBLIC TOOLS/better_bag_palette_modes_visual.lua

@@ -1,9 +1,11 @@
 # BetterBattle pixel-art backdrops
-
-BetterBattle automatically selects a 320×180 scene when BetterBattle is ON,
+ 
+BetterBattle automatically selects a 320×180 scene when BetterBattles is ON,
 the battle layout is WIDE, the HUD is Extended, and no external renderer owns
-the battle. Crystal battle sprites are required for BetterBattle to display
-properly. Other sprite providers can have the same transparency or matting
+the battle. Crystal battle sprites are required for BetterBattles to display
+properly. (BetterBattles can run with or without BetterBattle UI enabled, allowing
+custom battle HUD mods to be used in conjunction with the 320×180 backdrops and
+sprite shadow engine). Other sprite providers can have the same transparency or matting
 problem, so their battle assets must also be checked before using these
 backgrounds. There is no hollow-sprite detector or white rectangle behind
 Pokémon.
@@ -214,12 +216,14 @@ The script verifies:
 ## Shadow system and scene interaction
 
 BetterBattle renders soft, multi-layered feathered shadows beneath battlers when
-a 2D backdrop is active, powered by the shared Actor Shadow Engine (`schemaVersion = 1`, `profileVersion = 1`). Each species has baseline dimensions, grounding rules,
+a 2D backdrop is active, powered by the shared Actor Shadow Engine (`schemaVersion = 2`, `profileVersion = 1`). Each species has baseline dimensions, grounding rules,
 and optional manual limb shapes or dynamic wing-feathering detectors.
 
 Because shadow profiles are unified across the mod, species definitions registered
 via `betterBattle.shadowSettings.registerSpecies` are immediately available in both
 combat backdrops and [BetterScenes narrative cutscenes](BetterScenes.md#actor-shadows--floor-contact).
+Species-level tuning is shared; optional `player`, `enemy`, and `scene` overrides
+remain isolated presentation contexts and never cross-inherit.
 
 Because different battle scenes represent different environments (e.g. solid ground,
 water, dark interiors, or weightless outer space), BetterBattle provides two ways
@@ -249,13 +253,16 @@ local function setupSceneShadows()
 end
 ```
 
-Available scene properties:
-- `enabled`: Set to `false` to disable shadows in this scene entirely.
-- `color`: `{ r, g, b }` table (normalized 0.0 to 1.0) for custom shadow tinting.
-- `opacityScale`: Multiplier applied to all shadow layers in this scene.
-- `offsetY`: **Shadow-only** vertical adjustment applied to the shadow contact anchor. (Does not move the Pokémon).
-- `playerOffsetY`: Side ground-plane adjustment lifting or lowering the player Pokémon sprite, battler-attached status panel, and shadow together (e.g. `+4` for sunken shoreline).
-- `enemyOffsetY`: Side ground-plane adjustment lifting or lowering the enemy Pokémon sprite, battler-attached status panel, and shadow together (e.g. `-12` for high cliff/podium).
+Available scene properties (validated by `shadowSettings.validateSceneConfig`):
+- `enabled`: Set to `false` to disable shadows in this scene entirely. Must be a strict boolean (`true` or `false`).
+- `color`: `{ r, g, b }` or `{ r = ..., g = ..., b = ... }` table for custom shadow tinting. Components must be finite numbers in `[0.0, 1.0]` (numeric strings accepted).
+- `opacityScale`: Non-negative multiplier applied to all shadow layers in this scene (finite number $\ge 0$, numeric strings accepted).
+- `offsetY`: **Shadow-only** vertical adjustment applied to the shadow contact anchor (does not move the Pokémon; numeric strings accepted).
+- `playerOffsetY`: Side ground-plane adjustment lifting or lowering the player Pokémon sprite, battler-attached status panel, and shadow together (e.g. `+4` for sunken shoreline; numeric strings accepted).
+- `enemyOffsetY`: Side ground-plane adjustment lifting or lowering the enemy Pokémon sprite, battler-attached status panel, and shadow together (e.g. `-12` for high cliff/podium; numeric strings accepted).
+
+> [!NOTE]
+> `shadowSettings.validateSceneConfig(config)` is available in the public v1 API to pre-validate and normalize custom scene configurations before registration.
 
 ### Dynamic scene changes & transitions
 

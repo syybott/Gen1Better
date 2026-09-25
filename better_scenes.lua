@@ -38,6 +38,18 @@ local VALID_UNDERLAYS = { black = true, paper = true, transparent = true }
 local VALID_ACTOR_TRANSITIONS = { cut = true, fade = true, slide = true }
 local VALID_SLIDE_DIRS = { left = true, right = true, top = true, bottom = true }
 
+local VALID_SCALE_MODES = {
+  auto = true,
+  variant = true,
+  clean = true,
+  area = true,
+  nearest = true,
+  custom = true,
+}
+local DEFAULT_SCALE_MODE = "nearest"
+local DEFAULT_PIXEL_SNAP = true
+local DEFAULT_SCALE_CACHE_LIMIT = 128
+
 local DEFAULT_SLOTS = {
   left   = { x = 70,  y = 155, mirror = false, slide = "left" },
   center = { x = 160, y = 155, mirror = false, slide = "bottom" },
@@ -176,7 +188,8 @@ end
 
 function BetterScenes.new(options)
   options = options or {}
-  local shadowEngine = loadShadowEngine(options.mod)
+  ShadowEngine = options.shadowEngine or loadShadowEngine(options.mod)
+  local shadowSettings = options.shadowSettings
   local isSelfMod = options.isSelfMod or function() return false end
   local getPalettePaperColor = options.getPalettePaperColor or function() return 1, 1, 1, 1 end
 
@@ -214,23 +227,47 @@ function BetterScenes.new(options)
 
   local processSequence = nil
 
+  local defaultScaleMode = options.defaultScaleMode or DEFAULT_SCALE_MODE
+  local defaultPixelSnap = (options.defaultPixelSnap ~= nil) and options.defaultPixelSnap or DEFAULT_PIXEL_SNAP
+  local scaleCacheLimit = options.scaleCacheLimit or DEFAULT_SCALE_CACHE_LIMIT
+  local scaleCache = {}
+  local scaleCacheOrder = {}
+
+  local function clearScaleCache()
+    scaleCache = {}
+    scaleCacheOrder = {}
+  end
+
+  local function evictOldestScaleCache()
+    while #scaleCacheOrder > scaleCacheLimit do
+      local oldest = table.remove(scaleCacheOrder, 1)
+      if oldest then
+        scaleCache[oldest] = nil
+      end
+    end
+  end
+
   local loadedImages = {}
+
+  local function loadImageResource(path)
+    if not path or type(path) ~= "string" then return nil end
+    if loadedImages[path] then return loadedImages[path] end
+    if love and love.graphics and love.graphics.newImage then
+      local ok, img = pcall(love.graphics.newImage, path)
+      if ok and img then
+        img:setFilter("nearest", "nearest")
+        loadedImages[path] = img
+        return img
+      end
+    end
+    return nil
+  end
 
   local function getActorImage(actor)
     if not actor then return nil end
     if actor.image then return actor.image end
     if not actor.path then return nil end
-    if loadedImages[actor.path] then return loadedImages[actor.path] end
-
-    if love and love.graphics and love.graphics.newImage then
-      local ok, img = pcall(love.graphics.newImage, actor.path)
-      if ok and img then
-        img:setFilter("nearest", "nearest")
-        loadedImages[actor.path] = img
-        return img
-      end
-    end
-    return nil
+    return loadImageResource(actor.path)
   end
 
   local function getImage(sceneId)
@@ -239,17 +276,235 @@ function BetterScenes.new(options)
     if not entry then return nil end
     if entry.image then return entry.image end
     if not entry.path then return nil end
-    if loadedImages[entry.path] then return loadedImages[entry.path] end
+    return loadImageResource(entry.path)
+  end
 
-    if love and love.graphics and love.graphics.newImage then
-      local ok, img = pcall(love.graphics.newImage, entry.path)
-      if ok and img then
-        img:setFilter("nearest", "nearest")
-        loadedImages[entry.path] = img
-        return img
+  local function resolveVariant(actor, requestedScale)
+    if not (actor and actor.variants and type(actor.variants) == "table") then
+      return nil
+    end
+
+    local bestVariant = nil
+    local bestMaxScale = nil
+
+    for _, v in ipairs(actor.variants) do
+      if type(v) == "table" and type(v.maxScale) == "number" and (v.path or v.image) then
+        if requestedScale <= v.maxScale then
+          if bestMaxScale == nil or v.maxScale < bestMaxScale then
+            bestMaxScale = v.maxScale
+            bestVariant = v
+          end
+        end
       end
     end
+
+    if bestVariant then
+      local img = bestVariant.image or loadImageResource(bestVariant.path)
+      if img then
+        local native = bestVariant.nativeScale or bestVariant.maxScale or 1.0
+        local drawScale = (native > 0) and (requestedScale / native) or requestedScale
+        if math.abs(drawScale - 1.0) < 0.0001 then
+          drawScale = 1.0
+        end
+        return img, drawScale, bestVariant
+      end
+    end
+
     return nil
+  end
+
+  local function buildScaledSpriteCanvas(img, tw, th, mode)
+    if not (love and love.graphics and love.graphics.newCanvas) then
+      return nil
+    end
+
+    local iw = (img.getWidth and img:getWidth()) or 0
+    local ih = (img.getHeight and img:getHeight()) or 0
+    if iw <= 0 or ih <= 0 or tw <= 0 or th <= 0 then
+      return nil
+    end
+
+    -- Strictly downscale only: target must not exceed source dimensions and at least one must be smaller
+    local canCanvasDownscale = (tw <= iw) and (th <= ih) and (tw < iw or th < ih)
+    if not canCanvasDownscale then
+      return nil
+    end
+
+    local ok, canvas = pcall(love.graphics.newCanvas, tw, th)
+    if not ok or not canvas then
+      return nil
+    end
+
+    local oldCanvas = love.graphics.getCanvas()
+    local oldShader = love.graphics.getShader()
+    local oldBlendMode, oldAlphaMode = love.graphics.getBlendMode()
+    local r, g, b, a = love.graphics.getColor()
+
+    local minF, magF = "nearest", "nearest"
+    if img.getFilter then
+      minF, magF = img:getFilter()
+    end
+
+    local drawFilter = (mode == "area") and "linear" or "nearest"
+    if img.setFilter then
+      img:setFilter(drawFilter, drawFilter)
+    end
+
+    love.graphics.setCanvas(canvas)
+    love.graphics.clear(0, 0, 0, 0)
+    love.graphics.setColor(1, 1, 1, 1)
+
+    love.graphics.draw(img, 0, 0, 0, tw / iw, th / ih)
+
+    love.graphics.setCanvas(oldCanvas)
+    if oldShader then
+      love.graphics.setShader(oldShader)
+    else
+      love.graphics.setShader()
+    end
+    love.graphics.setBlendMode(oldBlendMode, oldAlphaMode)
+    love.graphics.setColor(r, g, b, a)
+
+    if img.setFilter then
+      img:setFilter(minF, magF)
+    end
+
+    if canvas.setFilter then
+      canvas:setFilter("nearest", "nearest")
+    end
+
+    return canvas
+  end
+
+  local function getCachedScaledImage(actor, img, tw, th, mode)
+    local imgId = actor.path or actor.id or tostring(img)
+    local pose = actor.pose or "default"
+    local frame = actor.frame or 1
+    local key = string.format("%s|%s|%s|%d|%d|%s", tostring(imgId), tostring(pose), tostring(frame), tw, th, tostring(mode))
+
+    if scaleCache[key] then
+      return scaleCache[key]
+    end
+
+    local canvas = buildScaledSpriteCanvas(img, tw, th, mode)
+    if not canvas then
+      return nil
+    end
+
+    scaleCache[key] = canvas
+    table.insert(scaleCacheOrder, key)
+    evictOldestScaleCache()
+
+    return canvas
+  end
+
+  local function resolveActorRender(actor, baseImg, requestedScale, scaleModeOverride, pixelSnapOverride)
+    if not baseImg then return nil end
+
+    local sceneCfg = (currentSceneId and registry[currentSceneId]) or nil
+    local effectiveScaleMode = scaleModeOverride
+      or actor.scaleMode
+      or (sceneCfg and sceneCfg.scaleMode)
+      or defaultScaleMode
+      or "nearest"
+
+    local effectivePixelSnap = pixelSnapOverride
+    if effectivePixelSnap == nil then
+      effectivePixelSnap = actor.pixelSnap
+    end
+    if effectivePixelSnap == nil and sceneCfg then
+      effectivePixelSnap = sceneCfg.pixelSnap
+    end
+    if effectivePixelSnap == nil then
+      effectivePixelSnap = defaultPixelSnap
+    end
+
+    local iw = (baseImg.getWidth and baseImg:getWidth()) or 0
+    local ih = (baseImg.getHeight and baseImg:getHeight()) or 0
+
+    -- Step 0: Custom Hook (strictly gated on effectiveScaleMode == "custom")
+    if effectiveScaleMode == "custom" then
+      local customFn = actor.customDraw or actor.scaleFn
+      if type(customFn) == "function" then
+        return {
+          source = "custom",
+          effectiveScaleMode = effectiveScaleMode,
+          effectivePixelSnap = effectivePixelSnap,
+          customFn = customFn,
+          customContext = {
+            image = baseImg,
+            scale = requestedScale,
+            scaleMode = effectiveScaleMode,
+            pixelSnap = effectivePixelSnap,
+            fallbackScaleMode = actor.fallbackScaleMode or "nearest",
+          },
+          baseW = iw,
+          baseH = ih,
+        }
+      end
+    end
+
+    -- Step 1: Variant LOD ("auto" or "variant")
+    if effectiveScaleMode == "auto" or effectiveScaleMode == "variant" then
+      local variantImg, drawScale = resolveVariant(actor, requestedScale)
+      if variantImg then
+        local vw = (variantImg.getWidth and variantImg:getWidth()) or iw
+        local vh = (variantImg.getHeight and variantImg:getHeight()) or ih
+        return {
+          image = variantImg,
+          sx = drawScale,
+          sy = drawScale,
+          ox = vw * 0.5,
+          oy = vh,
+          source = "variant",
+          effectiveScaleMode = effectiveScaleMode,
+          effectivePixelSnap = effectivePixelSnap,
+          baseW = iw,
+          baseH = ih,
+        }
+      end
+    end
+
+    -- Step 2: Cached integer downscale canvas ("clean", "area", or "auto" without variant)
+    local wantClean = (effectiveScaleMode == "clean" or effectiveScaleMode == "area" or effectiveScaleMode == "auto" or effectiveScaleMode == "variant")
+    if wantClean and iw > 0 and ih > 0 then
+      local tw = math.max(1, math.floor(iw * requestedScale + 0.5))
+      local th = math.max(1, math.floor(ih * requestedScale + 0.5))
+      local canCanvasDownscale = (requestedScale < 1.0) and (tw <= iw) and (th <= ih) and (tw < iw or th < ih)
+
+      if canCanvasDownscale then
+        local canvasMode = (effectiveScaleMode == "area") and "area" or "clean"
+        local canvas = getCachedScaledImage(actor, baseImg, tw, th, canvasMode)
+        if canvas then
+          return {
+            image = canvas,
+            sx = 1.0,
+            sy = 1.0,
+            ox = tw * 0.5,
+            oy = th,
+            source = canvasMode,
+            effectiveScaleMode = effectiveScaleMode,
+            effectivePixelSnap = effectivePixelSnap,
+            baseW = iw,
+            baseH = ih,
+          }
+        end
+      end
+    end
+
+    -- Step 3: Nearest Fallback (direct GPU transform)
+    return {
+      image = baseImg,
+      sx = requestedScale,
+      sy = requestedScale,
+      ox = iw * 0.5,
+      oy = ih,
+      source = "nearest",
+      effectiveScaleMode = effectiveScaleMode,
+      effectivePixelSnap = effectivePixelSnap,
+      baseW = iw,
+      baseH = ih,
+    }
   end
 
   local api = {}
@@ -294,12 +549,20 @@ function BetterScenes.new(options)
       end
     end
 
+    if config.scaleMode ~= nil then
+      if type(config.scaleMode) ~= "string" or not VALID_SCALE_MODES[config.scaleMode] then
+        return false, "invalid-scale-mode"
+      end
+    end
+
     registry[id] = {
       id = id,
       path = config.path,
       image = config.image,
       underlay = config.underlay,
       modKey = modKey,
+      scaleMode = config.scaleMode,
+      pixelSnap = config.pixelSnap,
     }
 
     return true, id
@@ -510,13 +773,33 @@ function BetterScenes.new(options)
     if type(config) ~= "table" then
       return false, "invalid-actor"
     end
-    if not (config.path or config.image) then
+
+    if config.scale ~= nil then
+      if type(config.scale) ~= "number" or config.scale <= 0 then
+        return false, "invalid-scale"
+      end
+    end
+
+    if config.scaleMode ~= nil then
+      if type(config.scaleMode) ~= "string" or not VALID_SCALE_MODES[config.scaleMode] then
+        return false, "invalid-scale-mode"
+      end
+    end
+
+    if config.fallbackScaleMode ~= nil then
+      if type(config.fallbackScaleMode) ~= "string" or not VALID_SCALE_MODES[config.fallbackScaleMode] then
+        return false, "invalid-scale-mode"
+      end
+    end
+
+    local existing = actors[slot]
+    if not existing and not (config.path or config.image) then
       return false, "invalid-actor"
     end
 
     local defaultPreset = DEFAULT_SLOTS[slot]
-    local targetX = config.x or (defaultPreset and defaultPreset.x)
-    local targetY = config.y or (defaultPreset and defaultPreset.y)
+    local targetX = config.x or (existing and existing.x) or (defaultPreset and defaultPreset.x)
+    local targetY = config.y or (existing and existing.y) or (defaultPreset and defaultPreset.y)
 
     if type(targetX) ~= "number" or type(targetY) ~= "number" then
       return false, "invalid-actor"
@@ -524,15 +807,29 @@ function BetterScenes.new(options)
 
     local mirror = config.mirror
     if mirror == nil then
-      mirror = defaultPreset and defaultPreset.mirror or false
+      mirror = (existing and existing.mirror)
+      if mirror == nil then
+        mirror = defaultPreset and defaultPreset.mirror or false
+      end
     else
       mirror = not not mirror
     end
 
-    local scale = config.scale or 1.0
-    if type(scale) ~= "number" or scale <= 0 then
-      scale = 1.0
+    local scale = config.scale or (existing and existing.scale) or 1.0
+    local scaleMode = config.scaleMode or (existing and existing.scaleMode)
+    local fallbackScaleMode = config.fallbackScaleMode or (existing and existing.fallbackScaleMode)
+    local pixelSnap = config.pixelSnap
+    if pixelSnap == nil and existing then
+      pixelSnap = existing.pixelSnap
     end
+
+    local variants = config.variants or (existing and existing.variants)
+    local customDraw = config.customDraw or config.scaleFn or (existing and existing.customDraw)
+    local pose = config.pose or (existing and existing.pose) or "idle"
+    local frame = config.frame or (existing and existing.frame) or 1
+    local path = (config.path ~= nil and config.path) or (existing and existing.path)
+    local image = (config.image ~= nil and config.image) or (existing and existing.image)
+    local species = config.species or (existing and existing.species)
 
     local defaultSlide = defaultPreset and defaultPreset.slide or "bottom"
     local validOpts, validated = validateActorOpts(opts, defaultSlide)
@@ -541,8 +838,14 @@ function BetterScenes.new(options)
     end
 
     local anchors = {}
-    for k, v in pairs(DEFAULT_ANCHORS) do
-      anchors[k] = { x = v.x, y = v.y }
+    if existing and existing.anchors then
+      for k, v in pairs(existing.anchors) do
+        anchors[k] = { x = v.x, y = v.y }
+      end
+    else
+      for k, v in pairs(DEFAULT_ANCHORS) do
+        anchors[k] = { x = v.x, y = v.y }
+      end
     end
     if type(config.anchors) == "table" then
       for k, v in pairs(config.anchors) do
@@ -557,48 +860,73 @@ function BetterScenes.new(options)
     local slideDir = validated.slideDir or defaultSlide
 
     local shadowCfg = config.shadow
-    local shadowState = nil
-    if shadowCfg ~= false and (shadowCfg ~= nil or config.species ~= nil) and ShadowEngine then
-      local actorImg = config.image or (config.path and loadedImages[config.path])
+    if shadowCfg == nil and existing then
+      shadowCfg = existing.shadow
+    end
+    local shadowMeasurementState = existing and existing.shadowMeasurementState or nil
+    if config.shadow ~= nil or config.species ~= nil
+        or config.image ~= nil or config.path ~= nil then
+      shadowMeasurementState = nil
+    end
+    local shadowState = existing and existing.shadowState or nil
+    if shadowCfg ~= false and (shadowCfg ~= nil or species ~= nil) and ShadowEngine then
+      local actorImg = image or (path and loadedImages[path])
       shadowState = ShadowEngine.resolveShadowState({
-        species = config.species,
-        side = "scene",
+        species = species,
+        context = "scene",
         image = actorImg,
         config = shadowCfg,
+        shadowSettings = shadowSettings,
+        frame = frame,
+        measurementState = shadowMeasurementState,
       })
+      if shadowState.footprint
+          or (shadowState.anchor and shadowState.anchor.manual) then
+        shadowMeasurementState = shadowState.measurementState
+      else
+        shadowMeasurementState = nil
+      end
+    elseif shadowCfg == false then
+      shadowState = nil
     end
 
-    local transState = nil
-    local currentAlpha = 1.0
-    local currentX = targetX
-    local currentY = targetY
+    local transState = existing and existing.transition or nil
+    local currentAlpha = (existing and existing.currentAlpha) or 1.0
+    local currentX = (existing and existing.currentX) or targetX
+    local currentY = (existing and existing.currentY) or targetY
 
-    if transType == "fade" then
-      currentAlpha = 0.0
-      transState = {
-        type = "fade",
-        duration = duration,
-        elapsed = 0,
-        startTime = (love and love.timer and love.timer.getTime and love.timer.getTime()) or nil,
-        exiting = false,
-        startAlpha = 0.0,
-        targetAlpha = 1.0,
-      }
-    elseif transType == "slide" then
-      local offX, offY = getOffscreenCoord(slideDir, targetX, targetY)
-      currentX = offX
-      currentY = offY
-      transState = {
-        type = "slide",
-        duration = duration,
-        elapsed = 0,
-        startTime = (love and love.timer and love.timer.getTime and love.timer.getTime()) or nil,
-        exiting = false,
-        startX = offX,
-        startY = offY,
-        targetX = targetX,
-        targetY = targetY,
-      }
+    if opts ~= nil and transType ~= "cut" then
+      if transType == "fade" then
+        currentAlpha = 0.0
+        transState = {
+          type = "fade",
+          duration = duration,
+          elapsed = 0,
+          startTime = (love and love.timer and love.timer.getTime and love.timer.getTime()) or nil,
+          exiting = false,
+          startAlpha = 0.0,
+          targetAlpha = 1.0,
+        }
+      elseif transType == "slide" then
+        local offX, offY = getOffscreenCoord(slideDir, targetX, targetY)
+        currentX = offX
+        currentY = offY
+        transState = {
+          type = "slide",
+          duration = duration,
+          elapsed = 0,
+          startTime = (love and love.timer and love.timer.getTime and love.timer.getTime()) or nil,
+          exiting = false,
+          startX = offX,
+          startY = offY,
+          targetX = targetX,
+          targetY = targetY,
+        }
+      end
+    else
+      if not existing or config.x ~= nil then currentX = targetX end
+      if not existing or config.y ~= nil then currentY = targetY end
+      if opts ~= nil and transType == "cut" then transState = nil end
     end
 
     actors[slot] = {
@@ -610,17 +938,39 @@ function BetterScenes.new(options)
       currentAlpha = currentAlpha,
       mirror = mirror,
       scale = scale,
-      pose = config.pose or "idle",
-      path = config.path,
-      image = config.image,
+      scaleMode = scaleMode,
+      fallbackScaleMode = fallbackScaleMode,
+      pixelSnap = pixelSnap,
+      variants = variants,
+      customDraw = customDraw,
+      pose = pose,
+      frame = frame,
+      path = path,
+      image = image,
       anchors = anchors,
-      species = config.species,
+      species = species,
       shadow = shadowCfg,
       shadowState = shadowState,
+      shadowMeasurementState = shadowMeasurementState,
+      shadowSettingsRevision = shadowSettings and shadowSettings.revision or 0,
+      shadowImageRef = image or (path and loadedImages[path]),
       transition = transState,
     }
 
     return true, slot
+  end
+
+  function api.updateActor(slot, config, opts)
+    if slot == nil or type(slot) ~= "string" or slot == "" then
+      return false, "invalid-slot"
+    end
+    if type(config) ~= "table" then
+      return false, "invalid-actor"
+    end
+    if not actors[slot] then
+      return false, "actor-not-found"
+    end
+    return api.setActor(slot, config, opts)
   end
 
   function api.clearActor(slot, opts)
@@ -708,6 +1058,10 @@ function BetterScenes.new(options)
       y = actor.y,
       mirror = actor.mirror,
       scale = actor.scale,
+      scaleMode = actor.scaleMode,
+      fallbackScaleMode = actor.fallbackScaleMode,
+      pixelSnap = actor.pixelSnap,
+      variants = actor.variants,
       pose = actor.pose or "idle",
       imagePath = actor.path,
       species = actor.species,
@@ -1888,8 +2242,12 @@ function BetterScenes.new(options)
         local dur = step.duration or (step.opts and step.opts.duration) or 0.35
         return true, dur
       end
-    elseif action == "actor" or action == "setActor" then
-      api.setActor(step.slot, step.config or step, step.opts)
+    elseif action == "actor" or action == "setActor" or action == "updateActor" then
+      if action == "updateActor" then
+        api.updateActor(step.slot, step.config or step, step.opts)
+      else
+        api.setActor(step.slot, step.config or step, step.opts)
+      end
       if activeSequence and activeSequence.cleanup and step.slot then
         activeSequence.ownedActors[step.slot] = true
       end
@@ -2701,19 +3059,82 @@ function BetterScenes.new(options)
     if ShadowEngine then
       for slot, actor in pairs(actors) do
         local alpha = actor.currentAlpha or 1.0
-        if actor.shadowState and actor.shadowState.enabled and alpha > 0 then
+        if actor.shadow ~= false
+            and (actor.shadow ~= nil or actor.species ~= nil)
+            and alpha > 0 then
+          local img = getActorImage(actor)
+          local requestedScale = actor.scale or 1.0
+          local resolved = img and resolveActorRender(actor, img, requestedScale, nil, nil)
+
+          local shadowImage = resolved and resolved.image or img
+          local settingsRevision = shadowSettings and shadowSettings.revision or 0
+          if actor.shadowSettingsRevision ~= settingsRevision then
+            actor.shadowMeasurementState = nil
+            actor.shadowSettingsRevision = settingsRevision
+          end
+          local instanceSourceSpace = type(actor.shadow) == "table"
+            and type(actor.shadow.sourceSpace) == "table"
+          local profileSourceSpace = actor.species and shadowSettings
+            and shadowSettings.species
+            and shadowSettings.species[actor.species] ~= nil
+          if not instanceSourceSpace and not profileSourceSpace
+              and actor.shadowImageRef ~= shadowImage then
+            actor.shadowMeasurementState = nil
+          end
+          actor.shadowImageRef = shadowImage
+          actor.shadowState = ShadowEngine.resolveShadowState({
+            species = actor.species,
+            context = "scene",
+            image = shadowImage,
+            config = actor.shadow,
+            shadowSettings = shadowSettings,
+            sprite = shadowImage,
+            frame = actor.frame,
+            measurementState = actor.shadowMeasurementState,
+            measurementKey = table.concat({
+              tostring(actor.pose or "idle"),
+              tostring(actor.frame or 1),
+              tostring(resolved and resolved.source or "base"),
+            }, ":"),
+          })
+          actor.shadowMeasurementState = actor.shadowState.measurementState
+
           local stageX = actor.currentX or actor.x
           local stageY = actor.currentY or actor.y
           local screenX = stageOffsetX + stageX * scale
           local screenY = stageOffsetY + stageY * scale
-          ShadowEngine.renderShadowState(love.graphics, actor.shadowState, {
-            x = screenX,
-            y = screenY,
-            scale = scale * actor.scale,
-            mirror = actor.mirror,
-            direction = actor.mirror and -1 or 1,
-            alphaScale = alpha,
-          })
+
+          local effectivePixelSnap = resolved and resolved.effectivePixelSnap
+          if effectivePixelSnap == nil then
+            effectivePixelSnap = defaultPixelSnap
+          end
+          if effectivePixelSnap then
+            screenX = math.floor(screenX + 0.5)
+            screenY = math.floor(screenY + 0.5)
+          end
+
+          local shadowScaleFactor = requestedScale
+          local sourceHeight = actor.shadowState.sourceSpace
+            and actor.shadowState.sourceSpace.height or 0
+          if shadowImage and sourceHeight > 0 then
+            local imageHeight = shadowImage.getHeight
+              and shadowImage:getHeight() or sourceHeight
+            local drawScale = resolved and resolved.sy
+              and math.abs(resolved.sy) or requestedScale
+            local displayHeight = imageHeight * drawScale
+            shadowScaleFactor = displayHeight / sourceHeight
+          end
+
+          if actor.shadowState.enabled then
+            ShadowEngine.renderShadowState(love.graphics, actor.shadowState, {
+              x = screenX,
+              y = screenY,
+              scale = scale * shadowScaleFactor,
+              mirror = actor.mirror,
+              direction = actor.mirror and -1 or 1,
+              alphaScale = alpha,
+            })
+          end
         end
       end
     end
@@ -2723,17 +3144,41 @@ function BetterScenes.new(options)
       local img = getActorImage(actor)
       local alpha = actor.currentAlpha or 1.0
       if img and alpha > 0 then
-        local iw = (img.getWidth and img:getWidth()) or 0
-        local ih = (img.getHeight and img:getHeight()) or 0
-        if iw > 0 and ih > 0 then
-          local stageX = actor.currentX or actor.x
-          local stageY = actor.currentY or actor.y
-          local screenX = stageOffsetX + stageX * scale
-          local screenY = stageOffsetY + stageY * scale
-          local sx = scale * actor.scale * (actor.mirror and -1 or 1)
-          local sy = scale * actor.scale
+        local requestedScale = actor.scale or 1.0
+        local resolved = resolveActorRender(actor, img, requestedScale, nil, nil)
+
+        local stageX = actor.currentX or actor.x
+        local stageY = actor.currentY or actor.y
+        local screenX = stageOffsetX + stageX * scale
+        local screenY = stageOffsetY + stageY * scale
+
+        local effectivePixelSnap = resolved and resolved.effectivePixelSnap
+        if effectivePixelSnap == nil then
+          effectivePixelSnap = defaultPixelSnap
+        end
+
+        local drawX = effectivePixelSnap and math.floor(screenX + 0.5) or screenX
+        local drawY = effectivePixelSnap and math.floor(screenY + 0.5) or screenY
+
+        if resolved and resolved.source == "custom" then
+          local ctx = resolved.customContext
+          ctx.x = drawX
+          ctx.y = drawY
+          ctx.mirror = actor.mirror
+          local ok, handled = pcall(resolved.customFn, actor, ctx)
+          if ok and handled then
+            resolved.handled = true
+          else
+            resolved = resolveActorRender(actor, img, requestedScale, actor.fallbackScaleMode or "nearest", nil)
+          end
+        end
+
+        if resolved and resolved.image and not resolved.handled then
+          local mirrorX = actor.mirror and -1 or 1
+          local sx = scale * resolved.sx * mirrorX
+          local sy = scale * resolved.sy
           love.graphics.setColor(1, 1, 1, alpha)
-          love.graphics.draw(img, screenX, screenY, 0, sx, sy, iw / 2, ih)
+          love.graphics.draw(resolved.image, drawX, drawY, 0, sx, sy, resolved.ox, resolved.oy)
         end
       end
     end
@@ -2969,6 +3414,45 @@ function BetterScenes.new(options)
     end
 
     love.graphics.setColor(r, g, b, a)
+  end
+
+  function api.getDefaultScaleMode()
+    return defaultScaleMode
+  end
+
+  function api.setDefaultScaleMode(mode)
+    if type(mode) ~= "string" or not VALID_SCALE_MODES[mode] then
+      return false, "invalid-scale-mode"
+    end
+    defaultScaleMode = mode
+    return true, mode
+  end
+
+  function api.getDefaultPixelSnap()
+    return defaultPixelSnap
+  end
+
+  function api.setDefaultPixelSnap(snap)
+    defaultPixelSnap = not not snap
+    return true, defaultPixelSnap
+  end
+
+  function api.clearScaleCache()
+    clearScaleCache()
+    return true
+  end
+
+  function api.setScaleCacheLimit(maxEntries)
+    if type(maxEntries) ~= "number" or maxEntries < 1 then
+      return false, "invalid-limit"
+    end
+    scaleCacheLimit = math.floor(maxEntries)
+    evictOldestScaleCache()
+    return true, scaleCacheLimit
+  end
+
+  function api.getScaleCacheCount()
+    return #scaleCacheOrder
   end
 
   return api

@@ -2,6 +2,20 @@
 
 local Font = require("src.render.Font")
 local PaletteFX = require("src.render.PaletteFX")
+local origSetMarkOffset = PaletteFX.setMarkOffset
+local origMarkTrueColor = PaletteFX.markTrueColor
+local markOffsetY = 0
+
+if origSetMarkOffset and origMarkTrueColor then
+  PaletteFX.setMarkOffset = function(dx, dy)
+    origSetMarkOffset(dx)
+    markOffsetY = tonumber(dy) or 0
+  end
+
+  PaletteFX.markTrueColor = function(x, y, w, h)
+    return origMarkTrueColor(x, y + markOffsetY, w, h)
+  end
+end
 local Renderer = require("src.render.Renderer")
 local Pipelines = require("src.render.Pipelines")
 local Zoom = require("src.render.Zoom")
@@ -336,6 +350,13 @@ local LOCATION_OVERLAY_KEY = "__qolLocationBannerOverlay"
 local locationStates = setmetatable({}, { __mode = "k" })
 local locationOverlays = setmetatable({}, { __mode = "k" })
 
+-- Shared by the Start Menu QUIT action and BetterModManager's launcher
+-- confirmation so both routes retain exactly the same host behavior.
+local function returnToLauncher()
+  pcall(love.filesystem.write, "relaunch_to_launcher.txt", "1")
+  require("src.core.HostShell").restart()
+end
+
 local SCALE_STEPS = { "100", "90", "80", "70" }
 local SCALE_FACTORS = {
   ["100"] = 1.00,
@@ -457,13 +478,31 @@ local function menuScaleFactor(game)
   })
 end
 
+local function betterBattlesMode()
+  if not activeMod then return "on" end
+  local ok, value = pcall(activeMod.options.get, activeMod.options, "better_battles")
+  if ok and value ~= nil then
+    return (value == true or value == "on") and "on" or "off"
+  end
+  local okLegacy, legacy = pcall(activeMod.options.get, activeMod.options, "modern_battle_ui")
+  if okLegacy and legacy ~= nil then
+    return (legacy == "off" or legacy == false) and "off" or "on"
+  end
+  return "on"
+end
+
 local function betterBattleUIMode()
   if not activeMod then return "on" end
-  local ok, value = pcall(activeMod.options.get, activeMod.options,
-    "modern_battle_ui")
-  if not ok or value == nil or value == true then return "on" end
-  if value == false then return "off" end
-  return value == "mod" and "mod" or value == "off" and "off" or "on"
+  local ok, value = pcall(activeMod.options.get, activeMod.options, "better_battle_ui")
+  if ok and value ~= nil then
+    return (value == true or value == "on") and "on" or "off"
+  end
+  local okLegacy, legacy = pcall(activeMod.options.get, activeMod.options, "modern_battle_ui")
+  if okLegacy and legacy ~= nil then
+    if legacy == "on" or legacy == true then return "on" end
+    return "off"
+  end
+  return "on"
 end
 
 local function wideBattleLayoutSelected(game)
@@ -498,15 +537,25 @@ local function effectiveBetterBattleUIMode(battle)
   return betterBattleUIMode()
 end
 
+local function betterBattlesEnabled(game)
+  return betterBattlesMode() == "on"
+    and betterBattleSettingsSupported(game)
+end
+
 local function betterBattleUIEnabled(game, battle)
   if betterBattleUIMode() ~= "on"
       or not betterBattleSettingsSupported(game) then
     return false
   end
   local api = betterBattleApi()
-  if battle and api and type(api.enabled) == "function" then
-    local ok, enabled = pcall(api.enabled, battle)
-    return ok and enabled == true
+  if battle and api then
+    if type(api.uiEnabled) == "function" then
+      local ok, enabled = pcall(api.uiEnabled, battle)
+      return ok and enabled == true
+    elseif type(api.enabled) == "function" then
+      local ok, enabled = pcall(api.enabled, battle)
+      return ok and enabled == true
+    end
   end
   return true
 end
@@ -619,6 +668,16 @@ local function wholeWide()
   return { PaletteFX.zone(effectiveMenuPalette(), 0, 0, UI_TW - 1, UI_TH - 1) }
 end
 
+local function summaryOffsets(screen)
+  local uiW, uiH = UI_W, UI_H
+  if screen and screen.uiSize then
+    uiW, uiH = screen:uiSize()
+  end
+  local ox = math.floor((uiW - 168) / 2)
+  local oy = math.floor((uiH - 144) / 2)
+  return ox, oy, uiW, uiH
+end
+
 local function makeWideState(class)
   class.uiSize = function() return UI_W, UI_H end
   -- Only inherit the wide-battle marker when a battle actually owns the
@@ -712,7 +771,11 @@ local function installModOptionsMarkerCompatibility()
 
   local originalBuild = Screens.build
   Screens.build = function(game, id, ...)
-    return propagate(game, id, originalBuild(game, id, ...))
+    local inst = propagate(game, id, originalBuild(game, id, ...))
+    if inst and (id == "SummaryMenu" or inst.screenId == "SummaryMenu") then
+      inst.draw = SummaryMenu.draw
+    end
+    return inst
   end
 
   local originalPush = Screens.push
@@ -1067,15 +1130,27 @@ local originalScreensBuild = Screens.build
 Screens.push = function(game, id, ...)
   local inst = originalScreensBuild(game, id, ...)
 
-if isOptionRowsScreen(inst) then
+  if isOptionRowsScreen(inst) then
+    -- If BetterModManager is the active screen, absorb the option rows into
+    -- its internal pane rather than pushing a separate screen. This ensures
+    -- all mod options always render in the BetterModManager visual style.
+    local top = game.stack and game.stack:top()
+    if top and top.betterModManagerUI then
+      local decorate = game.stack.gen1BetterMenusDecorateOptionRows
+      if type(decorate) == "function" then decorate(inst) end
+      top.optionRows = inst.rows
+      top.betterOptionsGate = inst
+      top:goTo("options")
+      return inst
+    end
+
     inst.uiSize = function()
       return UI_W, UI_H
     end
     inst.isWideBattleLayout = function()
       return false
     end
-	
-	inst.sgbPalettes = wholeWide
+    inst.sgbPalettes = wholeWide
   end
 
   game.stack:push(inst)
@@ -1689,7 +1764,9 @@ local function installMenuLayout()
       index = 1,
       scroll = 0,
       held = nil,
-      actionMenu = nil,
+      actionItems = nil,
+      actionIndex = 1,
+      actionMon = nil,
       blink = 0,
     }, MovePkmnMenu)
     self.uiSize = function() return 304, 168 end
@@ -1747,23 +1824,40 @@ local function installMenuLayout()
     self.scroll = 0
   end
 
+  function MovePkmnMenu:createTextBox(text, onDone, opts)
+    local box = TextBox.new(self.game, text, onDone, opts)
+    box.boxTx = WIN_TX
+    box.boxTy = WIN_TY + WIN_TH - box.boxTh
+    box.boxTw = WIN_TW
+    box.textX = (box.boxTx + 1) * 8
+    box.line1Y = (box.boxTy + 1) * 8
+    box.line2Y = (box.boxTy + 3) * 8
+    return box
+  end
+
   function MovePkmnMenu:showMessage(msg)
-    self.game.stack:push(TextBox.new(self.game, msg))
+    self.game.stack:push(self:createTextBox(msg))
   end
 
   function MovePkmnMenu:openSummary(mon)
-    self.actionMenu = nil
-    local SummaryMenu = require("src.ui.SummaryMenu")
-    local list = self:currentList()
-    self.game.stack:push(SummaryMenu.new(self.game, list, self.index))
+    self:closeActionMenu()
+    local targetMon = mon or self:currentMon()
+    if not targetMon then return end
+    local Screens = require("src.ui.Screens")
+    if Screens and Screens.push then
+      Screens.push(self.game, "SummaryMenu", targetMon)
+    else
+      local SummaryMenu = require("src.ui.SummaryMenu")
+      self.game.stack:push(SummaryMenu.new(self.game, targetMon))
+    end
   end
 
   function MovePkmnMenu:askRelease(mon)
-    self.actionMenu = nil
+    self:closeActionMenu()
     local Boxes = require("src.pokemon.Boxes")
     local def = self.game.data.pokemon[mon.species]
     local name = mon.nickname or (def and def.name) or mon.species
-    self.game.stack:push(TextBox.new(self.game,
+    self.game.stack:push(self:createTextBox(
       Strings("Release %s?\nGone forever. OK?", name), nil, {
         defaultNo = true, noSound = true,
         choice = function(yes)
@@ -1777,14 +1871,14 @@ local function installMenuLayout()
           end
           require("src.core.Sound").playCry(self.game.data, mon.species)
           if self.game.writeSave then self.game:writeSave() end
-          self.game.stack:push(TextBox.new(self.game, Strings("%s was\nreleased outside.\fBye %s!", name, name)))
+          self:showMessage(Strings("%s was\nreleased outside.\fBye %s!", name, name))
           self:clampCursor()
         end
       }))
   end
 
   function MovePkmnMenu:withdrawMon(mon)
-    self.actionMenu = nil
+    self:closeActionMenu()
     local Boxes = require("src.pokemon.Boxes")
     local Party = require("src.pokemon.Party")
     local Stats = require("src.pokemon.Stats")
@@ -1808,7 +1902,7 @@ local function installMenuLayout()
   end
 
   function MovePkmnMenu:depositMon(mon)
-    self.actionMenu = nil
+    self:closeActionMenu()
     local Boxes = require("src.pokemon.Boxes")
     local party = self.game.save.party
     if #party <= 1 then
@@ -1836,12 +1930,12 @@ local function installMenuLayout()
     self:clampCursor()
   end
 
-  function MovePkmnMenu:beginMove()
-    self.actionMenu = nil
-    local mon = self:currentMon()
-    if not mon then return end
+  function MovePkmnMenu:beginMove(mon)
+    self:closeActionMenu()
+    local targetMon = mon or self:currentMon()
+    if not targetMon then return end
     self.held = {
-      mon = mon,
+      mon = targetMon,
       sourceMode = self.viewMode,
       sourceBox = self.viewMode == "box" and self.game.save.currentBox or nil,
       sourceIndex = self.index,
@@ -1874,19 +1968,43 @@ local function installMenuLayout()
     end
 
     if sourceList == targetList then
-      sourceList[held.sourceIndex], targetList[self.index] = targetMon, held.mon
-    elseif targetMon then
-      sourceList[held.sourceIndex], targetList[self.index] = targetMon, held.mon
-      if self.viewMode == "party" then Stats.ensure(self.game.data.pokemon[held.mon.species], held.mon) end
-      if held.sourceMode == "party" then Stats.ensure(self.game.data.pokemon[targetMon.species], targetMon) end
-    else
-      if #targetList >= targetCap then
-        self:showMessage(Strings("Container is full!"))
-        return
+      if targetMon then
+        sourceList[held.sourceIndex], targetList[self.index] = targetMon, held.mon
       end
-      table.remove(sourceList, held.sourceIndex)
-      table.insert(targetList, math.min(self.index, #targetList + 1), held.mon)
-      if self.viewMode == "party" then Stats.ensure(self.game.data.pokemon[held.mon.species], held.mon) end
+    else
+      local canDeposit = #targetList < targetCap
+      if held.sourceMode == "party" and self.viewMode == "box" and #sourceList <= 1 then
+        canDeposit = false
+        if not targetMon then
+          self:showMessage(Strings("You can't deposit your\nlast POKéMON!"))
+          self.held = nil
+          return
+        end
+      end
+
+      if canDeposit then
+        table.remove(sourceList, held.sourceIndex)
+        table.insert(targetList, held.mon)
+        self.index = #targetList
+        if self.viewMode == "party" then
+          Stats.ensure(self.game.data.pokemon[held.mon.species], held.mon)
+        end
+        if held.sourceMode == "party" and self.viewMode == "box" then
+          local Follower = require("src.world.PikachuFollower")
+          if Follower and Follower.modifyHappiness then
+            Follower.modifyHappiness(self.game.save, "DEPOSITED", held.mon)
+          end
+        end
+      else
+        if not targetMon then
+          self:showMessage(Strings("Container is full!"))
+          self.held = nil
+          return
+        end
+        sourceList[held.sourceIndex], targetList[self.index] = targetMon, held.mon
+        if self.viewMode == "party" then Stats.ensure(self.game.data.pokemon[held.mon.species], held.mon) end
+        if held.sourceMode == "party" then Stats.ensure(self.game.data.pokemon[targetMon.species], targetMon) end
+      end
     end
 
     self.held = nil
@@ -1896,7 +2014,7 @@ local function installMenuLayout()
   end
 
   function MovePkmnMenu:depositIntoSlot()
-    self.actionMenu = nil
+    self:closeActionMenu()
     local party = self.game.save.party
     if #party <= 1 then
       self:showMessage(Strings("You can't deposit your\nlast POKéMON!"))
@@ -1905,6 +2023,12 @@ local function installMenuLayout()
     self.viewMode = "party"
     self.index = 1
     self.scroll = 0
+  end
+
+  function MovePkmnMenu:closeActionMenu()
+    self.actionItems = nil
+    self.actionMon = nil
+    self.actionIndex = 1
   end
 
   function MovePkmnMenu:openActionMenu()
@@ -1926,7 +2050,7 @@ local function installMenuLayout()
       end
       items[#items + 1] = {
         label = Strings("MOVE"),
-        onSelect = function() self:beginMove() end,
+        onSelect = function() self:beginMove(mon) end,
       }
       items[#items + 1] = {
         label = Strings("STATS"),
@@ -1947,23 +2071,36 @@ local function installMenuLayout()
 
     items[#items + 1] = {
       label = Strings("CANCEL"),
-      onSelect = function() self.actionMenu = nil end,
+      onSelect = function()
+        require("src.core.Sound").play(self.game.data, "Press_AB")
+        self:closeActionMenu()
+      end,
     }
 
-    local tw, th = 8, #items * 2 + 1
-    local tx = WIN_TX + 1
-    local ty = math.min(WIN_TY + WIN_TH - th - 1, WIN_TY + 2 + (self.index - self.scroll - 1) * 2)
-    self.actionMenu = Menu.new(self.game, items, {
-      tx = tx, ty = ty, tw = tw, th = th, noSound = true, itemY = 1,
-    })
+    self.actionMon = mon
+    self.actionItems = items
+    self.actionIndex = 1
+    require("src.core.Sound").play(self.game.data, "Press_AB")
   end
 
   function MovePkmnMenu:update(dt)
     self.blink = ((self.blink or 0) + 1) % 60
-    if self.actionMenu then
-      self.actionMenu:update(dt)
-      if self.game.input:wasPressed("b") then
-        self.actionMenu = nil
+    if self.actionItems then
+      local input = self.game.input
+      if input:wasPressed("up") then
+        self.actionIndex = self.actionIndex > 1 and (self.actionIndex - 1) or #self.actionItems
+        require("src.core.Sound").play(self.game.data, "Cursor")
+      elseif input:wasPressed("down") then
+        self.actionIndex = self.actionIndex < #self.actionItems and (self.actionIndex + 1) or 1
+        require("src.core.Sound").play(self.game.data, "Cursor")
+      elseif input:wasPressed("a") then
+        local item = self.actionItems[self.actionIndex]
+        self:closeActionMenu()
+        if item and item.onSelect then
+          item.onSelect()
+        end
+      elseif input:wasPressed("b") then
+        self:closeActionMenu()
         require("src.core.Sound").play(self.game.data, "Press_AB")
       end
       return
@@ -2111,30 +2248,49 @@ end
     Font.draw(countText, WIN_X + (WIN_TW - 1) * 8 - Font.width(countText), WIN_Y + 8)
 
     local listY = WIN_Y + 28
-    for row = 1, VISIBLE_ROWS do
-      local idx = self.scroll + row
-      local mon = list[idx]
-      local y = listY + (row - 1) * 16
-      if mon then
-        local def = self.game.data.pokemon[mon.species]
-        local name = mon.nickname or (def and def.name) or mon.species
-        Font.draw(name, WIN_X + 16, y)
+    if self.actionItems then
+      local actionMon = self.actionMon or self:currentMon()
+      if actionMon then
+        local def = self.game.data.pokemon[actionMon.species]
+        local name = actionMon.nickname or (def and def.name) or actionMon.species
+        Font.draw(name, WIN_X + 16, listY)
+      else
+        Font.draw(Strings("(EMPTY)"), WIN_X + 16, listY)
+      end
 
-        if idx == self.index then
-          if self.held and self.held.mon == mon then
-            Font.drawCode(Theme.cursorHollow, WIN_X + 8, y)
-          else
-            Font.drawCode(Theme.cursor, WIN_X + 8, y)
+      for i, item in ipairs(self.actionItems) do
+        local y = listY + i * 16
+        Font.draw(item.label, WIN_X + 16, y)
+        if i == self.actionIndex then
+          Font.drawCode(Theme.cursor, WIN_X + 8, y)
+        end
+      end
+    else
+      for row = 1, VISIBLE_ROWS do
+        local idx = self.scroll + row
+        local mon = list[idx]
+        local y = listY + (row - 1) * 16
+        if mon then
+          local def = self.game.data.pokemon[mon.species]
+          local name = mon.nickname or (def and def.name) or mon.species
+          Font.draw(name, WIN_X + 16, y)
+
+          if idx == self.index then
+            if self.held and self.held.mon == mon then
+              Font.drawCode(Theme.cursorHollow, WIN_X + 8, y)
+            else
+              Font.drawCode(Theme.cursor, WIN_X + 8, y)
+            end
           end
         end
       end
+
+      if #list == 0 then
+        Font.draw(Strings("(EMPTY)"), WIN_X + 16, listY)
+      end
     end
 
-    if #list == 0 then
-      Font.draw(Strings("(EMPTY)"), WIN_X + 16, listY)
-    end
-
-    local mon = self:currentMon() or (self.held and self.held.mon)
+    local mon = self.actionMon or self:currentMon() or (self.held and self.held.mon)
     local rx = DETAIL_X + 8
     local rw = DETAIL_W - 16
 
@@ -2223,10 +2379,6 @@ end
     Font.draw(partyText, partyX, footerY + 1)
     drawArrowPair(arrowsX, footerY + 1)
     Font.draw(boxText, arrowsX + arrowW + boxGap, footerY + 1)
-
-    if self.actionMenu then
-      self.actionMenu:draw()
-    end
   end
 
   makeWideState(BoxMenu)
@@ -2482,7 +2634,8 @@ local function installBattlePaletteIsolation()
     local sourceX, sourceY = (boxX - bx) / sx, (boxY - by) / sy
     for _, anchor in ipairs(anchors) do
       local p = anchor.gen1BetterMenusPlacement
-      if anchor.canvas == canvas and p and p.owner == "betterbattle"
+      if anchor.canvas == canvas and p
+          and (p.owner == "betterbattle" or p.coordinateSpace == "field")
           and sameAnchorCoordinate(sourceX, anchor.x)
           and sameAnchorCoordinate(sourceY, anchor.y) then
         local r = self:frameRects()
@@ -2555,7 +2708,8 @@ local function installBattlePaletteIsolation()
         math.min(r.uoy + r.uvph, r.vuy + r.vuh) - top)
 
       for _, layer in ipairs(spriteLayers) do
-        if layer.nativeField then
+        if layer.nativeField or layer.nativeBlit
+            or (layer.gen1BetterMenusPlacement and layer.gen1BetterMenusPlacement.nativeBlit) then
           originalBlitCanvas(self, layer.canvas,
             r.Ux, r.Uy, zones, r.Ux, r.Uy,
             r.uox, r.uoy, left, top, width, height,
@@ -2959,12 +3113,16 @@ local function installDialogueLayout()
   ChoiceBox.new = function(game, onChoose, opts)
     local self = choiceNew(game, onChoose, opts)
     self.tx = UI_TW - self.tw
+    local parent = game and game.stack and game.stack:top()
+    if parent and parent.isTextBox and parent.boxTy then
+      self.ty = parent.boxTy - self.th
+    end
     return self
   end
   makeWideState(ChoiceBox)
 end
 
-local function installSupportingScreens()
+local function installSupportingScreens(mod)
 
 	DexEntryMenu.sgbPalettes = function(self, game)
 	  local base = PaletteFX.pal(game.data, "BROWNMON")
@@ -3740,20 +3898,213 @@ local function installSupportingScreens()
   
   local originalSummaryDraw = SummaryMenu.draw
 
-SummaryMenu.draw = function(self)
-  local sprite = self.sprite
-  self.sprite = nil
-  originalSummaryDraw(self)
-  self.sprite = sprite
-
-  if self.page == 1 and self.mon then
-    drawPartyGender(self.game, self.mon, 104, 16, self)
+  local function drawSummaryLineBox(tx, ty, b, c)
+    local HudTiles = require("src.render.HudTiles")
+    for i = 0, b - 1 do HudTiles.statusTile(0x78, tx * 8, (ty + i) * 8) end
+    HudTiles.statusTile(0x77, tx * 8, (ty + b) * 8)
+    for i = 1, c do HudTiles.statusTile(0x76, (tx - i) * 8, (ty + b) * 8) end
+    HudTiles.statusTile(0x6F, (tx - c - 1) * 8, (ty + b) * 8)
   end
-end
-  
+
+  local function drawSummaryLevel(x, y, level)
+    local HudTiles = require("src.render.HudTiles")
+    local Font = require("src.render.Font")
+    if level < 100 then
+      HudTiles.statusTile(0x6E, x, y)
+      x = x + 8
+    end
+    Font.draw(tostring(level), x, y)
+  end
+
+  local function clipTrueColorRectsOutside(cx, cy, cw, ch)
+    local okP, PaletteFX = pcall(require, "src.render.PaletteFX")
+    if not (okP and PaletteFX and PaletteFX.trueColorRects) then return end
+    local uiRects = PaletteFX.trueColorRects("ui")
+    if not (uiRects and #uiRects > 0) then return end
+
+    local x1, y1 = cx, cy
+    local x2, y2 = cx + cw, cy + ch
+    local filtered = {}
+    for _, r in ipairs(uiRects) do
+      local rx1, ry1 = r.x, r.y
+      local rx2, ry2 = r.x + r.w, r.y + r.h
+      local ix1, iy1 = math.max(rx1, x1), math.max(ry1, y1)
+      local ix2, iy2 = math.min(rx2, x2), math.min(ry2, y2)
+      if ix1 >= ix2 or iy1 >= iy2 then
+        filtered[#filtered + 1] = r
+      else
+        if ry1 < iy1 then
+          filtered[#filtered + 1] = { colors = false, x = rx1, y = ry1, w = r.w, h = iy1 - ry1 }
+        end
+        if iy2 < ry2 then
+          filtered[#filtered + 1] = { colors = false, x = rx1, y = iy2, w = r.w, h = ry2 - iy2 }
+        end
+        if rx1 < ix1 then
+          filtered[#filtered + 1] = { colors = false, x = rx1, y = iy1, w = ix1 - rx1, h = iy2 - iy1 }
+        end
+        if ix2 < rx2 then
+          filtered[#filtered + 1] = { colors = false, x = ix2, y = iy1, w = rx2 - ix2, h = iy2 - iy1 }
+        end
+      end
+    end
+    for i = 1, #uiRects do uiRects[i] = nil end
+    for i = 1, #filtered do uiRects[i] = filtered[i] end
+  end
+
+  SummaryMenu.draw = function(self)
+    local sprite = self.sprite
+    self.sprite = nil
+    local ox, oy = summaryOffsets(self)
+    clipTrueColorRectsOutside(ox, oy, 168, 144)
+
+    local mon = self.mon
+    local game = self.game
+    local data = game and game.data
+    local def = data and data.pokemon and mon and data.pokemon[mon.species]
+    local HudTiles = require("src.render.HudTiles")
+    local Font = require("src.render.Font")
+    local Strings = require("src.core.Strings")
+    local Status = require("src.battle.Status")
+    local TypeChart = require("src.battle.TypeChart")
+    local LevelDisplay = require("src.ui.LevelDisplay")
+    local PaletteFX = require("src.render.PaletteFX")
+
+    love.graphics.push()
+    love.graphics.translate(ox, oy)
+    PaletteFX.setMarkOffset(ox, oy)
+
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.rectangle("fill", 0, 0, 168, 144)
+
+    love.graphics.setColor(0, 0, 0, 1)
+    Font.draw(mon and (mon.nickname or (def and def.name)) or "", 72, 8)
+    HudTiles.statusTile(0x74, 8, 56)  -- №
+    Font.drawCode(0xF2, 16, 56)       -- <DOT>
+    Font.draw(("%03d"):format(def and def.dex or 0), 24, 56)
+
+    if self.page == 1 then
+      local hasGender = false
+      if mon then
+        local api = getGenderModApi(game)
+        if api and type(api.genderOf) == "function" then
+          local okG, g = pcall(api.genderOf, mon)
+          if okG and g then
+            local st = api.state and api.state(g) or (type(g) == "table" and g.state or g)
+            if st == "M" or st == "F" then hasGender = true end
+          end
+        end
+      end
+
+      if hasGender then
+        drawPartyGender(game, mon, 72, 16, self)
+        if LevelDisplay.visible(mon, "summary", game) then
+          drawSummaryLevel(80, 16, mon.level)
+        end
+      else
+        if LevelDisplay.visible(mon, "summary", game) then
+          drawSummaryLevel(72, 16, mon.level)
+        end
+      end
+
+      drawSummaryLineBox(20, 1, 6, 11)
+      local barZoned = PaletteFX.shader() ~= nil
+                       and PaletteFX.pal(data, "GREENBAR") ~= nil
+      HudTiles.drawHPBar(data, 9, 3, mon, 0, barZoned)
+      local hpText = ("%3d/%3d"):format(mon.hp, mon.stats.hp)
+      local hpStatsX = math.floor(112 - Font.width(hpText) / 2)
+      Font.draw(hpText, hpStatsX, 32)
+      Font.draw(Strings("STATUS/"), 72, 48)
+      Font.draw(Status.hudLabelFor(data.statuses, mon.status) or "OK", 128, 48)
+
+      Font.drawBox(0, 8, 10, 10)
+      local stats = {
+        { "ATTACK", mon.stats.attack }, { "DEFENSE", mon.stats.defense },
+        { "SPEED", mon.stats.speed }, { "SPECIAL", mon.stats.special },
+      }
+      for i, s in ipairs(stats) do
+        local y = 72 + (i - 1) * 16
+        Font.draw(Strings(s[1]), 8, y)
+        Font.draw(("%3d"):format(s[2]), 48, y + 8)
+      end
+
+      drawSummaryLineBox(20, 9, 8, 7)
+      Font.draw(Strings("TYPE1/"), 80, 72)
+      Font.draw(def and def.types and def.types[1] and TypeChart.displayName(def.types[1], data) or "", 88, 80)
+      if def and def.types and def.types[2] then
+        Font.draw(Strings("TYPE2/"), 80, 88)
+        Font.draw(TypeChart.displayName(def.types[2], data), 88, 96)
+      end
+      HudTiles.statusTile(0x73, 80, 104) -- <ID>
+      HudTiles.statusTile(0x74, 88, 104) -- №
+      Font.draw("/", 96, 104)
+      Font.draw(("%05d"):format(mon.otId or (game.save and game.save.player and game.save.player.id) or 0), 96, 112)
+      Font.draw(Strings("OT/"), 80, 120)
+      Font.draw(mon.ot or (game.save and game.save.player and game.save.player.name) or "RED", 96, 128)
+    else
+      drawSummaryLineBox(20, 1, 6, 11)
+      Font.draw(Strings("EXP POINTS"), 72, 24)
+      Font.draw(("%7d"):format(mon.exp or 0), 96, 32)
+      Font.draw(Strings("LEVEL UP"), 72, 40)
+      local Growth = require("src.pokemon.Growth")
+      local nextExp = mon.level < 100
+        and (Growth.expForLevel(def.growthRate, mon.level + 1) - mon.exp) or 0
+      Font.draw(("%7d"):format(math.max(0, nextExp)), 56, 48)
+      if LevelDisplay.visible(mon, "summary", game) then
+        HudTiles.statusTile(0x70, 112, 48)
+        drawSummaryLevel(16 * 8, 6 * 8, math.min(100, mon.level + 1))
+      end
+      Font.drawBox(0, 8, 21, 10)
+      for i = 1, 4 do
+        local mv = mon.moves and mon.moves[i]
+        local y = 72 + (i - 1) * 16
+        if mv then
+          local mdef = data.moves[mv.id]
+          Font.draw(mdef and mdef.name or tostring(mv.id), 16, y)
+          Font.draw(Strings("PP"), 88, y + 8)
+          local maxPP = (mdef and mdef.pp or 0) + (mv.ppUps or 0) * math.floor((mdef and mdef.pp or 0) / 5)
+          Font.draw(("%2d/%2d"):format(mv.pp or 0, maxPP), 112, y + 8)
+        else
+          Font.draw("-", 16, y)
+          Font.draw("--", 112, y + 8)
+        end
+      end
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+    if self.whiteHold and self.whiteHold > 0 then
+      love.graphics.rectangle("fill", 0, 0, 168, 144)
+    end
+
+    PaletteFX.setMarkOffset(0, 0)
+    love.graphics.pop()
+
+    self.sprite = sprite
+  end
+
+  local originalSummaryNew = SummaryMenu.new
+  SummaryMenu.new = function(game, ...)
+    local summary = originalSummaryNew(game, ...)
+    if summary then
+      summary.draw = SummaryMenu.draw
+    end
+    return summary
+  end
+
   makeWideState(SummaryMenu)
+  SummaryMenu.uiSize = function(self)
+    local states = self.game and self.game.stack and self.game.stack.states or {}
+    for i = #states, 1, -1 do
+      local s = states[i]
+      if s and s ~= self and s.uiSize then
+        return s:uiSize()
+      end
+    end
+    return UI_W, UI_H
+  end
   SummaryMenu.sgbPalettes = function(self, game)
-    local zones = wholeWide()
+    local ox, oy, uiW, uiH = summaryOffsets(self)
+    local tw, th = math.floor(uiW / 8), math.floor(uiH / 8)
+    local zones = { PaletteFX.zone(effectiveMenuPalette(), 0, 0, tw - 1, th - 1) }
 
     -- Summary Pokémon HP bar.
     if self.page == 1 and self.mon and self.mon.stats then
@@ -3763,17 +4114,79 @@ end
       )
 
       if bar then
+        local menuPal = effectiveMenuPalette()
+        local barPal = {
+          menuPal[1],
+          bar[2],
+          bar[3],
+          menuPal[4],
+        }
         zones[#zones + 1] = {
-          colors = bar,
-          x = 104,
-          y = 27,
+          colors = barPal,
+          x = 88 + ox,
+          y = 24 + oy,
           w = 48,
-          h = 2,
+          h = 8,
         }
       end
     end
 
     return zones
+  end
+
+  SummaryMenu.update = function(self, dt)
+    local crystal = mod and mod.find and mod.find("crystal_animated_sprites_with_shiny_visuals")
+    local advanceSprite = crystal and crystal.exports and crystal.exports.advanceMenuSprite
+    if advanceSprite then
+      pcall(advanceSprite, self, dt)
+    elseif self.__crystalAnim then
+      local anim = self.__crystalAnim
+      local speed = 1
+      if self.game and type(self.game.logicSpeed) == "function" then
+        speed = self.game:logicSpeed() or 1
+      end
+      if type(speed) ~= "number" or speed <= 0 then speed = 1 end
+      local realDt = (tonumber(dt) or (1 / 60)) / speed
+      anim.elapsed = (anim.elapsed or 0) + realDt * 1000
+      local guard = 0
+      while anim.elapsed >= math.max(1, anim.durations[anim.frame] or 100)
+          and guard < 50 and not anim.done do
+        anim.elapsed = anim.elapsed - math.max(1, anim.durations[anim.frame] or 100)
+        anim.frame = anim.frame + 1
+        if anim.frame > #anim.durations then
+          anim.frame = 1
+        end
+        guard = guard + 1
+      end
+      if anim.images and anim.images[anim.frame] then
+        self.sprite = anim.images[anim.frame]
+      end
+    end
+
+    if self.closing then return end
+    if self.whiteHold and self.whiteHold > 0 then
+      self.whiteHold = self.whiteHold - 1
+      if self.whiteHold == 0 then
+        require("src.core.Sound").playCry(self.game.data, self.mon.species)
+      end
+      return
+    end
+    local input = self.game.input
+    if input:wasPressed("b") then
+      require("src.core.Sound").play(self.game.data, "Press_AB")
+      self.game.stack:pop()
+    elseif input:wasPressed("a") or input:wasPressed("right") or input:wasPressed("left") then
+      if self.page == 1 then
+        self.page = 2
+        require("src.core.Sound").play(self.game.data, "Press_AB")
+      elseif input:wasPressed("a") then
+        require("src.core.Sound").play(self.game.data, "Press_AB")
+        self.game.stack:pop()
+      else
+        self.page = 1
+        require("src.core.Sound").play(self.game.data, "Press_AB")
+      end
+    end
   end
 end
 
@@ -3979,7 +4392,7 @@ return function(mod, menuColors)
   local rejectingBetterBattleSetting = false
 
   local function qolBattleGateReason(game)
-    if betterBattleUIMode() == "on" then return "betterbattle" end
+    if betterBattleUIEnabled(game) then return "betterbattle_ui" end
     local options = game and game.save and game.save.options
     if options and options.battleLayout == "wide"
         and options.battleHud == "extended" then
@@ -3989,9 +4402,25 @@ return function(mod, menuColors)
   end
 
   local function qolBattleGateLabel(reason)
-    if reason == "betterbattle" then return "OFF (BetterBattle)" end
+    if reason == "betterbattle_ui" then return "OFF (BetterBattle UI)" end
     if reason == "extended" then return "OFF (BattleUI EXTENDED)" end
     return nil
+  end
+
+  local function showBetterBattlesRequiresWide(game)
+    if not (game and game.stack) then return end
+    game.stack:push(TextBox.new(game,
+      "Please enable WIDE in your\n" ..
+      "Battle UI settings to use\f" ..
+      "BetterBattles."))
+  end
+
+  local function showBetterBattlesRequiresExtended(game)
+    if not (game and game.stack) then return end
+    game.stack:push(TextBox.new(game,
+      "Please enable EXTENDED in your\n" ..
+      "Battle HUD settings to use\f" ..
+      "BetterBattles."))
   end
 
   local function showBetterBattleRequiresWide(game)
@@ -3999,7 +4428,7 @@ return function(mod, menuColors)
     game.stack:push(TextBox.new(game,
       "Please enable WIDE in your\n" ..
       "Battle UI settings to use\f" ..
-      "BetterBattle."))
+      "BetterBattle UI."))
   end
 
   local function showBetterBattleRequiresExtended(game)
@@ -4007,13 +4436,13 @@ return function(mod, menuColors)
     game.stack:push(TextBox.new(game,
       "Please enable EXTENDED in your\n" ..
       "Battle HUD settings to use\f" ..
-      "BetterBattle."))
+      "BetterBattle UI."))
   end
 
   local function showDisableBetterBattleForStandard(game)
     if not (game and game.stack) then return end
     game.stack:push(TextBox.new(game,
-      "Please disable BetterBattle\n" ..
+      "Please disable BetterBattle UI\n" ..
       "in the BetterMenus options\f" ..
       "before switching to WIDE\n" ..
       "Standard Battle UI."))
@@ -4030,17 +4459,21 @@ return function(mod, menuColors)
   end
 
   local function setBetterBattleOff(game)
-    if normalizingBetterBattleLayout or not game
-        or betterBattleUIMode() ~= "on" then return false end
+    if normalizingBetterBattleLayout or not game then return false end
     normalizingBetterBattleLayout = true
-    ManagerState.new(game):setOption(
-      "gen1-better-menus", "modern_battle_ui", "off")
+    local manager = ManagerState.new(game)
+    if betterBattleUIMode() == "on" then
+      manager:setOption("gen1-better-menus", "better_battle_ui", false)
+    end
+    if betterBattlesMode() == "on" then
+      manager:setOption("gen1-better-menus", "better_battles", false)
+    end
     normalizingBetterBattleLayout = false
     return true
   end
 
   local function normalizeInvalidBetterBattle(game)
-    if not game or betterBattleUIMode() ~= "on"
+    if not game or (betterBattleUIMode() ~= "on" and betterBattlesMode() ~= "on")
         or betterBattleSettingsSupported(game) then
       return false
     end
@@ -4080,17 +4513,26 @@ return function(mod, menuColors)
   end)
   mod.events:on("mod.options_changed", function(event)
     if event and event.mod == "gen1-better-menus"
-        and event.key == "modern_battle_ui" then
+        and (event.key == "better_battle_ui" or event.key == "better_battles"
+          or event.key == "modern_battle_ui") then
       if not normalizingBetterBattleLayout
           and not rejectingBetterBattleSetting
-          and event.value == "on" then
+          and (event.value == true or event.value == "on") then
         rejectingBetterBattleSetting = true
         if not wideBattleLayoutSelected(qolCompatGame) then
           setBetterBattleOff(qolCompatGame)
-          showBetterBattleRequiresWide(qolCompatGame)
+          if event.key == "better_battles" then
+            showBetterBattlesRequiresWide(qolCompatGame)
+          else
+            showBetterBattleRequiresWide(qolCompatGame)
+          end
         elseif not extendedBattleHudSelected(qolCompatGame) then
           setBetterBattleOff(qolCompatGame)
-          showBetterBattleRequiresExtended(qolCompatGame)
+          if event.key == "better_battles" then
+            showBetterBattlesRequiresExtended(qolCompatGame)
+          else
+            showBetterBattleRequiresExtended(qolCompatGame)
+          end
         end
         rejectingBetterBattleSetting = false
       end
@@ -4109,7 +4551,7 @@ return function(mod, menuColors)
       if row.id == "battleHud" and type(row.step) == "function" then
         local step = row.step
         row.step = function(g, ...)
-          if betterBattleUIMode() == "on"
+          if (betterBattleUIMode() == "on" or betterBattlesMode() == "on")
               and wideBattleLayoutSelected(g)
               and extendedBattleHudSelected(g) then
             showDisableBetterBattleForStandard(g)
@@ -4140,8 +4582,8 @@ return function(mod, menuColors)
     enforce = enforceQolBattleGate,
   }
 
-  local function decorateQolBattleGate(screen)
-    if not screen or screen.__gen1BetterMenusQolBattleGate then return screen end
+  local function decorateOptionRows(screen)
+    if not screen or screen.__gen1BetterMenusDecoratedOptionRows then return screen end
     local update = screen.update
     if type(update) ~= "function" then return screen end
 
@@ -4170,10 +4612,10 @@ return function(mod, menuColors)
       if gated and input and (input:wasPressed("a")
           or input:wasPressed("left") or input:wasPressed("right")) then
         local message
-        if reason == "betterbattle" then
+        if reason == "betterbattle_ui" then
           message = "To use the QOL XP Bar or\n" ..
             "Pokedex Indicator, please disable\f" ..
-            "BetterBattle in the\n" ..
+            "BetterBattle UI in the\n" ..
             "BetterMenus options screen."
         else
           message = "The QOL mod XP Bar and Caught\n" ..
@@ -4187,28 +4629,28 @@ return function(mod, menuColors)
       if reason then control.enforce(self.game) end
       return result
     end
-    screen.__gen1BetterMenusQolBattleGate = true
+    screen.__gen1BetterMenusDecoratedOptionRows = true
     return screen
   end
 
-  local function installQolBattleStackGate(game)
+  local function installOptionRowsStackGate(game)
     local stack = game and game.stack
     if not stack then return end
-    stack.gen1BetterMenusDecorateQolBattleGate = decorateQolBattleGate
-    if stack.__gen1BetterMenusQolBattlePush then return end
+    stack.gen1BetterMenusDecorateOptionRows = decorateOptionRows
+    if stack.__gen1BetterMenusOptionRowsPush then return end
 
     local push = stack.push
     stack.push = function(self, state, ...)
       if state and state.screenId == "QualityOfLife" then
-        local decorate = self.gen1BetterMenusDecorateQolBattleGate
+        local decorate = self.gen1BetterMenusDecorateOptionRows
         if decorate then decorate(state) end
       end
       return push(self, state, ...)
     end
-    stack.__gen1BetterMenusQolBattlePush = true
+    stack.__gen1BetterMenusOptionRowsPush = true
   end
   mod.events:on("game.ready", function(event)
-    installQolBattleStackGate(event and event.game)
+    installOptionRowsStackGate(event and event.game)
   end)
 
   local genderMod = mod.find("gender_mod")
@@ -4320,6 +4762,75 @@ return function(mod, menuColors)
   end
   mod.exports.betterParty = betterParty
 
+  local betterPokedexSource, betterPokedexReadErr =
+    mod:read("better_pokedex_screen.lua")
+  if not betterPokedexSource then
+    mod.log:error("better_pokedex_screen.lua is missing (%s)",
+      tostring(betterPokedexReadErr or "unknown read error"))
+    return
+  end
+  local betterPokedexChunk, betterPokedexCompileErr = load(
+    betterPokedexSource, "@" .. mod.path .. "/better_pokedex_screen.lua")
+  if not betterPokedexChunk then
+    mod.log:error("better_pokedex_screen.lua did not compile: %s",
+      tostring(betterPokedexCompileErr))
+    return
+  end
+  local okBetterPokedexFactory, betterPokedexFactory =
+    pcall(betterPokedexChunk)
+  if not okBetterPokedexFactory
+      or type(betterPokedexFactory) ~= "function" then
+    mod.log:error("BetterPokedex factory failed: %s",
+      tostring(betterPokedexFactory))
+    return
+  end
+  local okBetterPokedex, betterPokedex = pcall(
+    betterPokedexFactory, mod, genderExports, compatibility,
+    effectiveMenuPalette, useStockOgMenuPalette, effectivePaperPalette,
+    rawMenuPaletteCopy)
+  if not okBetterPokedex or type(betterPokedex) ~= "table"
+      or type(betterPokedex.new) ~= "function" then
+    mod.log:error("BetterPokedex screen factory failed: %s",
+      tostring(betterPokedex))
+    return
+  end
+  mod.exports.betterPokedex = betterPokedex
+
+  local betterModManagerSource, betterModManagerReadErr =
+    mod:read("better_mod_manager_screen_candidate.lua")
+  if not betterModManagerSource then
+    mod.log:error("better_mod_manager_screen_candidate.lua is missing (%s)",
+      tostring(betterModManagerReadErr or "unknown read error"))
+    return
+  end
+  local betterModManagerChunk, betterModManagerCompileErr = load(
+    betterModManagerSource,
+    "@" .. mod.path .. "/better_mod_manager_screen_candidate.lua")
+  if not betterModManagerChunk then
+    mod.log:error("better_mod_manager_screen_candidate.lua did not compile: %s",
+      tostring(betterModManagerCompileErr))
+    return
+  end
+  local okBetterModManagerFactory, betterModManagerFactory =
+    pcall(betterModManagerChunk)
+  if not okBetterModManagerFactory
+      or type(betterModManagerFactory) ~= "function" then
+    mod.log:error("BetterModManager factory failed: %s",
+      tostring(betterModManagerFactory))
+    return
+  end
+  local okBetterModManager, betterModManager = pcall(
+    betterModManagerFactory, mod, genderExports, compatibility,
+    effectiveMenuPalette, useStockOgMenuPalette,
+    effectivePaperPalette, rawMenuPaletteCopy)
+  if not okBetterModManager or type(betterModManager) ~= "table"
+      or type(betterModManager.new) ~= "function" then
+    mod.log:error("BetterModManager screen factory failed: %s",
+      tostring(betterModManager))
+    return
+  end
+  mod.exports.betterModManager = betterModManager
+
   local originalBoxMenu = mod.content.screens:get("BoxMenu")
 
   local function markStockMenu(screen, factory)
@@ -4327,6 +4838,50 @@ return function(mod, menuColors)
       screen.BetterMenusScaleEligible = true
     end
     return screen
+  end
+
+  local originalManagerState = mod.content.screens:get("ManagerState")
+  local managerStateWrapper = {
+    new = function(game, ...)
+      if activeMod
+          and activeMod.options:get("better_mod_manager") ~= false then
+        return betterModManager.new(game, ...)
+      end
+      local screen
+      if originalManagerState
+          and type(originalManagerState.new) == "function" then
+        screen = originalManagerState.new(game, ...)
+      else
+        screen = ManagerState.new(game, ...)
+      end
+      return markStockMenu(screen, originalManagerState)
+    end,
+  }
+  if originalManagerState then
+    mod.content.screens:override("ManagerState", managerStateWrapper)
+  else
+    mod.content.screens:register("ManagerState", managerStateWrapper)
+  end
+
+  local originalPokedexMenu = mod.content.screens:get("PokedexMenu")
+  local pokedexMenuWrapper = {
+    new = function(game, ...)
+      if activeMod
+          and activeMod.options:get("modern_pokedex_ui") ~= false then
+        return betterPokedex.new(game, ...)
+      end
+      if originalPokedexMenu
+          and type(originalPokedexMenu.new) == "function" then
+        return markStockMenu(originalPokedexMenu.new(game, ...),
+          originalPokedexMenu)
+      end
+      return markStockMenu(PokedexMenu.new(game, ...))
+    end,
+  }
+  if originalPokedexMenu then
+    mod.content.screens:override("PokedexMenu", pokedexMenuWrapper)
+  else
+    mod.content.screens:register("PokedexMenu", pokedexMenuWrapper)
   end
 
   local boxMenuWrapper = {
@@ -4370,8 +4925,16 @@ return function(mod, menuColors)
   local originalSummaryMenu = mod.content.screens:get("SummaryMenu")
   local summaryMenuWrapper = {
     new = function(game, ...)
-      local summary = SummaryMenu.new(game, ...)
-      summary.BetterMenusScaleEligible = true
+      local summary
+      if originalSummaryMenu and type(originalSummaryMenu.new) == "function" then
+        summary = originalSummaryMenu.new(game, ...)
+      else
+        summary = SummaryMenu.new(game, ...)
+      end
+      if summary then
+        summary.draw = SummaryMenu.draw
+        summary.BetterMenusScaleEligible = true
+      end
       return summary
     end
   }
@@ -4495,7 +5058,7 @@ return function(mod, menuColors)
 
 	  local installedBetterBattleHud, betterBattleHudInstallErr = pcall(installBetterBattleHud, mod,
 		effectiveMenuPalette, useStockOgMenuPalette, betterBattleUIMode,
-		compatibility)
+		compatibility, betterBattlesMode)
 	  if not installedBetterBattleHud then
 		mod.log:error("BetterBattle HUD failed: %s",
 		  tostring(betterBattleHudInstallErr))
@@ -4527,6 +5090,10 @@ return function(mod, menuColors)
     if ok and scenesModule and type(scenesModule.new) == "function" then
       betterScenesInstance = scenesModule.new({
         mod = mod,
+        shadowEngine = mod.exports.betterBattle
+          and mod.exports.betterBattle.shadowEngine,
+        shadowSettings = mod.exports.betterBattle
+          and mod.exports.betterBattle.shadowSettings,
         isSelfMod = function(sourceMod, key)
           return key == mod.id or key == "gen1-better-menus" or sourceMod == mod
         end,
@@ -4621,7 +5188,11 @@ return function(mod, menuColors)
       default = true },
     { key = "modern_party_ui", label = "BetterParty", type = "toggle",
       default = true },
+    { key = "modern_pokedex_ui", label = "BetterPokedex", type = "toggle",
+      default = true },
     { key = "modern_bag_ui", label = "BetterBag", type = "toggle",
+      default = true },
+    { key = "better_mod_manager", label = "BetterModManager", type = "toggle",
       default = true },
     { key = "menu_scale", label = "Menu Scale", type = "choice",
       default = "100",
@@ -4631,13 +5202,10 @@ return function(mod, menuColors)
         { "80%", "80" },
         { "70%", "70" },
       } },
-    { key = "modern_battle_ui", label = "BetterBattle", type = "choice",
-      default = "on",
-      choices = {
-        { "OFF", "off" },
-        { "ON", "on" },
-        { "MOD", "mod" },
-      } },
+    { key = "better_battles", label = "BetterBattles", type = "toggle",
+      default = true },
+    { key = "better_battle_ui", label = "BetterBattle UI", type = "toggle",
+      default = true },
     { key = "marquee_text", label = "Marquee Text", type = "toggle",
       default = true },
     { key = "pokedex_indicator", label = "Pokédex Indicator", type = "choice",
@@ -5161,10 +5729,34 @@ return function(mod, menuColors)
       step = function(g) setOption(g, "modern_party_ui", not (activeMod.options:get("modern_party_ui") ~= false)) end,
     }
     rows[#rows + 1] = {
+      label = "BetterPokedex",
+      value = function()
+        return activeMod.options:get("modern_pokedex_ui") ~= false
+          and "ON" or "OFF"
+      end,
+      widthValues = { "ON", "OFF" },
+      step = function(g)
+        setOption(g, "modern_pokedex_ui",
+          not (activeMod.options:get("modern_pokedex_ui") ~= false))
+      end,
+    }
+    rows[#rows + 1] = {
       label = "BetterBag",
       value = function() return activeMod.options:get("modern_bag_ui") ~= false and "ON" or "OFF" end,
       widthValues = { "ON", "OFF" },
       step = function(g) setOption(g, "modern_bag_ui", not (activeMod.options:get("modern_bag_ui") ~= false)) end,
+    }
+    rows[#rows + 1] = {
+      label = "BetterModManager",
+      value = function()
+        return activeMod.options:get("better_mod_manager") ~= false
+          and "ON" or "OFF"
+      end,
+      widthValues = { "ON", "OFF" },
+      step = function(g)
+        setOption(g, "better_mod_manager",
+          not (activeMod.options:get("better_mod_manager") ~= false))
+      end,
     }
     rows[#rows + 1] = {
       label = "Menu Scale",
@@ -5176,14 +5768,33 @@ return function(mod, menuColors)
       description = "Scale in-game menus and dialogue. BetterPC, BetterBag, and BetterParty keep their responsive size.",
     }
     rows[#rows + 1] = {
-      label = "BetterBattle",
-      value = function() return betterBattleUIMode():upper() end,
-      widthValues = { "ON", "OFF", "MOD" },
+      label = "BetterBattles",
+      value = function() return betterBattlesMode():upper() end,
+      widthValues = { "ON", "OFF" },
       step = function(g)
-        local mode = betterBattleUIMode()
-        local nextMode = mode == "on" and "off"
-          or mode == "off" and "mod" or "on"
-        if nextMode == "on" then
+        local nextState = betterBattlesMode() ~= "on"
+        if nextState then
+          if not wideBattleLayoutSelected(g) then
+            showBetterBattlesRequiresWide(g)
+            return false
+          end
+          if not extendedBattleHudSelected(g) then
+            showBetterBattlesRequiresExtended(g)
+            return false
+          end
+        end
+        setOption(g, "better_battles", nextState)
+        return true
+      end,
+      description = "Full-color 320x180 battle backdrops, contact footprint and wing sprite shadows, and mid-battle scene transitions.",
+    }
+    rows[#rows + 1] = {
+      label = "BetterBattle UI",
+      value = function() return betterBattleUIMode():upper() end,
+      widthValues = { "ON", "OFF" },
+      step = function(g)
+        local nextState = betterBattleUIMode() ~= "on"
+        if nextState then
           if not wideBattleLayoutSelected(g) then
             showBetterBattleRequiresWide(g)
             return false
@@ -5193,18 +5804,10 @@ return function(mod, menuColors)
             return false
           end
         end
-        setOption(g, "modern_battle_ui", nextMode)
+        setOption(g, "better_battle_ui", nextState)
         return true
       end,
-      description = function()
-        local mode = betterBattleUIMode()
-        if mode == "on" then
-          return "Use the complete BetterBattle WIDE Extended layout, including compact status, command, move, XP, caught, portrait, and party panels"
-        elseif mode == "off" then
-          return "BetterMenus will provide palette coverage for stock drawn Battle UI"
-        end
-        return "Use a detected custom Battle UI while BetterMenus continues to provide its menu palette coverage"
-      end,
+      description = "Widescreen battle HUD: custom command/move panels, compact player/enemy status panels, XP bar glints, and trainer portraits.",
     }
     rows[#rows + 1] = {
       label = "Marquee Text",
@@ -5310,8 +5913,7 @@ return function(mod, menuColors)
               defaultNo = true,
               choice = function(yes)
                 if yes then
-                  pcall(love.filesystem.write, "relaunch_to_launcher.txt", "1")
-                  require("src.core.HostShell").restart()
+                  returnToLauncher()
                 end
               end,
             }
@@ -5366,7 +5968,7 @@ return function(mod, menuColors)
   installMenuLayout()
   installBattlePaletteIsolation()
   installDialogueLayout()
-  installSupportingScreens()
+  installSupportingScreens(mod)
   installManagerLayout()
   installLinkLayout()
   installReportLayout()
@@ -5510,8 +6112,9 @@ end
         and menuX and menuY and menuWidth and menuHeight then
       local pw, ph = top.sprite:getDimensions()
       local py = math.max(0, 56 - ph)
-      local scaleX = menuWidth / UI_W
-      local scaleY = menuHeight / UI_H
+      local ox, oy, topW, topH = summaryOffsets(top)
+      local scaleX = menuWidth / topW
+      local scaleY = menuHeight / topH
       local r, green, b, a = love.graphics.getColor()
       local previousShader = love.graphics.getShader()
       local scissorX, scissorY, scissorW, scissorH = love.graphics.getScissor()
@@ -5532,7 +6135,7 @@ end
       else
         love.graphics.setShader()
       end
-      love.graphics.draw(top.sprite, 8 + pw, py, 0, -1, 1)
+      love.graphics.draw(top.sprite, ox + 8 + pw, oy + py, 0, -1, 1)
       love.graphics.pop()
 
       love.graphics.setShader(previousShader)
@@ -5625,6 +6228,10 @@ end
       if states[i] and states[i].betterBagUI then
         return out
       end
+    end
+
+    if mt == SummaryMenu then
+      return out
     end
 
     if mt == BattleState and top.wideLayout and top:wideLayout() then

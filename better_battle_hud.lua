@@ -1,5 +1,5 @@
 return function(mod, menuColors, useStockOgMenuPalette, betterBattleUIMode,
-    compatibility)
+    compatibility, betterBattlesMode)
   local Font = require("src.render.Font")
   local Growth = require("src.pokemon.Growth")
   local HudTiles = require("src.render.HudTiles")
@@ -83,7 +83,29 @@ return function(mod, menuColors, useStockOgMenuPalette, betterBattleUIMode,
     end
     if mode == nil then
       local ok, value = pcall(mod.options.get, mod.options,
-        "modern_battle_ui")
+        "better_battle_ui")
+      if not ok or value == nil then
+        ok, value = pcall(mod.options.get, mod.options, "modern_battle_ui")
+      end
+      mode = ok and value or "on"
+    end
+    if mode == true or mode == nil then return "on" end
+    if mode == false then return "off" end
+    return mode
+  end
+
+  local function battleStageValue()
+    local mode
+    if type(betterBattlesMode) == "function" then
+      local ok, value = pcall(betterBattlesMode)
+      if ok then mode = value end
+    end
+    if mode == nil then
+      local ok, value = pcall(mod.options.get, mod.options,
+        "better_battles")
+      if not ok or value == nil then
+        ok, value = pcall(mod.options.get, mod.options, "modern_battle_ui")
+      end
       mode = ok and value or "on"
     end
     if mode == true or mode == nil then return "on" end
@@ -173,11 +195,22 @@ return function(mod, menuColors, useStockOgMenuPalette, betterBattleUIMode,
     return "on"
   end
 
-  local function setting(battle)
+  local function uiSetting(battle)
     if effectiveBattleMode(battle) ~= "on" then return false end
     local game = battle and battle.game or hudGame
     return wideSettingsSelected(game)
       and extendedSettingsSelected(game)
+  end
+
+  local function stageSetting(battle)
+    if battleStageValue() ~= "on" then return false end
+    local game = battle and battle.game or hudGame
+    return wideSettingsSelected(game)
+      and extendedSettingsSelected(game)
+  end
+
+  local function setting(battle)
+    return uiSetting(battle)
   end
 
   local function inversePalette()
@@ -1784,6 +1817,13 @@ end
   -- The contact band determines vertical grounding. A separate torso
   -- window determines the stable body-center X anchor.
   local function measureShadowFootprint(canvas, region)
+    local shadowEngine = betterBattleApi and betterBattleApi.shadowEngine
+    if shadowEngine and type(shadowEngine.measureFootprint) == "function" then
+      return shadowEngine.measureFootprint(canvas, region)
+    end
+
+    -- Installation safety net. The normal BetterBattle path always uses the
+    -- shared engine installed by better_battle_backdrops.lua.
     local g = love.graphics
     local ok, data = pcall(function()
       if type(g.readbackTexture) == "function" then
@@ -1961,6 +2001,87 @@ end
     }
   end
 
+  local geometryProviders = {}
+  local geometryProviderCounter = 0
+
+  local function registerBattleGeometryProvider(id, providerFn, priority)
+    if not id or type(providerFn) ~= "function" then return false end
+    priority = tonumber(priority) or 0
+    local found = false
+    for _, entry in ipairs(geometryProviders) do
+      if entry.id == id then
+        entry.fn = providerFn
+        entry.priority = priority
+        found = true
+        break
+      end
+    end
+    if not found then
+      geometryProviderCounter = geometryProviderCounter + 1
+      table.insert(geometryProviders, {
+        id = id,
+        fn = providerFn,
+        priority = priority,
+        order = geometryProviderCounter,
+      })
+    end
+    table.sort(geometryProviders, function(a, b)
+      if a.priority ~= b.priority then
+        return a.priority > b.priority
+      end
+      return a.order < b.order
+    end)
+    return true
+  end
+
+  local function unregisterBattleGeometryProvider(id)
+    if not id then return false end
+    for i, entry in ipairs(geometryProviders) do
+      if entry.id == id then
+        table.remove(geometryProviders, i)
+        return true
+      end
+    end
+    return false
+  end
+
+  local function normalizeGeometry(g)
+    if type(g) ~= "table" then return nil end
+    local coordSpace = g.coordinateSpace
+    if coordSpace ~= "native" and coordSpace ~= "field" then
+      return nil
+    end
+
+    local playerGround = tonumber(g.playerGround)
+    local enemyGround = tonumber(g.enemyGround)
+    if not playerGround or not enemyGround then return nil end
+
+    local playerShift = tonumber(g.playerShift)
+    if not playerShift then
+      playerShift = coordSpace == "native" and 0 or (playerGround - 104)
+    end
+    local enemyShift = tonumber(g.enemyShift)
+    if not enemyShift then
+      enemyShift = coordSpace == "native" and 0 or (enemyGround - 56)
+    end
+
+    return {
+      owner = g.owner or "external",
+      coordinateSpace = coordSpace,
+      playerX = tonumber(g.playerX) or (coordSpace == "field" and 52 or 0),
+      enemyX = tonumber(g.enemyX) or (coordSpace == "field" and 260 or 0),
+      playerGround = playerGround,
+      enemyGround = enemyGround,
+      playerShift = playerShift,
+      enemyShift = enemyShift,
+      spriteScale = tonumber(g.spriteScale) or (coordSpace == "field" and BETTER_BATTLE_SPRITE_SCALE or 1),
+      nativeBlit = g.nativeBlit == true,
+      nativeAnim = g.nativeAnim == true,
+      nativeClip = g.nativeClip == true,
+      stock = g.stock == true,
+    }
+  end
+
   local function betterBattleGeometry(battle)
     local r = battle.game.renderer:frameRects()
     local step = math.max(1, math.floor(r.Up * BETTER_BATTLE_SCALE + 1e-6))
@@ -1989,6 +2110,8 @@ end
     playerGround = playerGround + playerOffY
     local enemyGround = baseEnemyGround + enemyOffY
     return {
+      owner = "betterbattle",
+      coordinateSpace = "field",
       playerX = 52,
       enemyX = 260,
       playerGround = playerGround,
@@ -1996,7 +2119,54 @@ end
       playerShift = playerGround - 104,
       enemyShift = enemyGround - 56,
       spriteScale = BETTER_BATTLE_SPRITE_SCALE,
+      nativeBlit = false,
+      nativeAnim = false,
+      nativeClip = false,
+      stock = false,
     }
+  end
+
+  local function resolveBattleGeometry(battle)
+    if not battle then return nil end
+    local context = {
+      game = battle.game,
+      battle = battle,
+      uiEnabled = uiSetting(battle),
+      battlesEnabled = stageSetting(battle),
+    }
+    if Runtime.wantsHook("bettermenus.battle_geometry") then
+      local ok, custom = pcall(Runtime.call, "bettermenus.battle_geometry",
+        function(ctx) return nil end, context)
+      if ok and type(custom) == "table" then
+        local normalized = normalizeGeometry(custom)
+        if normalized then return normalized end
+      end
+    end
+    for _, entry in ipairs(geometryProviders) do
+      local ok, custom = pcall(entry.fn, battle, context)
+      if ok and type(custom) == "table" then
+        local normalized = normalizeGeometry(custom)
+        if normalized then return normalized end
+      end
+    end
+    if uiSetting(battle) then
+      return normalizeGeometry(betterBattleGeometry(battle))
+    end
+    return normalizeGeometry({
+      owner = "stock",
+      coordinateSpace = "native",
+      playerX = 0,
+      enemyX = 0,
+      playerGround = 104,
+      enemyGround = 56,
+      playerShift = 0,
+      enemyShift = 0,
+      spriteScale = 1,
+      nativeBlit = true,
+      nativeAnim = true,
+      nativeClip = true,
+      stock = true,
+    })
   end
 
   local function betterBattlePlacement(edge, gapX, gapY, fieldX, fieldY)
@@ -2010,7 +2180,7 @@ end
 	local function renderBetterBattleLayer(battle, bottomVisible, nativeRow)
     if not setting(battle) or not battleIsTopState(battle) then return false end
     local renderer = battle.game.renderer
-    local geometry = betterBattleGeometry(battle)
+    local geometry = resolveBattleGeometry(battle)
     local marks = PaletteFX.trueColorRects("ui")
     local firstMark = #marks + 1
     local zones = { PaletteFX.zone(menuColors(), 0, 0, 37, 17) }
@@ -2046,11 +2216,11 @@ end
     end
     if playerStatusDrawn then
 	    anchorWideHud(battle, 0, 32, 136, 48, "bottom",
-	      betterBattlePlacement("field", 0, 2, 52, geometry.playerGround))
+	      betterBattlePlacement("field", 0, 2, geometry.playerX, geometry.playerGround))
     end
     if enemyStatusDrawn then
 	    anchorWideHud(battle, 168, 32, 136, 32, "bottom",
-	      betterBattlePlacement("field", 0, 2, 260, geometry.enemyGround))
+	      betterBattlePlacement("field", 0, 2, geometry.enemyX, geometry.enemyGround))
 	  end
 	  	if bottomX then
 	    local destination = displayedMessagePane(battle)
@@ -2074,7 +2244,7 @@ end
   -- Keep native sprite drawing intact, then scale its finished layer through
   -- the same placement function used by the panels.
   local function withBetterBattleField(battle, draw)
-    local geometry = betterBattleGeometry(battle)
+    local geometry = resolveBattleGeometry(battle)
     local renderer = battle.game.renderer
     renderer.gen1BetterBattleFieldGeometry = geometry
     renderer.gen1BetterBattleSpriteLayers = nil
@@ -2125,13 +2295,23 @@ end
 
       local layer = layerFor(side)
       layer.betterBattleSide = side
+      layer.nativeBlit = geometry.nativeBlit
       layer.gen1BetterMenusPlacement = {
-        owner = "betterbattle",
-        edge = "field-sprite",
-        scale = BETTER_BATTLE_SPRITE_SCALE,
+        owner = geometry.owner,
+        coordinateSpace = geometry.coordinateSpace,
+        edge = geometry.coordinateSpace == "field" and "field-sprite" or "native-sprite",
+        scale = geometry.spriteScale,
         fieldX = side == "player" and geometry.playerX or geometry.enemyX,
         fieldY = side == "player"
           and geometry.playerGround or geometry.enemyGround,
+        playerGround = geometry.playerGround,
+        enemyGround = geometry.enemyGround,
+        playerShift = geometry.playerShift,
+        enemyShift = geometry.enemyShift,
+        nativeBlit = geometry.nativeBlit,
+        nativeAnim = geometry.nativeAnim,
+        nativeClip = geometry.nativeClip,
+        stock = geometry.stock,
       }
       layer.zones = WideBattle.zones()
       local marks = PaletteFX.trueColorRects("ui")
@@ -2170,8 +2350,10 @@ end
               }
               if type(manualAnchorX) == "number"
                   and type(manualContactY) == "number" then
+                local profileWidth = settings and settings.profileSpace
+                  and settings.profileSpace.width or 56
                 local spriteX = side == "player"
-                  and 56 - manualAnchorX or manualAnchorX
+                  and profileWidth - manualAnchorX or manualAnchorX
                 local ax, ay = g.transformPoint(
                   x + spriteX * spriteScale,
                   y + manualContactY * spriteScale)
@@ -2420,40 +2602,50 @@ end
         end
         if footprint then
           layer.shadowFootprint = footprint
-          local centerX = footprint.contactCenterX or footprint.centerX
-
-          local fullWidth =
-            footprint.fullVisibleWidth or footprint.visibleWidth
-          local fullHeight =
-            footprint.fullVisibleHeight or footprint.visibleHeight or 1
-          local boundsCenter =
-            footprint.boundsCenterX or footprint.centerX
-          local contactCoverage =
-            footprint.contactWidth / math.max(1, fullWidth)
-          local contactOffset =
-            math.abs(centerX - boundsCenter) / math.max(1, fullWidth)
           local minimumCoverage = settings.automaticBodyValue(
             footprintState.species, side, "minimumContactCoverage")
           local maximumOffset = settings.automaticBodyValue(
             footprintState.species, side, "maximumContactOffset")
-          local contactReliable =
-            contactCoverage >= minimumCoverage
-            and contactOffset <= maximumOffset
-
-          if anchorMode == "body" then
-            centerX = footprint.bodyCenterX or centerX
-          elseif not contactReliable then
-            if fullWidth >= fullHeight then
-              centerX = boundsCenter
-            else
-              centerX = footprint.bodyCenterX
-                or footprint.opaqueCentroidX
-                or boundsCenter
+          local centerX, contactReliable
+          local shadowEngine = betterBattleApi and betterBattleApi.shadowEngine
+          if shadowEngine and type(shadowEngine.resolveAnchor) == "function" then
+            local resolvedAnchor = shadowEngine.resolveAnchor(footprint, {
+              anchorMode = anchorMode,
+              anchorX = anchorX,
+              minimumContactCoverage = minimumCoverage,
+              maximumContactOffset = maximumOffset,
+            })
+            centerX = resolvedAnchor.centerX
+            contactReliable = resolvedAnchor.contactReliable
+          else
+            local fullWidth =
+              footprint.fullVisibleWidth or footprint.visibleWidth
+            local fullHeight =
+              footprint.fullVisibleHeight or footprint.visibleHeight or 1
+            local boundsCenter =
+              footprint.boundsCenterX or footprint.centerX
+            centerX = footprint.contactCenterX or footprint.centerX
+            local contactCoverage =
+              footprint.contactWidth / math.max(1, fullWidth)
+            local contactOffset =
+              math.abs(centerX - boundsCenter) / math.max(1, fullWidth)
+            contactReliable = contactCoverage >= minimumCoverage
+              and contactOffset <= maximumOffset
+            if anchorMode == "body" then
+              centerX = footprint.bodyCenterX or centerX
+            elseif not contactReliable then
+              if fullWidth >= fullHeight then
+                centerX = boundsCenter
+              else
+                centerX = footprint.bodyCenterX
+                  or footprint.opaqueCentroidX
+                  or boundsCenter
+              end
             end
-          end
-          if type(anchorX) == "number" then
-            centerX = footprint.visibleLeft
-              + (footprint.visibleRight - footprint.visibleLeft) * anchorX
+            if type(anchorX) == "number" then
+              centerX = footprint.visibleLeft
+                + (footprint.visibleRight - footprint.visibleLeft) * anchorX
+            end
           end
 
           -- Keep the chosen body anchor stable; animation changes
@@ -2474,6 +2666,9 @@ end
     local ownPics, ownAnim = rawget(battle, "drawPicsLayer"),
       rawget(battle, "drawAnimLayer")
     local function shifted(dy, callback)
+      if geometry and geometry.nativeBlit then
+        return callback()
+      end
       local g = love.graphics
       local marks = PaletteFX.trueColorRects("ui")
       local first = #marks + 1
@@ -2481,11 +2676,17 @@ end
       g.push("all")
       -- Native WideBattle clips at FIELD_BOTTOM. The compact layout uses
       -- that formerly reserved message area for the Pokémon's lower rows.
-      g.setScissor(x or 0, 0, w or 304, 144)
-      g.translate(0, dy)
+      if not (geometry and geometry.nativeClip) then
+        g.setScissor(x or 0, 0, w or 304, 144)
+      end
+      if dy ~= 0 then
+        g.translate(0, dy)
+      end
       local ok, result = pcall(callback)
       g.pop()
-      for i = first, #marks do marks[i].y = marks[i].y + dy end
+      if dy ~= 0 then
+        for i = first, #marks do marks[i].y = marks[i].y + dy end
+      end
       if not ok then error(result, 0) end
       return result
     end
@@ -2518,6 +2719,9 @@ end
       return drawSide()
     end
     battle.drawAnimLayer = function(self, colorized)
+      if geometry and geometry.nativeAnim then
+        return originalAnim(self, colorized)
+      end
       local sprites = self.lockedBall
       if self.animPlaying and self.animPlayer then
         local step = self.animPlayer.steps[self.animPlayer.stepIndex]
@@ -2543,7 +2747,16 @@ end
   end
 
   betterBattleApi.enabled = function(battle)
-    return setting(battle)
+    return uiSetting(battle)
+  end
+  betterBattleApi.uiEnabled = function(battle)
+    return uiSetting(battle)
+  end
+  betterBattleApi.battlesEnabled = function(battle)
+    return stageSetting(battle)
+  end
+  betterBattleApi.stageEnabled = function(battle)
+    return stageSetting(battle)
   end
   betterBattleApi.modeFor = function(battle)
     return effectiveBattleMode(battle)
@@ -2562,6 +2775,15 @@ end
   betterBattleApi.expPixels = function(battle)
     local state = getBattleXpState(battle)
     return math.max(0, math.floor(tonumber(state.shown) or 0))
+  end
+  betterBattleApi.registerBattleGeometryProvider = function(id, providerFn, priority)
+    return registerBattleGeometryProvider(id, providerFn, priority)
+  end
+  betterBattleApi.unregisterBattleGeometryProvider = function(id)
+    return unregisterBattleGeometryProvider(id)
+  end
+  betterBattleApi.getBattleGeometry = function(battle)
+    return resolveBattleGeometry(battle)
   end
   mod.exports.betterBattle = betterBattleApi
 
@@ -2649,9 +2871,10 @@ end
 
 	local originalWideDraw = WideBattle.draw
 	WideBattle.draw = function(battle, ...)
-	  local betterBattle = setting(battle)
+	  local uiActive = uiSetting(battle)
+	  local stageActive = stageSetting(battle)
 	  local stockExtended = stockWideExtended(battle)
-	  if not betterBattle and not stockExtended then
+	  if not uiActive and not stageActive and not stockExtended then
 		return originalWideDraw(battle, ...)
 	  end
 	  local args = { ... }
@@ -2660,7 +2883,7 @@ end
 	  local originalBottomUIVisible = rawget(battle, "bottomUIVisible")
 	  local originalBallRow = battle.drawBallRow
 	  local hadOwnBallRow = rawget(battle, "drawBallRow") ~= nil
-	  local suppressIntroRows = betterBattle and battle.introBalls == true
+	  local suppressIntroRows = uiActive and battle.introBalls == true
 	  if suppressIntroRows then
 	    battle.drawBallRow = function() end
 	  end
@@ -2673,7 +2896,7 @@ end
 	  local originalEndBattleHUDPass =
 		renderer and renderer.endBattleHUDPass or nil
 
-	  if betterBattle then
+	  if uiActive then
 		battle.statusHUDVisible = function()
 		  return false
 		end
@@ -2687,7 +2910,7 @@ end
 		and originalEndBattleHUDPass then
 		renderer.endBattleHUDPass = function(self, previous)
 		  if battleIsTopState(battle) then
-		    if betterBattle then
+		    if uiActive then
 		      renderBetterBattleLayer(
 		        battle, bottomVisible, originalBallRow)
 		    else
@@ -2707,16 +2930,18 @@ end
 	  end
 
 	  local ok, result
-	  if betterBattle then
+	  if stageActive or uiActive then
 		ok, result = pcall(function()
-		  -- BetterBattle renders the widened status panels itself. Do not let
-		  -- the native-HUD compatibility wrapper shorten those names before the
-		  -- custom renderer sees them.
-		  return withNativeLevels(battle, false, function()
-          return withBetterBattleField(battle, function()
-            return originalWideDraw(battle, unpack(args))
-          end)
-		  end)
+		  local drawField = function()
+            return withBetterBattleField(battle, function()
+              return originalWideDraw(battle, unpack(args))
+            end)
+          end
+		  if uiActive then
+		    return withNativeLevels(battle, false, drawField)
+		  else
+		    return drawField()
+		  end
 		end)
 	  else
 		ok, result = pcall(function()
@@ -2724,7 +2949,7 @@ end
 		end)
 	  end
 
-	  if betterBattle then
+	  if uiActive then
 	    battle.statusHUDVisible = originalStatusHUDVisible
 	    battle.bottomUIVisible = originalBottomUIVisible
 	  end

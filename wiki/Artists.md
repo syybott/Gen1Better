@@ -26,7 +26,7 @@ Choose what you want to build below:
 
 ### 3. Style & Customize Floor Shadows (BetterShadows)
 > *"I want to adjust ground shadows for my custom scenes (space, caves, water) or custom Pokémon / Fakemon."*
-- Unified Actor Shadow Engine (`schemaVersion = 1`, `profileVersion = 1`) with soft feathered multi-ring contact ovals.
+- Unified Actor Shadow Engine (`schemaVersion = 2`, `profileVersion = 1`) with soft feathered multi-ring contact ovals.
 - Configure scene tinting, water reflections, zero-G space suppression, or register custom species footprint baselines.
 - 👉 **[Battle Scene Shadow Settings](Battle-Backdrops.md#shadow-system-and-scene-interaction)**
 - 👉 **[Story Actor Shadows & Floor Contact](BetterScenes.md#actor-shadows--floor-contact)**

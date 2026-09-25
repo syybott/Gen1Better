@@ -215,6 +215,13 @@ end
 function BetterBattleBackdrops.install(mod, api)
   local shadowEngine = loadShadowEngine(mod)
   api.shadowEngine = shadowEngine
+  if shadowEngine then
+    SHADOW_SHAPE = shadowEngine.SHADOW_SHAPE or SHADOW_SHAPE
+    SHADOW_RINGS = shadowEngine.SHADOW_RINGS or SHADOW_RINGS
+    WING_SHADOW_RINGS = shadowEngine.WING_SHADOW_RINGS or WING_SHADOW_RINGS
+    SHADOW_GLOBAL_OPACITY = shadowEngine.SHADOW_GLOBAL_OPACITY
+      or SHADOW_GLOBAL_OPACITY
+  end
   local source, readErr = mod:read("better_battle_shadow_settings.lua")
   assert(source, readErr)
   local chunk, compileErr = load(source,
@@ -362,7 +369,15 @@ function BetterBattleBackdrops.install(mod, api)
   end
   local function eligible(battle, renderer)
     if not battle or battle.blankForAskName then return false, "nickname-or-no-battle" end
-    if not api.enabled(battle) then return false, "betterbattle-inactive" end
+    local stageOk = false
+    if type(api.battlesEnabled) == "function" then
+      stageOk = api.battlesEnabled(battle) == true
+    elseif type(api.stageEnabled) == "function" then
+      stageOk = api.stageEnabled(battle) == true
+    elseif type(api.enabled) == "function" then
+      stageOk = api.enabled(battle) == true
+    end
+    if not stageOk then return false, "betterbattles-inactive" end
     if api.activeProvider(battle) then return false, "external-provider" end
     if renderer.worldOverride ~= nil then return false, "world-override" end
     local stack = battle.game.stack
@@ -427,9 +442,13 @@ function BetterBattleBackdrops.install(mod, api)
     local ux = spritePixels / (metrics.dpiX or 1)
     local uy = spritePixels / (metrics.dpiY or 1)
     local originX = metrics.uox
-      + placement.fieldX * metrics.Ux - placement.fieldX * ux
     local originY = metrics.uoy
-      + placement.fieldY * metrics.Uy - placement.fieldY * uy
+    local isFieldSpace = placement and (placement.coordinateSpace == "field"
+      or (placement.coordinateSpace == nil and not placement.stock and placement.fieldX and placement.fieldY))
+    if isFieldSpace then
+      originX = originX + (placement.fieldX or 0) * metrics.Ux - (placement.fieldX or 0) * ux
+      originY = originY + (placement.fieldY or 0) * metrics.Uy - (placement.fieldY or 0) * uy
+    end
     local direction = side == "player" and -1 or 1
     local opacityScale = SHADOW_GLOBAL_OPACITY
       * shadowSettings.value(species, side, "opacityScale")
@@ -446,15 +465,23 @@ function BetterBattleBackdrops.install(mod, api)
     for index, authored in ipairs(state.profile.shapes) do
       if shadowSettings.shadowShapeEnabled(state.profile, authored) then
         local measurement = state.measurements[index]
-        local shape = {}
-        for key, value in pairs(authored) do shape[key] = value end
-        if type(authored.animate) == "function" then
-          local changes = authored.animate({
+        local shape
+        if shadowEngine and type(shadowEngine.evaluateShape) == "function" then
+          shape = shadowEngine.evaluateShape(authored, {
             sprite = state.sprite, frame = state.frame, side = side,
-            species = species, measurement = measurement,
+            context = side, species = species, measurement = measurement,
           })
-          if changes then
-            for key, value in pairs(changes) do shape[key] = value end
+        else
+          shape = {}
+          for key, value in pairs(authored) do shape[key] = value end
+          if type(authored.animate) == "function" then
+            local changes = authored.animate({
+              sprite = state.sprite, frame = state.frame, side = side,
+              context = side, species = species, measurement = measurement,
+            })
+            if changes then
+              for key, value in pairs(changes) do shape[key] = value end
+            end
           end
         end
         local x, y, width, height = shape.x, shape.y,
@@ -485,6 +512,10 @@ function BetterBattleBackdrops.install(mod, api)
           if maximumHeight ~= false then
             measuredHeight = math.min(maximumHeight, measuredHeight)
           end
+          if shadowSettings.measuredDimensions then
+            measuredWidth, measuredHeight = shadowSettings.measuredDimensions(
+              species, side, shape, footprint)
+          end
           width = measuredWidth / math.abs(transform.scaleX)
             * (shape.widthScale or 1)
           height = measuredHeight / math.abs(transform.scaleY)
@@ -493,7 +524,9 @@ function BetterBattleBackdrops.install(mod, api)
           if shape.minHeight then height = math.max(shape.minHeight, height) end
           if x == nil then
             x = (measurement.anchor.centerX - transform.x) / transform.scaleX
-            if side == "player" then x = 56 - x end
+            local profileWidth = shadowSettings.profileSpace
+              and shadowSettings.profileSpace.width or 56
+            if side == "player" then x = profileWidth - x end
           end
           if y == nil then
             y = (measurement.anchor.contactY - transform.y) / transform.scaleY
@@ -516,7 +549,9 @@ function BetterBattleBackdrops.install(mod, api)
           y = y + (shape.offsetY or 0) + spOffY
           width = width * spWScale
           height = height * spHScale
-          local spriteX = side == "player" and 56 - x or x
+          local profileWidth = shadowSettings.profileSpace
+            and shadowSettings.profileSpace.width or 56
+          local spriteX = side == "player" and profileWidth - x or x
           local layerX = transform.x + spriteX * transform.scaleX
           local layerY = transform.y + y * transform.scaleY
           local screenX = (originX + layerX * ux - ctx.viewX) * ctx.dpiX
@@ -623,9 +658,13 @@ function BetterBattleBackdrops.install(mod, api)
     local ux = spritePixels / (metrics.dpiX or 1)
     local uy = spritePixels / (metrics.dpiY or 1)
     local originX = metrics.uox
-      + placement.fieldX * metrics.Ux - placement.fieldX * ux
     local originY = metrics.uoy
-      + placement.fieldY * metrics.Uy - placement.fieldY * uy
+    local isFieldSpace = placement and (placement.coordinateSpace == "field"
+      or (placement.coordinateSpace == nil and not placement.stock and placement.fieldX and placement.fieldY))
+    if isFieldSpace then
+      originX = originX + (placement.fieldX or 0) * metrics.Ux - (placement.fieldX or 0) * ux
+      originY = originY + (placement.fieldY or 0) * metrics.Uy - (placement.fieldY or 0) * uy
+    end
     local direction = side == "player" and -1 or 1
     local opacityScale = SHADOW_GLOBAL_OPACITY
       * shadowSettings.value(species, side, "opacityScale")
@@ -756,10 +795,14 @@ function BetterBattleBackdrops.install(mod, api)
             metrics.Up * (tonumber(placement.scale) or 1) + 1e-6))
           local ux = spritePixels / (metrics.dpiX or 1)
           local uy = spritePixels / (metrics.dpiY or 1)
-          local originX = metrics.uox + placement.fieldX * metrics.Ux
-            - placement.fieldX * ux
-          local originY = metrics.uoy + placement.fieldY * metrics.Uy
-            - placement.fieldY * uy
+          local originX = metrics.uox
+          local originY = metrics.uoy
+          local isFieldSpace = placement and (placement.coordinateSpace == "field"
+            or (placement.coordinateSpace == nil and not placement.stock and placement.fieldX and placement.fieldY))
+          if isFieldSpace then
+            originX = originX + (placement.fieldX or 0) * metrics.Ux - (placement.fieldX or 0) * ux
+            originY = originY + (placement.fieldY or 0) * metrics.Uy - (placement.fieldY or 0) * uy
+          end
           local species = battler.mon and battler.mon.species
           local grounding = shadowSettings.value(species, side, "grounding")
           local flying = flyingMon(battle, battler)
@@ -820,6 +863,28 @@ function BetterBattleBackdrops.install(mod, api)
           end
           alphaScale = alphaScale
             * shadowSettings.value(species, side, "opacityScale")
+          if shadowEngine and shadowEngine.resolveAutomaticBody then
+            local body = shadowEngine.resolveAutomaticBody(footprint, {
+              anchor = anchor,
+              shape = SHADOW_SHAPE,
+              flying = flying,
+              spriteWidthScale = spriteWidthScale,
+              majorExtentScale = majorExtentScale,
+              offsetX = shadowSettings.value(species, side, "offsetX"),
+              offsetY = shadowSettings.value(species, side, "offsetY"),
+              baseWidth = shadowSettings.value(species, side, "baseWidth"),
+              baseHeight = shadowSettings.value(species, side, "baseHeight"),
+              widthScale = shadowSettings.value(species, side, "widthScale"),
+              heightScale = shadowSettings.value(species, side, "heightScale"),
+              sizeScale = shadowSettings.automaticBodyValue(
+                species, side, "sizeScale"),
+              opacityScale = SHADOW_GLOBAL_OPACITY
+                * shadowSettings.value(species, side, "opacityScale"),
+            })
+            sourceX, sourceY = body.x, body.y
+            sourceWidth, sourceHeight = body.width, body.height
+            alphaScale = body.alpha
+          end
           if sceneConfig and type(sceneConfig.opacityScale) == "number" then
             alphaScale = alphaScale * sceneConfig.opacityScale
           end
@@ -1144,25 +1209,47 @@ function BetterBattleBackdrops.install(mod, api)
       assert(image, "registerArtistScene requires config.image or config[1]")
 
       local shadows = config.shadows
-      if shadows ~= nil then
-        assert(type(shadows) == "table", "registerArtistScene shadows must be a table")
+      if shadows ~= nil and type(shadows) ~= "table" then
+        return false, "invalid_shadows"
       end
 
+      -- 1. Build the requested scene shadow config
+      local playerOffY = config.playerOffsetY or (shadows and shadows.playerOffsetY)
+      local enemyOffY = config.enemyOffsetY or (shadows and shadows.enemyOffsetY)
+      local hasShadowRequest = (shadows ~= nil) or (playerOffY ~= nil) or (enemyOffY ~= nil)
+      local normalizedShadowCfg = nil
+      local shadowApi = shadowSettings or api.shadowSettings
+
+      -- 2 & 3. If shadows/offsets requested, verify subsystem and validate/normalize
+      if hasShadowRequest then
+        if not (shadowApi and type(shadowApi.validateSceneConfig) == "function"
+            and type(shadowApi.registerScene) == "function") then
+          return false, "shadow_subsystem_unavailable"
+        end
+
+        local rawShadowCfg = {}
+        if type(shadows) == "table" then
+          for k, v in pairs(shadows) do rawShadowCfg[k] = v end
+        end
+        if playerOffY ~= nil then rawShadowCfg.playerOffsetY = playerOffY end
+        if enemyOffY ~= nil then rawShadowCfg.enemyOffsetY = enemyOffY end
+
+        local ok, validatedOrErr = shadowApi.validateSceneConfig(rawShadowCfg)
+        -- 4. On validation failure, return false, err before calling api.backdrop.registerScene
+        if not ok then
+          return false, validatedOrErr
+        end
+        normalizedShadowCfg = validatedOrErr
+      end
+
+      -- 5. Only after shadow validation succeeds, register the backdrop
       local owner = sourceMod or config.mod or mod
       local registered, err = api.backdrop.registerScene(id, image, owner)
       if not registered then return false, err end
 
-      local shadowApi = api.shadowSettings
-      if shadowApi and shadowApi.registerScene then
-        local sceneCfg = {}
-        if type(shadows) == "table" then
-          for k, v in pairs(shadows) do sceneCfg[k] = v end
-        end
-        local playerOffY = config.playerOffsetY or (shadows and shadows.playerOffsetY)
-        local enemyOffY = config.enemyOffsetY or (shadows and shadows.enemyOffsetY)
-        if playerOffY ~= nil then sceneCfg.playerOffsetY = tonumber(playerOffY) end
-        if enemyOffY ~= nil then sceneCfg.enemyOffsetY = tonumber(enemyOffY) end
-        shadowApi.registerScene(id, sceneCfg)
+      -- 6. Then register the already validated/normalized shadow configuration
+      if normalizedShadowCfg then
+        shadowApi.registerScene(id, normalizedShadowCfg)
       end
 
       return true, id

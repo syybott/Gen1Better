@@ -123,11 +123,30 @@ betterScenes.clearActor("left", { transition = "fade", duration = 0.25 })
 
 #### Actor Shadows & Floor Contact
 
-BetterScenes integrates directly with the shared Actor Shadow Engine (`schemaVersion = 1`, `profileVersion = 1`) to render soft, multi-ring feathered floor contact ovals beneath staged actors.
+BetterScenes uses the general-purpose Actor Shadow Engine (`schemaVersion = 2`, `profileVersion = 1`) to render floor-contact shadows beneath staged actors. An actor can use an arbitrary image and per-instance shadow configuration without having a species identity. The built-in 151 Pokémon profiles are optional presets.
 
-- **Automatic Species Profiles**: Specify `species = "POKEMON_NAME"` (e.g. `"CHARIZARD"` or `"PIKACHU"`). The engine automatically inherits calibrated baseline dimensions, multi-ring feathering, grounding stance, and dynamic wing-feathering detectors.
+BetterScenes and BetterBattle share footprint measurement, anchor selection,
+profile resolution, authored and detected shape evaluation, dynamic callbacks,
+source-space conversion, mirroring, scaling, and shadow rendering. BetterScenes
+retains control of actor placement, the effective pose or size variant, transitions,
+stage scaling, and draw order.
+
+- **Optional Species Profiles**: Specify `species = "POKEMON_NAME"` (e.g. `"CHARIZARD"` or `"PIKACHU"`) to select shared species-level preset values. Species-level tuning is shared with BetterBattle, while `player`, `enemy`, and `scene` overrides remain presentation-context-specific and never cross-inherit.
 - **Explicit Disabling**: Pass `shadow = false` to suppress ground shadows (e.g. for ghosts, levitating psychics, or airborne entities).
 - **Custom Shadow Schema**: Pass a configuration table in `shadow = { ... }` to customize shadow dimensions, tint, opacity, or feathering:
+
+For a species-backed actor, each value resolves in this order:
+
+```text
+actor instance override
+-> species scene override
+-> species-level value
+-> global default
+```
+
+The `scene` table is optional and normally omitted. Use it only when a species
+requires cutscene-specific calibration. A BetterScenes actor never inherits
+`player` or `enemy` overrides.
 
 | Property | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
@@ -142,6 +161,8 @@ BetterScenes integrates directly with the shared Actor Shadow Engine (`schemaVer
 | `opacity` / `alpha` | number | Base shadow opacity (0.0 to 1.0). | `0.45` |
 | `color` | table | Normalized RGB `{ r, g, b }` for environment tinting. | Black (`nil`) |
 | `grounding` | string | Stance behavior: `"grounded"`, `"hovering"`, `"floating"`, `"flying"`. | `"grounded"` |
+| `sourceSpace` | table | Optional coordinate space `{ width, height, originX, originY }` for source-authored instance data. | Effective image dimensions |
+| `shapeSpace` | string | `"origin"` for actor-relative instance shapes or `"source"` for source-image coordinates. | `"origin"` for instance shapes |
 | `wingShadows` | table | Array of wing regions `{ region = { left, right, top, bottom }, opacity = 0.05 }`. | `nil` |
 | `shadowShapes` | table | Explicit custom shapes (`{ width, height, offsetX, offsetY, alpha, color, ... }`). | `nil` |
 | `innerRing` | table | Core dark contact ring `{ scaleX, scaleY, offsetX, offsetY, alpha }`. | Automatic |
@@ -181,6 +202,73 @@ betterScenes.setActor("right", {
   shadow = false,
 }, { transition = "fade", duration = 0.5 })
 ```
+
+#### Sprite Scaling, LOD Variants & Motion Stability
+
+Arbitrary fractional downscaling of retro pixel art with nearest-neighbor filtering causes pixel lines to drop out, line weights to warp, and sprites to crawl/shimmer in motion. BetterScenes provides a robust, multi-path scaling subsystem giving artists complete control over visual fidelity:
+
+##### The Two Rendering Paths
+1. **Recommended Pixel-Art Path**:
+   `Variant LOD > Clean Canvas > Nearest`
+   - **Variant LOD (`scaleMode = "variant"` or `"auto"`)**: Hand-authored smaller sprites (e.g. 28×28 for 56×56 originals). Real pixel art hand-drawn for target resolutions will always beat algorithmic downscaling.
+   - **Clean Canvas (`scaleMode = "clean"`)**: Pre-renders the sprite down to an integer target canvas once with nearest-neighbor sampling. Eliminates per-frame resampling jitter and pixel crawling during motion while preserving hard retro outlines.
+   - **Nearest (`scaleMode = "nearest"`)**: Raw GPU nearest-neighbor transform. Best for 1:1 scale or integer upscaling.
+2. **Optional Smoothing Path**:
+   `Variant LOD > Area Canvas > Nearest`
+   - **Area Canvas (`scaleMode = "area"`)**: Downsamples into an integer canvas using linear texture sampling. Yields smoother texel averaging for significant shrinking, but may soften retro pixel outlines. Area mode is an explicit opt-in and is never selected automatically.
+
+##### Escape Hatch: Custom Draw Hook
+- **Custom (`scaleMode = "custom"`)**: Invokes `actor.customDraw` or `actor.scaleFn` callback.
+- **Strict Gating**: Custom callbacks are strictly called *only* when `effectiveScaleMode == "custom"`. Attaching a callback to an actor will never alter rendering in `"auto"` or other modes.
+- If the callback returns `true`, BetterScenes assumes the hook drew the actor. If it returns `false` or `nil`, it falls back to `actor.fallbackScaleMode` (default `"nearest"`).
+
+##### Supported `scaleMode` Values
+| Mode | Behavior | Best Use Case |
+| :--- | :--- | :--- |
+| `"auto"` | Checks matching variant LOD $\to$ clean canvas $\to$ nearest fallback | Recommended default for smart actors |
+| `"variant"` | Strictly resolves hand-authored LOD assets; falls back to clean/nearest if none match | Staging key characters with mini sprites |
+| `"clean"` | Cached integer canvas downscale with nearest filtering (downscale only) | Quick shrink without per-frame shimmer |
+| `"area"` | Cached integer canvas downscale with linear filtering (downscale only) | Optional smoother shrink with softened outlines |
+| `"nearest"` | Direct GPU transform with nearest-neighbor sampling | Default retro behavior / 1:1 scale |
+| `"custom"` | Invokes `actor.customDraw` / `actor.scaleFn` callback | Engine / modder escape hatch |
+
+##### Actor Definition with LOD Bands
+Define `variants` as threshold bands (`maxScale` ascending). When downscaling, BetterScenes chooses the best matching variant:
+
+```lua
+betterScenes.setActor("oak", {
+  path = "assets/oak.png",      -- Base 56×56 sprite
+  scale = 1.0,
+  scaleMode = "auto",            -- Smart path: variant -> clean -> nearest
+  pixelSnap = true,              -- Integer-snapped drawing prevents edge shimmer
+  fallbackScaleMode = "nearest", -- Fallback if customDraw returns nil in custom mode
+
+  -- Defined as LOD threshold bands:
+  variants = {
+    { maxScale = 0.55, path = "assets/oak_mini.png",   nativeScale = 0.5 },  -- 28×28 asset
+    { maxScale = 0.85, path = "assets/oak_medium.png", nativeScale = 0.75 }, -- 42×42 asset
+  },
+})
+```
+
+##### In-Place Actor Updates & Sequence Actions
+Actors can be updated in-place without re-specifying paths or images:
+
+```lua
+-- In Lua scripts:
+betterScenes.updateActor("oak", { scale = 0.5 })                        -- Uses mini variant via auto
+betterScenes.updateActor("oak", { scale = 0.65, scaleMode = "clean" })  -- Forces clean canvas
+
+-- In declarative cutscene sequences:
+{ action = "actor", slot = "oak", scale = 0.5 },
+{ action = "updateActor", slot = "oak", scale = 0.65, scaleMode = "clean" },
+```
+
+##### Position Snapping & Shadow Synchronization
+- **`pixelSnap = true`** (default `true`): Snaps final screen coordinates to whole pixels (`math.floor(screenX + 0.5)`). Prevents subpixel edge shimmering as actors move or walk across the stage.
+- **Displayed Dimension Shadows**: Shadow sizing uses displayed dimensions (`resolved.image:getWidth() * math.abs(resolved.sx)`), ensuring shadow contact remains identical across variant, canvas, and nearest renders.
+- **Downscale-Only Rule**: Canvas allocation only occurs when shrinking (`requestedScale < 1.0` and `tw <= iw and th <= ih and (tw < iw or th < ih)`). Never allocates upscaled canvases.
+- **Cache Management**: The internal canvas cache is capped at 128 entries with automatic FIFO eviction. Use `betterScenes.clearScaleCache()` or `betterScenes.setScaleCacheLimit(max)` for manual control.
 
 ---
 

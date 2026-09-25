@@ -12,8 +12,11 @@ and stored settings keys remain unchanged.
 | `bettermenus.betterbattle_provider` | BetterMenus hook | Declare who owns battle rendering and whether BetterBattle may draw its HUD. |
 | `bettermenus.battle_backdrop` | BetterMenus hook | Select a registered 2D scene for a normal or custom-spawn battle. |
 | `bettermenus.battle_shadow` | BetterMenus hook | Modify, tint, reposition, or suppress species shadows during battle rendering. |
+| `bettermenus.battle_geometry` | BetterMenus hook | Supply custom actor presentation geometry, ground lines, and coordinate space. |
 | `bettermenus.ui_scale` | BetterMenus hook | Opt a custom menu into the user's Menu Scale, or keep native scale. |
 | `betterBattle` | Export | Query battle ownership, draw the BetterBattle HUD, inspect backdrop selection. |
+| `betterBattle.registerBattleGeometryProvider` | Export | Register an ordered, priority-aware actor presentation geometry provider. |
+| `betterBattle.getBattleGeometry` | Export | Query the resolved battle presentation geometry for a battle instance. |
 | `betterBattle.shadowSettings` | Export | Register custom species shadow profiles and scene-wide shadow adjustments. |
 | `betterScenes` | Export | Top-level 16:9 story stage for cutscenes, underlays, and narrative presentation. |
 | `isModOptions = true` | Screen marker | Identify a third-party settings screen. |
@@ -26,7 +29,7 @@ engine interfaces, not additional BetterMenus-owned hooks.
 
 > [!NOTE]
 > **API Stability & Contract Guarantee**:
-> `registerArtistScene`, `registerScene`, `bettermenus.battle_backdrop`, `bettermenus.battle_shadow`, and scene shadow config are public compatibility surfaces that maintain backward compatibility across updates.
+> `registerArtistScene`, `registerScene`, `registerBattleGeometryProvider`, `bettermenus.battle_backdrop`, `bettermenus.battle_shadow`, `bettermenus.battle_geometry`, and scene shadow config are public compatibility surfaces that maintain backward compatibility across updates.
 
 ## Registering hooks and finding exports
 
@@ -211,6 +214,16 @@ local function registerCustomBackdrops()
 end
 ```
 
+`registerArtistScene` resolves all supported shadow-schema and subsystem-availability
+failures before the backdrop is registered, so invalid artist configuration cannot
+produce a partial scene registration. On expected registration or validation rejection,
+it returns `false, err` without mutating backdrop or shadow registries. Handled failure
+reasons include:
+- `"reserved"` / `"collision"`: Backdrop ID collision guards.
+- `"shadow_subsystem_unavailable"`: Shadow config requested but shadow engine uninitialized.
+- `"invalid_shadows"` / `"invalid_color"` / `"invalid_opacity_scale"` / `"invalid_offset_y"` / `"invalid_player_offset_y"` / `"invalid_enemy_offset_y"` / `"invalid_enabled"`: Schema validation failures.
+
+
 Images must be strictly 320×180 pixels. See [Verifying backdrops for 1080p and 4K](Battle-Backdrops.md#verifying-backdrops-for-1080p-and-4k-python)
 for the Python validation script.
 
@@ -264,16 +277,29 @@ BetterBattle to display properly. No mon-paper backing is added.
 
 ## 3. Battle shadows and custom scenes
 
-BetterBattle and BetterScenes share a unified, decoupled Actor Shadow Engine
-(`schemaVersion = 1`, `profileVersion = 1`) that renders soft, feathered contact
-shadows beneath combatants and story cutscene actors across all 320×180 scenes.
-Shadows automatically accommodate grounding, dynamic wings, manual limb ellipses,
-stance tilts, and sprite scaling.
+The Actor Shadow Engine (`schemaVersion = 2`, `profileVersion = 1`) is a
+general-purpose shadow system used by BetterBattle and BetterScenes. Its built-in
+151 Pokémon profiles are optional preset data rather than a requirement: arbitrary
+images and objects can use automatic measurement and instance shadow settings
+without having a species identity.
+
+Both consumers use the same footprint measurement, anchor selection, profile
+resolution, authored and detected shape evaluation, dynamic callbacks, source-space
+conversion, mirroring, scaling, and rendering primitives. BetterBattle still owns
+battle ground placement and its final shadow hook; BetterScenes still owns actor
+placement, poses, variants, transitions, and draw order.
 
 Modders can manipulate shadows dynamically in combat using the `bettermenus.battle_shadow`
 hook, register scene-wide adjustments via `betterBattle.shadowSettings.registerScene`,
-or register custom species using `betterBattle.shadowSettings.registerSpecies`. Registered
-species profiles are immediately accessible to both BetterBattle and BetterScenes.
+or register custom species using `betterBattle.shadowSettings.registerSpecies`.
+
+Species-level values contain tuning shared by every presentation. The optional
+`player`, `enemy`, and `scene` tables contain presentation-context-specific
+exceptions. Context tables are siblings and never inherit from one another. A
+single value resolves from the active context to the species-level value and then
+to the global default; an instance override, where supported by the consumer, has
+the highest priority. The `scene` table is normally omitted and should be added
+only when a species needs cutscene-specific calibration.
 
 ### Hook: `bettermenus.battle_shadow`
 
@@ -350,6 +376,35 @@ local function setupSceneShadows()
 end
 ```
 
+### Schema validation & normalization: `validateSceneConfig`
+
+Part of the public v1 API, `betterBattle.shadowSettings.validateSceneConfig(config)` is the
+pure validator and normalizer used by `registerArtistScene`. Modders and authoring tools can
+invoke it directly to validate and normalize scene shadow tables before submission:
+
+```lua
+local ok, normalizedOrErr = shadowSettings.validateSceneConfig({
+  enabled = true,
+  color = { r = "0.4", g = "0.3", b = "0.2" },
+  opacityScale = "0.85",
+  offsetY = "-2",
+  customExtension = "persisted",
+})
+-- ok: boolean
+-- normalizedOrErr: table on success (numbers coerced, color mapped to dual array/table access), or error string on failure
+```
+
+**Authoring rules enforced by `validateSceneConfig`**:
+- **Permissive representation**: Valid numeric strings (e.g. `"0.85"`, `"-2"`) are coerced to Lua numbers for `opacityScale`, `offsetY`, `playerOffsetY`, `enemyOffsetY`, and color components (`[1..3]` and `.r/.g/.b`).
+- **Strict meaning**:
+  - `enabled`: Must be a strict boolean (`true` or `false`). Strings like `"false"` or integers `0` are rejected.
+  - `color`: Components must normalize to finite numbers in $[0.0, 1.0]$. Values outside this range are rejected (not clamped).
+  - `opacityScale`: Must normalize to a finite number $\ge 0$.
+  - `offsetY`, `playerOffsetY`, `enemyOffsetY`: Must normalize to finite numbers.
+  - Rejection: `NaN`, `math.huge`, `-math.huge`, and unparseable strings return `false, err`.
+- **Dual color access**: The normalized color table provides dual access `{ r, g, b, r = r, g = g, b = b }`.
+- **Extension metadata preserved**: Unrecognized keys are passed through untouched to support third-party hook metadata.
+
 ### Species registration: `registerSpecies`
 
 Romhacks and Pokémon expansion mods can register shadow dimensions, grounding,
@@ -389,8 +444,19 @@ Helper methods on `betterBattle.shadowSettings`:
 - `registerSpecies(species, config)`: Register or merge species configuration.
 - `registerScene(sceneId, config)`: Register or merge scene shadow configuration.
 - `setSpecies(species, key, value)`: Set a species property.
-- `setSide(species, side, key, value)`: Set a side-specific property (`player` or `enemy`).
-- `addShape(species, shape, side)`: Append a manual shadow shape to `shadowShapes`.
+- `setContext(species, context, key, value)`: Set a context-specific property (`player`, `enemy`, or `scene`).
+- `addShape(species, shape, context)`: Append a manual shadow shape at species level or within a presentation context.
+
+For species-profile values, resolution is:
+
+```text
+instance override
+-> current context override
+-> species-level value
+-> global default
+```
+
+`player`, `enemy`, and `scene` overrides do not cross-inherit.
 
 #### Unified Shadow Configuration Schema
 | Property | Type | Description |
@@ -405,6 +471,8 @@ Helper methods on `betterBattle.shadowSettings`:
 | `grounding` | string | Stance behavior: `"grounded"`, `"hovering"`, `"floating"`, `"flying"`. |
 | `anchorMode` | string | Anchor resolution: `"feet"`, `"manual"`, or `"auto"`. |
 | `manualAnchorX` / `manualContactY` | number | Explicit sprite pixel coordinates for contact anchor. |
+| `sourceSpace` | table | Optional profile coordinate space `{ width, height, originX, originY }`. The built-in Pokémon preset dataset uses canonical 56×56 front-sprite coordinates. |
+| `shapeSpace` | string | Coordinate interpretation for instance shapes: `"origin"` for actor-relative offsets or `"source"` for source-image coordinates. Species profile shapes use source coordinates. |
 | `bodyRegion` | table | Normalized sub-rectangle `{ left, right, top, bottom }` for measurement. |
 | `wingShadows` | table | Array of wing detector zones `{ region = { left, right, top, bottom }, opacity }`. |
 | `shadowShapes` | table | Array of explicit custom shapes (`{ width, height, offsetX, offsetY, alpha, ... }`). |
@@ -440,19 +508,109 @@ registered mod-owned screens, and unknown screen types default to native scale.
 There is no current detached-battle-HUD dispatch for this hook. BetterBattle's
 own panels use their separate internal half-size target and pixel snapping.
 
-## 5. BetterBattle exports
+## 5. Battle presentation geometry
+
+BetterBattle features a fully decoupled Battle Presentation Geometry Provider System. Battle actor presentation geometry (positions, ground planes, scaling, and clipping) is cleanly separated from HUD layout. This allows custom battle UIs, alternate widescreen mods, or stock Wide layouts to supply actor presentation geometry, which BetterBattles backdrops and the unified shadow engine consume.
+
+### Hook: `bettermenus.battle_geometry`
+
+```lua
+mod.hooks:wrap("bettermenus.battle_geometry", function(next, ctx)
+  if ctx.battle.myCustomArena then
+    return {
+      owner = "my-arena",
+      coordinateSpace = "field", -- mandatory: "field" | "native"
+      playerX = 52,
+      enemyX = 260,
+      playerGround = 140,
+      enemyGround = 108,
+      spriteScale = 0.8333,
+      nativeBlit = false,
+      nativeAnim = false,
+      nativeClip = false,
+    }
+  end
+  return next(ctx)
+end)
+```
+
+### Provider registration API: `registerBattleGeometryProvider`
+
+Alternatively, mods can register a priority-aware provider callback:
+
+```lua
+local api = betterBattle()
+if api and api.registerBattleGeometryProvider then
+  api.registerBattleGeometryProvider("my_provider", function(battle, ctx)
+    if battle.myCustomArena then
+      return {
+        owner = "my_provider",
+        coordinateSpace = "native", -- mandatory: "field" | "native"
+        playerGround = 104,
+        enemyGround = 56,
+        nativeBlit = true,
+        nativeAnim = true,
+        nativeClip = true,
+        stock = true,
+      }
+    end
+  end, 100) -- priority (defaults to 0, higher runs first; registration order is tiebreaker)
+end
+```
+
+### Context fields
+
+| Field | Meaning |
+| --- | --- |
+| `game` | The battle's game instance. |
+| `battle` | The live battle instance. |
+| `uiEnabled` | Boolean: whether BetterBattle UI is active. |
+| `battlesEnabled` | Boolean: whether BetterBattles stage/backdrops are active. |
+
+### Geometry return contract & schema
+
+External geometry must be a table containing both `playerGround` and `enemyGround`, and must explicitly declare `coordinateSpace`. Malformed returns are rejected at the resolver boundary and fall through to the next provider.
+
+| Field | Type | Mandatory? | Default / Behavior |
+| --- | --- | --- | --- |
+| `coordinateSpace` | string | **Yes** | Must be `"field"` or `"native"`. Controls shadow positioning and blit space. |
+| `playerGround` | number | **Yes** | Ground line Y in virtual canvas pixels for the player actor. |
+| `enemyGround` | number | **Yes** | Ground line Y in virtual canvas pixels for the enemy actor. |
+| `owner` | string | No | String identifier for provenance (defaults to `"external"`). |
+| `playerX` | number | No | Player actor X position (defaults to `52` for `"field"`, `0` for `"native"`). |
+| `enemyX` | number | No | Enemy actor X position (defaults to `260` for `"field"`, `0` for `"native"`). |
+| `playerShift` | number | No | Rendering vertical translation offset `dy` (defaults to `playerGround - 104` for `"field"`, `0` for `"native"`). |
+| `enemyShift` | number | No | Rendering vertical translation offset `dy` (defaults to `enemyGround - 56` for `"field"`, `0` for `"native"`). |
+| `spriteScale` | number | No | Actor sprite scale factor (defaults to `0.8333` for `"field"`, `1.0` for `"native"`). |
+| `nativeBlit` | boolean | No | When `true`, actor canvases are blitted natively without field transforms. |
+| `nativeAnim` | boolean | No | When `true`, move animations retain native vertical positioning. |
+| `nativeClip` | boolean | No | When `true`, retain stock viewport clipping (do not unclip into message box). |
+| `stock` | boolean | No | Informational provenance flag. |
+
+### Resolution Pipeline
+1. Hook `bettermenus.battle_geometry` (if handled)
+2. Registered providers sorted by `priority` descending, with stable insertion order tiebreaker
+3. Built-in BetterBattle UI geometry (if `BetterBattle UI` is `ON`)
+4. Stock Wide fallback geometry (`coordinateSpace = "native"`, `nativeBlit = true`, `nativeAnim = true`, `nativeClip = true`, `stock = true`)
+
+## 6. BetterBattle exports
 
 Resolve `game.mods.exports["gen1-better-menus"].betterBattle` with nil checks, or
 use the `mod.find` helper above. Call these functions with dot syntax:
 
 | Function | Result / usage |
 | --- | --- |
-| `enabled(battle)` | Whether the effective BetterBattle mode is ON with WIDE and Extended settings. Does not itself check `worldOverride`. |
+| `enabled(battle)` | Whether BetterBattle UI is ON with WIDE and Extended settings. Does not itself check `worldOverride`. |
+| `uiEnabled(battle)` | Explicit check for BetterBattle UI being ON with WIDE and Extended settings. |
+| `battlesEnabled(battle)` / `stageEnabled(battle)` | Explicit check for BetterBattles (320×180 backdrops and shadow engine) being ON with WIDE and Extended settings. |
 | `modeFor(battle)` | Effective `on`, `off`, or `mod` mode. |
 | `activeProvider(battle)` | Normalized cached provider claim, or nil. Treat the returned table as read-only. |
 | `drawLayer(battle, bottomVisible)` | Draw BetterBattle's detached HUD and register its anchors. Requires the appropriate HUD pass and eligible topmost battle. |
 | `expPixels(battle)` | Current animated XP-display pixel count, floored and nonnegative. |
-| `shadowSettings` | Shadow configuration table exposing `registerSpecies`, `registerScene`, `setSpecies`, `setSide`, `addShape`, and species profiles. |
+| `registerBattleGeometryProvider(id, fn, priority)` | Register an ordered, priority-aware actor presentation geometry provider. |
+| `unregisterBattleGeometryProvider(id)` | Unregister a previously registered battle presentation geometry provider. |
+| `getBattleGeometry(battle)` | Query the resolved battle presentation geometry for a live battle instance. |
+| `shadowSettings` | Shadow configuration table exposing `validateSceneConfig`, `registerSpecies`, `registerScene`, `setSpecies`, `setContext`, `addShape`, and species profiles. |
 | `backdrop.sceneIds()` | Sorted copy of all registered scene IDs (including custom registered scenes). |
 | `backdrop.registerArtistScene(id, config, sourceMod)` | One-stop registration helper for custom 320×180 backdrops and their shadow styles. |
 | `backdrop.registerScene(id, imageOrPath, sourceMod)` | Direct registration helper for custom 320×180 backdrops. |
@@ -489,7 +647,7 @@ can be correct for disabled BetterBattle, an external provider, nickname blankin
 an opaque screen, an intentionally plain scene, or an unavailable image.
 Changing the returned diagnostic table does not change scene selection.
 
-## 6. BetterScenes story stage exports
+## 7. BetterScenes story stage exports
 
 `mod.exports.betterScenes` provides a standalone 16:9 widescreen story stage (320×180 native integer-scaled pixels) decoupled from combat states. It allows modders and story authors to create narrative cutscenes, character staging, comic dialogue bubbles, camera effects, atmospheric weather, and seamless transitions into battle.
 
@@ -680,13 +838,13 @@ betterScenes.resumeFromBattle({
 - `active`: Boolean indicating if any visual element, transition, sequence, or effect is live.
 - `state`: `"inactive"`, `"plain"`, or `"image"`.
 - `sceneId`, `underlay`, `assetPath`: Active scene and underlay configuration.
-- `actors`: Table of all currently staged actors (including coordinates, scaling, mirroring, and `shadowState` telemetry: `mode`, `profileId`, `profileVersion`, `schemaVersion`, `shapes`).
+- `actors`: Table of all currently staged actors (including coordinates, scaling, mirroring, and `shadowState` telemetry: `mode`, `context`, `profileId`, `profileVersion`, `schemaVersion`, `sourceSpace`, `anchor`, `shapes`).
 - `bubble`, `subtitle`, `emotes`: Active dialogue and reaction elements.
 - `sequence`: Active sequence status and step indices.
 - `shake`, `tint`, `flash`, `vignette`, `weather`: Active camera and atmosphere FX.
 - `battleHandoff`: Active or last battle handoff token state.
 
-## 7. Options-screen marker
+## 8. Options-screen marker
 
 ```lua
 local OptionsScreen = { isModOptions = true }
@@ -704,7 +862,7 @@ an automatic opt-in to Menu Scale. No BetterMenus dependency is required.
 
 See [Mod Options Screen Compatibility](Mod-Options-Screen-Compatibility.md).
 
-## 8. Party actions and BetterPC helpers
+## 9. Party actions and BetterPC helpers
 
 BetterParty retains the engine PartyMenu controller. BetterPC also calls the
 engine's `ui.party.submenu` hook when its **party-side** action list opens:

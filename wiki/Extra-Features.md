@@ -70,18 +70,19 @@ When the gate is enabled, selecting a BetterMenus or Groovy entry allows that me
 
 The **Inverse** switch reverses the selected four-color menu ramp. It changes the light and dark order without changing the menu layout.
 
-## Choose BetterPC, BetterParty, BetterBag, and BetterBattle
+## Choose BetterPC, BetterParty, BetterBag, BetterBattles, and BetterBattle UI
 
-Gen1Better itself supplies the widescreen menu layer. The BetterPC, BetterParty, BetterBag, and BetterBattle options select their respective interfaces. Turn off the Better option for any screen where you want Gen1Better's Game Boy-style widescreen presentation:
+Gen1Better itself supplies the widescreen menu layer. The BetterPC, BetterParty, BetterBag, BetterBattles, and BetterBattle UI options select their respective interfaces. Turn off the Better option for any screen where you want Gen1Better's Game Boy-style widescreen presentation:
 
 | Setting | OFF keeps |
 | --- | --- |
 | **BetterPC** | Gen1Better's widescreen classic Bill's PC interface |
 | **BetterParty** | Gen1Better's widescreen classic Party menu |
 | **BetterBag** | Gen1Better's widescreen classic bag/list interface, including its larger visible item list |
-| **BetterBattle** | the upstream WIDE battle presentation with Gen1Better palette coverage |
+| **BetterBattles** | Classic battle background without 320×180 pixel-art backdrops, sprite shadow engine, or scene transitions |
+| **BetterBattle UI** | The upstream WIDE battle presentation (or installed custom battle UI mod) with Gen1Better palette coverage |
 
-With Gen1Better enabled and these four options set to **OFF**, you get the Game Boy-style Gen1Better widescreen presentation with BetterPC, BetterParty, BetterBag, and BetterBattle disabled.
+With Gen1Better enabled and these options set to **OFF**, you get the Game Boy-style Gen1Better widescreen presentation with BetterPC, BetterParty, BetterBag, BetterBattles, and BetterBattle UI disabled.
 
 The BetterMenus options also include:
 

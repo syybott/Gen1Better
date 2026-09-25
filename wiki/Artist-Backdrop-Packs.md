@@ -109,8 +109,18 @@ end)
 ## 5. Scene ID Rules & Collision Protection
 
 BetterBattle provides robust safeguards to keep multiple artist packs from stomping each other:
-- **Return Contract**: `registerArtistScene` returns `true, id` on success, or `false, err` (`"reserved"` or `"collision"`) on failure.
-- **Atomic Validation**: If your `shadows` configuration has an error, the registration fails before committing the image. There are no partial commits.
+- **Return Contract**: `registerArtistScene` returns `true, id` on success, or `false, err` for expected registration and validation rejections:
+  - `"reserved"`: ID matches an engine built-in scene.
+  - `"collision"`: ID is already registered by another mod.
+  - `"shadow_subsystem_unavailable"`: Shadow configuration or ground offsets were requested, but the shadow subsystem is uninitialized or unavailable.
+  - `"invalid_shadows"`: The `shadows` property was provided but is not a table.
+  - `"invalid_color"`: Color is not a table, components are outside `[0.0, 1.0]`, or values are non-numeric / NaN / infinite.
+  - `"invalid_opacity_scale"`: Opacity scale is negative, non-numeric, NaN, or infinite.
+  - `"invalid_offset_y"` / `"invalid_player_offset_y"` / `"invalid_enemy_offset_y"`: Offset is non-numeric, NaN, or infinite.
+  - `"invalid_enabled"`: Enabled is not a strict boolean (`true` or `false`).
+- **Pre-Commit Boundary Guarantee**: All supported shadow-schema and subsystem-availability failures are resolved before the backdrop is registered, so invalid artist configuration cannot produce a partial scene registration.
+- **Permissive Representation, Strict Meaning**: For all artist-facing numeric shadow fields (`opacityScale`, `offsetY`, `playerOffsetY`, `enemyOffsetY`, and color components), valid numeric strings (e.g. `"0.85"`, `"-4"`) are automatically coerced to real numbers. However, invalid meanings (`NaN`, `math.huge`, `-math.huge`, negative opacity, out-of-range colors) are rejected upfront. `enabled` strictly requires boolean `true` or `false`.
+- **Custom Key Preservation**: Any custom extension metadata attached to your `shadows` table is preserved untouched for third-party hook compatibility.
 - **Built-in IDs are reserved**: Attempting to register over built-in scenes (e.g. `"env_route_grass"`, `"boss_giovanni_gym"`) is rejected. If you want to replace what appears on Route 1, return your own custom scene ID from the `bettermenus.battle_backdrop` hook.
 - **Stable Mod Ownership**: BetterBattle checks your mod's stable identifier (`mod.id`, `mod.name`, or `mod.path`), ensuring that hot-reloading your mod will cleanly update your art without triggering a false collision error.
 - **Quiet Logging**: Collision and reservation warnings are logged exactly once per `{id, mod}` pair to keep console output clean.
@@ -166,7 +176,8 @@ end)
 
 ## 7. Shadow Styling Recipes
 
-In `bb.backdrop.registerArtistScene(id, { shadows = { ... } })`, customize how shadows look against your surface:
+In `bb.backdrop.registerArtistScene(id, { shadows = { ... } })`, customize how shadows look against your surface.
+`color` accepts array format `{ r, g, b }` or named map format `{ r = ..., g = ..., b = ... }` with component values from `0.0` to `1.0`. Numeric strings (e.g. `"0.85"`, `"-2"`) are accepted across all numeric fields and normalized automatically:
 
 ### Sunset / Warm Earth
 ```lua

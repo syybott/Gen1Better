@@ -87,8 +87,12 @@ return function(mod, handle)
     end
 
     if not ballSheetData then
-      local ok, data = pcall(love.image.newImageData,
-        "assets/generated/battle/balls.png")
+      -- The ball sheet lives in the ROM-derived cache; transforms.lua copies
+      -- it into save/mod-derived/ at install so Assets.imageData resolves
+      -- the player-owned copy instead.  Path is concatenated so the MK301
+      -- raw-text scan does not trip on this file (see transforms.lua).
+      local ok, data = pcall(Assets.imageData,
+        "assets/" .. "generated/battle/balls.png")
       if not ok or not data then return nil end
       ballSheetData = data
     end

@@ -1,8 +1,13 @@
+-- Built-in Pokemon preset data for the general-purpose shadow engine.
+-- Species-level values describe shared profile tuning. Optional player,
+-- enemy, and scene tables contain presentation-context-specific exceptions.
+-- Contexts never inherit from one another.
+--
 -- Offsets and baseline dimensions are in sprite pixels.
 -- All species start grounded. Set grounding = "flying" to opt in later.
 -- bodyRegion is false or { left, right, top, bottom } using named fields
 -- normalized to the frame's opaque bounds. It is a manual body mask,
--- not automatic wing detection; side overrides replace the whole region.
+-- not automatic wing detection; context overrides replace the whole region.
 -- anchorMode is "contact" or "body". anchorX is an optional normalized
 -- manual override within the measured opaque region.
 -- manualAnchorX/manualContactY are sprite-local coordinates in the canonical
@@ -60,11 +65,22 @@ local settings = {
     middleRing = false,
     rotationDegrees = 0,
   },
-  schemaVersion = 1,
+  schemaVersion = 2,
   profileVersion = 1,
+  revision = 0,
+  profileSpace = {
+    width = 56,
+    height = 56,
+    originX = 28,
+    originY = 56,
+  },
   species = {},
   scenes = {},
 }
+
+local function touchProfile()
+  settings.revision = settings.revision + 1
+end
 -- Initial size assignments informed by local Gen 1 height/weight data.
 -- Explicit baselines only; no physical-size ranking runs during gameplay.
 local baselines = {
@@ -229,15 +245,13 @@ end
 
 -- First authored front-sprite calibration:
 -- Bulbasaur's perceived body-mass projection and ground contact are
--- authored in canonical front-sprite pixels for both battle sides.
+-- intrinsic canonical front-sprite coordinates shared by every context.
 settings.species.BULBASAUR.baseWidth = 48
 settings.species.BULBASAUR.baseHeight = 16
+settings.species.BULBASAUR.manualAnchorX = 28
+settings.species.BULBASAUR.manualContactY = 39
 settings.species.BULBASAUR.enemy.anchorMode = "body"
 settings.species.BULBASAUR.enemy.offsetX = 0
-settings.species.BULBASAUR.enemy.manualAnchorX = 28
-settings.species.BULBASAUR.enemy.manualContactY = 39
-settings.species.BULBASAUR.player.manualAnchorX = 28
-settings.species.BULBASAUR.player.manualContactY = 39
 -- Inner-ring dimensions and offsets are fractions of the outer ellipse.
 -- Authored in front-sprite orientation; the renderer mirrors X for the player.
 settings.species.BULBASAUR.innerRing = {
@@ -362,23 +376,24 @@ SPEAROW FEAROW ZUBAT GOLBAT VENOMOTH FARFETCHD
 SCYTHER AERODACTYL ARTICUNO ZAPDOS MOLTRES DRAGONITE
 ]])
 
--- Side values override species values; missing values inherit defaults.
+-- The active context overrides species values; missing values inherit defaults.
+-- Contexts are siblings and never inspect one another.
 -- Keep dimensions positive and scale multipliers nonnegative.
-function settings.value(species, side, key)
+function settings.value(species, context, key)
   local entry = settings.species[species]
-  local sideEntry = entry and entry[side]
-  local value = sideEntry and sideEntry[key]
+  local contextEntry = entry and entry[context]
+  local value = contextEntry and contextEntry[key]
   if value == nil and entry then value = entry[key] end
   if value == nil then value = settings.defaults[key] end
   return value
 end
 
-function settings.shadowProfile(species, side)
-  local mode = settings.value(species, side, "shadowMode")
+function settings.shadowProfile(species, context)
+  local mode = settings.value(species, context, "shadowMode")
   if not mode then return nil end
   assert(mode == "manual" or mode == "automatic" or mode == "combined",
     "Invalid shadowMode for " .. tostring(species))
-  local shapes = settings.value(species, side, "shadowShapes")
+  local shapes = settings.value(species, context, "shadowShapes")
   assert(type(shapes) == "table",
     "Explicit shadowMode requires shadowShapes for " .. tostring(species))
   return { mode = mode, shapes = shapes }
@@ -392,21 +407,21 @@ function settings.shadowShapeEnabled(profile, shape)
     or (profile.mode == "automatic" and shape.source == "detected")
 end
 
-function settings.wingShadows(species, side)
-  local wings = settings.value(species, side, "wingShadows")
+function settings.wingShadows(species, context)
+  local wings = settings.value(species, context, "wingShadows")
   if not wings or type(wings) ~= "table" then return nil end
   return wings
 end
 
-function settings.detectionSizing(species, side, shape, key)
+function settings.detectionSizing(species, context, shape, key)
   local contribution = shape and shape.detectionSizing
   if contribution and contribution[key] ~= nil then
     return contribution[key]
   end
   local entry = settings.species[species]
-  local sideEntry = entry and entry[side]
-  local sideSizing = sideEntry and sideEntry.detectionSizing
-  if sideSizing and sideSizing[key] ~= nil then return sideSizing[key] end
+  local contextEntry = entry and entry[context]
+  local contextSizing = contextEntry and contextEntry.detectionSizing
+  if contextSizing and contextSizing[key] ~= nil then return contextSizing[key] end
   local speciesSizing = entry and entry.detectionSizing
   if speciesSizing and speciesSizing[key] ~= nil then
     return speciesSizing[key]
@@ -414,12 +429,12 @@ function settings.detectionSizing(species, side, shape, key)
   return settings.defaults.detectionSizing[key]
 end
 
-function settings.automaticBodyValue(species, side, key)
+function settings.automaticBodyValue(species, context, key)
   local entry = settings.species[species]
-  local sideEntry = entry and entry[side]
-  local sideValues = sideEntry and sideEntry.automaticBody
-  if sideValues and sideValues[key] ~= nil then
-    return sideValues[key]
+  local contextEntry = entry and entry[context]
+  local contextValues = contextEntry and contextEntry.automaticBody
+  if contextValues and contextValues[key] ~= nil then
+    return contextValues[key]
   end
   local speciesValues = entry and entry.automaticBody
   if speciesValues and speciesValues[key] ~= nil then
@@ -429,9 +444,9 @@ function settings.automaticBodyValue(species, side, key)
 end
 
 -- Existing detector sizing policy, shared by measured animation and shapes.
-function settings.measuredDimensions(species, side, shape, footprint)
+function settings.measuredDimensions(species, context, shape, footprint)
   local function value(key)
-    return settings.detectionSizing(species, side, shape, key)
+    return settings.detectionSizing(species, context, shape, key)
   end
   local width = math.max(
     footprint.contactWidth * value("contactWidthScale"),
@@ -459,9 +474,9 @@ local function animatedBodyEllipse(x, y, width, height, opacity)
     local measurement = context.measurement
     if not measurement or not measurement.reference then return end
     local currentWidth, currentHeight = settings.measuredDimensions(
-      context.species, context.side, shape, measurement.footprint)
+      context.species, context.context or context.side, shape, measurement.footprint)
     local referenceWidth, referenceHeight = settings.measuredDimensions(
-      context.species, context.side, shape, measurement.reference)
+      context.species, context.context or context.side, shape, measurement.reference)
     if referenceWidth <= 0 or referenceHeight <= 0 then return end
     return {
       width = shape.width * math.max(1, currentWidth / referenceWidth),
@@ -675,6 +690,92 @@ settings.species.DITTO.wingShadows = {
 -- Public Shadow Customization API for Modders & Custom Scenes
 -- ============================================================================
 
+local function isFiniteNumber(val)
+  local num = tonumber(val)
+  if num and num == num and num ~= math.huge and num ~= -math.huge then
+    return true, num
+  end
+  return false, nil
+end
+
+--- Validate and normalize an artist-facing scene shadow configuration table.
+-- Permissive about representation, strict about meaning.
+-- Coerces valid numeric strings to real Lua numbers, rejects NaN/inf and
+-- out-of-range values, and preserves unknown keys for extension compatibility.
+-- @param config table Table of scene shadow properties
+-- @return boolean ok, table|string normalizedOrErr
+function settings.validateSceneConfig(config)
+  if type(config) ~= "table" then
+    return false, "invalid_config"
+  end
+
+  local normalized = {}
+
+  if config.enabled ~= nil then
+    if type(config.enabled) ~= "boolean" then
+      return false, "invalid_enabled"
+    end
+    normalized.enabled = config.enabled
+  end
+
+  if config.color ~= nil then
+    if type(config.color) ~= "table" then
+      return false, "invalid_color"
+    end
+    local rawR = config.color[1] or config.color.r
+    local rawG = config.color[2] or config.color.g
+    local rawB = config.color[3] or config.color.b
+    local okR, r = isFiniteNumber(rawR)
+    local okG, g = isFiniteNumber(rawG)
+    local okB, b = isFiniteNumber(rawB)
+    if not (okR and okG and okB and r >= 0 and r <= 1 and g >= 0 and g <= 1 and b >= 0 and b <= 1) then
+      return false, "invalid_color"
+    end
+    normalized.color = { r, g, b, r = r, g = g, b = b }
+  end
+
+  if config.opacityScale ~= nil then
+    local ok, val = isFiniteNumber(config.opacityScale)
+    if not ok or val < 0 then
+      return false, "invalid_opacity_scale"
+    end
+    normalized.opacityScale = val
+  end
+
+  if config.offsetY ~= nil then
+    local ok, val = isFiniteNumber(config.offsetY)
+    if not ok then
+      return false, "invalid_offset_y"
+    end
+    normalized.offsetY = val
+  end
+
+  if config.playerOffsetY ~= nil then
+    local ok, val = isFiniteNumber(config.playerOffsetY)
+    if not ok then
+      return false, "invalid_player_offset_y"
+    end
+    normalized.playerOffsetY = val
+  end
+
+  if config.enemyOffsetY ~= nil then
+    local ok, val = isFiniteNumber(config.enemyOffsetY)
+    if not ok then
+      return false, "invalid_enemy_offset_y"
+    end
+    normalized.enemyOffsetY = val
+  end
+
+  -- Preserve unknown keys for custom mod extension compatibility
+  for k, v in pairs(config) do
+    if normalized[k] == nil then
+      normalized[k] = v
+    end
+  end
+
+  return true, normalized
+end
+
 --- Register or update a scene-wide shadow configuration.
 -- @param sceneId string Backdrop scene identifier (e.g. "custom_space")
 -- @param config table Table of scene properties:
@@ -715,17 +816,18 @@ function settings.registerSpecies(species, config)
     settings.species[species] = entry
   end
   for k, v in pairs(config) do
-    if k == "player" or k == "enemy" then
+    if k == "player" or k == "enemy" or k == "scene" then
       if type(v) == "table" then
         entry[k] = entry[k] or {}
-        for sideKey, sideVal in pairs(v) do
-          entry[k][sideKey] = sideVal
+        for contextKey, contextValue in pairs(v) do
+          entry[k][contextKey] = contextValue
         end
       end
     else
       entry[k] = v
     end
   end
+  touchProfile()
   return entry
 end
 
@@ -741,30 +843,35 @@ function settings.setSpecies(species, key, value)
     settings.species[species] = entry
   end
   entry[key] = value
+  touchProfile()
 end
 
---- Set a single side-specific shadow property on a species.
+--- Set a single presentation-context-specific shadow property on a species.
 -- @param species string Uppercase species identifier
--- @param side string "player" or "enemy"
+-- @param context string "player", "enemy", or "scene"
 -- @param key string Property name
 -- @param value any Property value
-function settings.setSide(species, side, key, value)
-  assert(type(species) == "string", "setSide requires a string species name")
-  assert(side == "player" or side == "enemy", "side must be 'player' or 'enemy'")
+function settings.setContext(species, context, key, value)
+  assert(type(species) == "string", "setContext requires a string species name")
+  assert(
+    context == "player" or context == "enemy" or context == "scene",
+    "context must be 'player', 'enemy', or 'scene'"
+  )
   local entry = settings.species[species]
   if not entry then
     entry = { player = {}, enemy = {} }
     settings.species[species] = entry
   end
-  entry[side] = entry[side] or {}
-  entry[side][key] = value
+  entry[context] = entry[context] or {}
+  entry[context][key] = value
+  touchProfile()
 end
 
 --- Add a shadow shape to a species' shadowShapes list.
 -- @param species string Uppercase species identifier
 -- @param shape table Shadow shape definition
--- @param side optional string "player", "enemy", or nil for both
-function settings.addShape(species, shape, side)
+-- @param context optional string "player", "enemy", "scene", or nil for species level
+function settings.addShape(species, shape, context)
   assert(type(species) == "string", "addShape requires a string species name")
   assert(type(shape) == "table", "addShape requires a table shape")
   local entry = settings.species[species]
@@ -772,17 +879,21 @@ function settings.addShape(species, shape, side)
     entry = { player = {}, enemy = {} }
     settings.species[species] = entry
   end
-  if side then
-    assert(side == "player" or side == "enemy", "side must be 'player' or 'enemy'")
-    entry[side] = entry[side] or {}
-    local shapes = entry[side].shadowShapes or {}
+  if context then
+    assert(
+      context == "player" or context == "enemy" or context == "scene",
+      "context must be 'player', 'enemy', or 'scene'"
+    )
+    entry[context] = entry[context] or {}
+    local shapes = entry[context].shadowShapes or {}
     shapes[#shapes + 1] = shape
-    entry[side].shadowShapes = shapes
+    entry[context].shadowShapes = shapes
   else
     local shapes = entry.shadowShapes or {}
     shapes[#shapes + 1] = shape
     entry.shadowShapes = shapes
   end
+  touchProfile()
 end
 
 return settings
