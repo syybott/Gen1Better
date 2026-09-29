@@ -143,3 +143,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+# Custom Text Boxes FR
+
+The BetterFrames artwork is adapted from **Custom Text Boxes FR** by **LibertyTwins**. The source pack requests credit when used. Its FireRed patch and supplied image resources were used to identify frame designs and palette values.

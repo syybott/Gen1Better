@@ -1938,12 +1938,41 @@ return function(mod, genderExports, compatibility, menuColors,
       or Strings("BOX %02d", screen.game.save.currentBox)
   end
 
+  local function drawFooterHint(screen, layout, message, direction)
+    local arrowW, textW, gap = 16, Font.width(message), 24
+    local stride = arrowW + textW + gap
+    local offset = math.floor((screen.marquee or 0) / 8) % stride
+    local sx, sy, sw, sh = love.graphics.getScissor()
+    love.graphics.setScissor(0, layout.footerY, layout.width, layout.footerH)
+    local x = 4 - offset
+    while x < layout.width do
+      gray(WHITE)
+      if direction == "box" then
+        love.graphics.polygon("fill", x, layout.footerY + 5,
+          x + 3, layout.footerY + 2, x + 3, layout.footerY + 8)
+        love.graphics.polygon("fill", x + 12, layout.footerY + 5,
+          x + 9, layout.footerY + 2, x + 9, layout.footerY + 8)
+      else
+        love.graphics.polygon("fill", x + 7, layout.footerY + 1,
+          x + 4, layout.footerY + 4, x + 10, layout.footerY + 4)
+        love.graphics.polygon("fill", x + 4, layout.footerY + 6,
+          x + 10, layout.footerY + 6, x + 7, layout.footerY + 9)
+      end
+      drawText(message, x + arrowW, layout.footerY + 1, textW, WHITE)
+      x = x + stride
+    end
+    if sx then love.graphics.setScissor(sx, sy, sw, sh)
+    else love.graphics.setScissor() end
+  end
+
   local function drawFooter(screen, layout)
     gray(DARK)
     love.graphics.rectangle("fill", 0, layout.footerY,
       layout.width, layout.footerH)
     local message = screen.status
-    if not message then
+    if screen.actions then
+      message = Strings("SELECT  [A] OK  [B] BACK")
+    elseif not message then
       if screen.held then
         message = Strings("[SELECT] TOGGLE PARTY")
       else
@@ -1952,8 +1981,13 @@ return function(mod, genderExports, compatibility, menuColors,
       end
     end
     if screen.boxSwitching then
-      message = layout.compact and Strings("ARROWS BOX A DONE")
-        or Strings("LEFT RIGHT BOX  A DONE")
+      drawFooterHint(screen, layout, "CHANGE BOX  [A] DONE  [B] BACK", "box")
+      return
+    end
+
+    if screen.actions then
+      drawFooterHint(screen, layout, message, "actions")
+      return
     end
 	
 	local footerX = 4
@@ -1972,12 +2006,12 @@ return function(mod, genderExports, compatibility, menuColors,
 	  local offset = math.floor((screen.marquee or 0) / 8) % stride
 
 	  local sx, sy, sw, sh = love.graphics.getScissor()
-	  love.graphics.setScissor(footerX, layout.footerY,
-	    footerW, layout.footerH)
+	  love.graphics.setScissor(0, layout.footerY,
+	    layout.width, layout.footerH)
 
 	  local x = footerX - offset
 
-	  while x < footerX + footerW do
+	  while x < layout.width do
 		drawText(message, x, layout.footerY + 1, textW, WHITE)
 		x = x + stride
 	  end

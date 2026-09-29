@@ -196,6 +196,123 @@ return function(mod, handle)
   compat.caughtBall = caughtBall
   compat.partyBall = partyBall
 
+  local filledSparkleImage
+  local function filledSparkles()
+    if filledSparkleImage then return filledSparkleImage end
+    local data = love.image.newImageData(
+      "mods/" .. MOD_ID .. "/assets/shiny_visuals/gen2_sparkles.png")
+
+    -- Fill enclosed transparent centers, preserving the exterior.
+    for frame = 0, 3 do
+      local outside, pending = {}, {}
+      local function visit(x, y)
+        if x < 0 or x > 15 or y < 0 or y > 15 then return end
+        local key = y * 16 + x
+        if outside[key] then return end
+        local _, _, _, alpha = data:getPixel(frame * 16 + x, y)
+        if alpha > 0 then return end
+        outside[key] = true
+        pending[#pending + 1] = { x, y }
+      end
+      for i = 0, 15 do
+        visit(i, 0)
+        visit(i, 15)
+        visit(0, i)
+        visit(15, i)
+      end
+      while #pending > 0 do
+        local pixel = table.remove(pending)
+        local x, y = pixel[1], pixel[2]
+        visit(x - 1, y)
+        visit(x + 1, y)
+        visit(x, y - 1)
+        visit(x, y + 1)
+      end
+      for y = 0, 15 do
+        for x = 0, 15 do
+          local _, _, _, alpha = data:getPixel(frame * 16 + x, y)
+          if alpha == 0 and not outside[y * 16 + x] then
+            data:setPixel(frame * 16 + x, y, 1, 1, 1, 1)
+          end
+        end
+      end
+    end
+    filledSparkleImage = love.graphics.newImage(data)
+    filledSparkleImage:setFilter("nearest", "nearest")
+    return filledSparkleImage
+  end
+
+  -- Crystal's overlay hook runs at priority 980. Temporarily intercept
+  -- its sparkle-sheet draws while retaining its reveal clock and audio.
+  mod.hooks:wrap("battle.overlay", function(next, battle)
+    local api = mod.exports.betterBattle
+    if not (api and api.enabled(battle)
+        and type(exports.isShinyRevealPlaying) == "function"
+        and exports.isShinyRevealPlaying()) then
+      return next(battle)
+    end
+
+    local renderer = battle.game and battle.game.renderer
+    if not renderer then return next(battle) end
+    local g = love.graphics
+    local originalDraw = g.draw
+    g.draw = function(image, quad, x, y, angle, sx, sy, ox, oy, ...)
+      local sparkle = image and image.typeOf and image:typeOf("Image")
+        and image:getWidth() == 64 and image:getHeight() == 16
+        and quad and quad.typeOf and quad:typeOf("Quad")
+        and angle == 0 and (sx == 1 or sx == 2) and sy == sx
+        and ox == 8 and oy == 8
+      if sparkle then
+        local qx, qy, qw, qh = quad:getViewport()
+        sparkle = qy == 0 and qw == 16 and qh == 16
+          and qx >= 0 and qx <= 48 and qx % 16 == 0
+      end
+
+      local enemyLayer
+      if sparkle then
+        for _, layer in ipairs(
+            renderer.gen1BetterBattleSpriteLayers or {}) do
+          local placement = layer.gen1BetterMenusPlacement
+          if layer.betterBattleSide == "enemy" and placement
+              and placement.owner == "betterbattle"
+              and placement.edge == "field-sprite" then
+            enemyLayer = layer
+            break
+          end
+        end
+      end
+      if not enemyLayer then
+        return originalDraw(image, quad, x, y, angle, sx, sy, ox, oy, ...)
+      end
+
+      local placement = enemyLayer.gen1BetterMenusPlacement
+      -- The original enemy slot has center X=124 and bottom Y=56.
+      -- Draw into its detached layer so its final scale is shared.
+      local px = x + placement.fieldX - 124
+      local py = y + placement.enemyShift
+      local filled = filledSparkles()
+      g.push("all")
+      g.setCanvas(enemyLayer.canvas)
+      g.origin()
+      g.setScissor()
+      g.setShader()
+      g.setBlendMode("alpha", "alphamultiply")
+      g.setColor(1, 1, 1, 1)
+      local ok, err = pcall(originalDraw,
+        filled, quad, px, py, angle, sx, sy, ox, oy)
+      g.pop()
+      if not ok then error(err, 0) end
+      enemyLayer.zones[#enemyLayer.zones + 1] = {
+        colors = false,
+        x = px - ox * sx, y = py - oy * sy,
+        w = 16 * sx, h = 16 * sy,
+      }
+    end
+    local ok, err = pcall(next, battle)
+    g.draw = originalDraw
+    if not ok then error(err, 0) end
+  end, 1000)
+
   function compat.current(screen, mon, path, trueColor)
     if not (screen and mon and path) then return nil end
 

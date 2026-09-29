@@ -106,13 +106,16 @@ Want to add your own artwork, cutscenes, or custom battles to Gen1Better? Choose
 
 Open **START → COLORS → BetterMenus**. Use **UP/DOWN** to select a row, **LEFT/RIGHT** to change a value, **A** to open a palette group, and **B** to return.
 
-The menu palette is separate from the game's overall palette. Choose **Default** for the Game Boy, Black and White, OG Red, Advanced, and SGB menu themes, or **BetterMenus** for SoulSilver, HeartGold, FireRed, LeafGreen, Crystal, and Emerald. A **Groovy** group appears when the Groovy Palette mod is available.
+The menu palette is separate from the game's overall palette. Choose **Default** for the Game Boy, Black and White, OG Red, Advanced, and SGB menu themes, or **BetterMenus** for SoulSilver, HeartGold, FireRed, LeafGreen, Crystal, Emerald, and ten palettes numbered to match the FireRed frames. A **Groovy** group appears when the Groovy Palette mod is available.
 
 Palette browsing previews your choice. Press **A** or **START** to keep it; **B** cancels the preview. The **DEFAULT** entry on the preceding COLORS screen opens the game's own palette controls.
+
+Open **START → COLORS → BetterFrames** to choose **OG**, **Hybrid**, or **FR**, then select a numbered frame. OG includes **DEFAULT**, which keeps the current Game Boy frame. The numbers identify available choices within each group. Hybrid follows the selected BetterMenus palette while preserving the Poké Ball colors in its Poké Ball design; FR uses the FireRed colors. Dialogue and location popups use their matching artwork automatically.
 
 | Option | Default | What it changes |
 | --- | --- | --- |
 | **MENU PALETTE** | **SOULSILVER** | Colors used by BetterMenus menus and panels; selected through the palette groups or mod options. |
+| **BetterFrames** | **OG DEFAULT** | Chooses the frame artwork for menus, dialogue, location popups, and battle boxes. |
 | **Inverse** | **OFF** | Reverses the light-to-dark order of the menu palette. |
 | **BetterPC** | **ON** | Enables the responsive Pokémon storage interface. |
 | **BetterParty** | **ON** | Enables the responsive party interface. |

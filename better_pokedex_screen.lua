@@ -127,6 +127,7 @@ return function(mod, genderExports, compatibility, menuColors,
     ["8"] = { "111", "101", "111", "101", "111" },
     ["9"] = { "111", "101", "111", "001", "111" },
     ["-"] = { "000", "000", "111", "000", "000" },
+    ["#"] = { "010", "111", "010", "111", "010" },
     ["/"] = { "001", "001", "010", "100", "100" },
     ["%"] = { "101", "001", "010", "100", "101" },
     ["("] = { "011", "100", "100", "100", "011" },
@@ -1332,12 +1333,13 @@ return function(mod, genderExports, compatibility, menuColors,
 
   local function footerMessage(screen)
     if screen.status then return tostring(screen.status) end
-    if screen.submenu then return "UP/DOWN CHOOSE   A OK   B BACK" end
+    if screen.submenu then return "SELECT   [A] OK   [B] BACK", true end
     if screen.betterPartyFocus == "moves" then return nil end
     if screen.itemUse or screen.tmhm or screen.evoStone or screen.forceSwitch then
       local message = type(screen.bottomMessage) == "function"
         and screen:bottomMessage() or nil
-      return message and tostring(message) or "UP/DOWN SELECT   A OK   B BACK"
+      if message then return tostring(message) end
+      return "SELECT   [A] OK   [B] BACK", true
     end
     return nil
   end
@@ -1363,8 +1365,8 @@ return function(mod, genderExports, compatibility, menuColors,
     for _, width in ipairs(widths) do stride = stride + width end
     local offset = math.floor((screen.marquee or 0) / 8) % stride
     local sx, sy, sw, sh = love.graphics.getScissor()
-    love.graphics.setScissor(4, layout.footerY,
-      layout.width - 8, layout.footerH)
+    love.graphics.setScissor(0, layout.footerY,
+      layout.width, layout.footerH)
 
     local x = 4 - offset
     while x < layout.width do
@@ -1392,26 +1394,35 @@ return function(mod, genderExports, compatibility, menuColors,
     else love.graphics.setScissor() end
   end
 
-  local function drawFooterMessageMarquee(screen, layout, message)
+  local function drawFooterMessageMarquee(screen, layout, message, showArrows)
     local footerW = layout.width - 8
     local textW = Font.width(message)
+    local arrowW = showArrows and 8 or 0
     local marqueeEnabled = mod and mod.options
       and mod.options:get("marquee_text") ~= false
-    if textW <= footerW or not marqueeEnabled then
-      local fitted = fitText(message, footerW)
-      drawText(fitted,
-        layout.width / 2 - Font.width(fitted) / 2,
-        layout.footerY + 1, footerW, WHITE)
+    if textW + arrowW <= footerW or not marqueeEnabled then
+      local fitted = fitText(message, footerW - arrowW)
+      local x = layout.width / 2 - (Font.width(fitted) + arrowW) / 2
+      if showArrows then
+        drawFooterArrow(x, layout.footerY + 1, "up")
+        drawFooterArrow(x, layout.footerY + 1, "down")
+      end
+      drawText(fitted, x + arrowW,
+        layout.footerY + 1, footerW - arrowW, WHITE)
       return
     end
     local gap = 24
-    local stride = textW + gap
+    local stride = textW + arrowW + gap
     local offset = math.floor((screen.marquee or 0) / 8) % stride
     local sx, sy, sw, sh = love.graphics.getScissor()
-    love.graphics.setScissor(4, layout.footerY, footerW, layout.footerH)
+    love.graphics.setScissor(0, layout.footerY, layout.width, layout.footerH)
     local x = 4 - offset
     while x < layout.width do
-      drawText(message, x, layout.footerY + 1, textW, WHITE)
+      if showArrows then
+        drawFooterArrow(x, layout.footerY + 1, "up")
+        drawFooterArrow(x, layout.footerY + 1, "down")
+      end
+      drawText(message, x + arrowW, layout.footerY + 1, textW, WHITE)
       x = x + stride
     end
     if sx then love.graphics.setScissor(sx, sy, sw, sh)
@@ -1422,9 +1433,9 @@ return function(mod, genderExports, compatibility, menuColors,
     gray(DARK)
     love.graphics.rectangle("fill", 0, layout.footerY,
       layout.width, layout.footerH)
-    local message = footerMessage(screen)
+    local message, showArrows = footerMessage(screen)
     if message then
-      drawFooterMessageMarquee(screen, layout, message)
+      drawFooterMessageMarquee(screen, layout, message, showArrows)
     else
       drawPartyFooterMarquee(screen, layout)
     end
@@ -1681,7 +1692,6 @@ return function(mod, genderExports, compatibility, menuColors,
     drawText(def.name or item.name or "", infoX, panel.y + 5, infoW, BLACK)
     if not owned then return end
     local entry = def.dexEntry or {}
-    drawText(entry.kind or "?", infoX, panel.y + 16, infoW, BLACK)
     drawTypeBadges(dexTypeBadges(panel, def.types or {}))
     local height, weight = metricMeasurements(def)
     drawTinyText("HEIGHT", infoX, panel.y + 43, BLACK)
@@ -1792,7 +1802,7 @@ return function(mod, genderExports, compatibility, menuColors,
 
   local function drawDexFooterMarquee(screen, layout)
     local choosing = screen.betterPokedexOptionsOpen
-    local labels = { Strings(choosing and "CHOOSE" or "SELECT"),
+    local labels = { Strings("SELECT"),
       Strings(choosing and "[A] OK" or "[A] OPTIONS"), Strings("[B] BACK") }
     local arrowW, gap = 8, 16
     local widths = { arrowW + Font.width(labels[1]), Font.width(labels[2]),
@@ -1800,7 +1810,7 @@ return function(mod, genderExports, compatibility, menuColors,
     local stride = widths[1] + widths[2] + widths[3] + gap * 3
     local offset = math.floor((screen.marquee or 0) / 8) % stride
     local sx, sy, sw, sh = love.graphics.getScissor()
-    love.graphics.setScissor(4, layout.footerY, layout.width - 8, layout.footerH)
+    love.graphics.setScissor(0, layout.footerY, layout.width, layout.footerH)
     local startX = 4 - offset
     while startX < layout.width do
       local x = startX

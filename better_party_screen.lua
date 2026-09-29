@@ -302,28 +302,35 @@ return function(mod, genderExports, compatibility, menuColors,
     love.graphics.rectangle("fill", x, y + 2, width, height - 4)
   end
 
-  local function roundedPaletteZones(zones, colors, x, y, width, height)
+  local function roundedPaletteZones(zones, colors, x, y, width, height,
+                                     sampleFrame)
     if width <= 0 or height <= 0 then return end
-    zones[#zones + 1] = {
-      colors = colors, x = x + 2, y = y,
-      w = math.max(1, width - 4), h = height,
-    }
-    zones[#zones + 1] = {
-      colors = colors, x = x + 1, y = y + 1,
-      w = math.max(1, width - 2), h = math.max(1, height - 2),
-    }
-    zones[#zones + 1] = {
-      colors = colors, x = x, y = y + 2,
-      w = width, h = math.max(1, height - 4),
-    }
+    local function add(zx, zy, zw, zh)
+      if sampleFrame and sampleFrame.Up % 1 ~= 0 then
+        local origin = sampleFrame.uoy * sampleFrame.dpiY
+        local scale = sampleFrame.Up
+        local top = math.floor(origin + zy * scale + 0.5)
+        local bottom = math.floor(origin + (zy + zh) * scale + 0.5)
+        zy = (top + 0.01 - origin) / scale
+        zh = (bottom - 0.01 - origin) / scale - zy
+      end
+      zones[#zones + 1] = {
+        colors = colors, x = zx, y = zy, w = zw, h = zh,
+      }
+    end
+    add(x + 2, y, math.max(1, width - 4), height)
+    add(x + 1, y + 1, math.max(1, width - 2),
+      math.max(1, height - 2))
+    add(x, y + 2, width, math.max(1, height - 4))
   end
 
-  local function roundedPaletteFrame(zones, border, face, rect, thickness)
+  local function roundedPaletteFrame(zones, border, face, rect, thickness,
+                                     sampleFrame)
     roundedPaletteZones(zones, border, rect.x, rect.y, rect.w, rect.h)
     thickness = thickness or 1
     roundedPaletteZones(zones, face,
       rect.x + thickness, rect.y + thickness,
-      rect.w - thickness * 2, rect.h - thickness * 2)
+      rect.w - thickness * 2, rect.h - thickness * 2, sampleFrame)
   end
 
   local function panelFrame(panel, faceShade)
@@ -570,6 +577,7 @@ return function(mod, genderExports, compatibility, menuColors,
         x = x + (rx - x) * scale,
         y = y + (ry - y) * scale,
         w = rw * scale, h = rh * scale,
+        sampleClip = true,
       }
     end
     love.graphics.push("all")
@@ -602,6 +610,7 @@ return function(mod, genderExports, compatibility, menuColors,
     love.graphics.pop()
     trueColorRegions[#trueColorRegions + 1] = {
       x = x, y = y, w = target, h = target,
+      sampleClip = true,
     }
   end
 
@@ -977,6 +986,7 @@ return function(mod, genderExports, compatibility, menuColors,
       y = y,
       w = 8,
       h = 8,
+      sampleClip = true,
     }
 
     return 9
@@ -1300,12 +1310,13 @@ return function(mod, genderExports, compatibility, menuColors,
 
   local function footerMessage(screen)
     if screen.status then return tostring(screen.status) end
-    if screen.submenu then return "UP/DOWN CHOOSE   A OK   B BACK" end
+    if screen.submenu then return "SELECT   [A] OK   [B] BACK", true end
     if screen.betterPartyFocus == "moves" then return nil end
     if screen.itemUse or screen.tmhm or screen.evoStone or screen.forceSwitch then
       local message = type(screen.bottomMessage) == "function"
         and screen:bottomMessage() or nil
-      return message and tostring(message) or "UP/DOWN SELECT   A OK   B BACK"
+      if message then return tostring(message) end
+      return "SELECT   [A] OK   [B] BACK", true
     end
     return nil
   end
@@ -1331,8 +1342,8 @@ return function(mod, genderExports, compatibility, menuColors,
     for _, width in ipairs(widths) do stride = stride + width end
     local offset = math.floor((screen.marquee or 0) / 8) % stride
     local sx, sy, sw, sh = love.graphics.getScissor()
-    love.graphics.setScissor(4, layout.footerY,
-      layout.width - 8, layout.footerH)
+    love.graphics.setScissor(0, layout.footerY,
+      layout.width, layout.footerH)
 
     local x = 4 - offset
     while x < layout.width do
@@ -1360,26 +1371,35 @@ return function(mod, genderExports, compatibility, menuColors,
     else love.graphics.setScissor() end
   end
 
-  local function drawFooterMessageMarquee(screen, layout, message)
+  local function drawFooterMessageMarquee(screen, layout, message, showArrows)
     local footerW = layout.width - 8
     local textW = Font.width(message)
+    local arrowW = showArrows and 8 or 0
     local marqueeEnabled = mod and mod.options
       and mod.options:get("marquee_text") ~= false
-    if textW <= footerW or not marqueeEnabled then
-      local fitted = fitText(message, footerW)
-      drawText(fitted,
-        layout.width / 2 - Font.width(fitted) / 2,
-        layout.footerY + 1, footerW, WHITE)
+    if textW + arrowW <= footerW or not marqueeEnabled then
+      local fitted = fitText(message, footerW - arrowW)
+      local x = layout.width / 2 - (Font.width(fitted) + arrowW) / 2
+      if showArrows then
+        drawFooterArrow(x, layout.footerY + 1, "up")
+        drawFooterArrow(x, layout.footerY + 1, "down")
+      end
+      drawText(fitted, x + arrowW,
+        layout.footerY + 1, footerW - arrowW, WHITE)
       return
     end
     local gap = 24
-    local stride = textW + gap
+    local stride = textW + arrowW + gap
     local offset = math.floor((screen.marquee or 0) / 8) % stride
     local sx, sy, sw, sh = love.graphics.getScissor()
-    love.graphics.setScissor(4, layout.footerY, footerW, layout.footerH)
+    love.graphics.setScissor(0, layout.footerY, layout.width, layout.footerH)
     local x = 4 - offset
     while x < layout.width do
-      drawText(message, x, layout.footerY + 1, textW, WHITE)
+      if showArrows then
+        drawFooterArrow(x, layout.footerY + 1, "up")
+        drawFooterArrow(x, layout.footerY + 1, "down")
+      end
+      drawText(message, x + arrowW, layout.footerY + 1, textW, WHITE)
       x = x + stride
     end
     if sx then love.graphics.setScissor(sx, sy, sw, sh)
@@ -1390,17 +1410,38 @@ return function(mod, genderExports, compatibility, menuColors,
     gray(DARK)
     love.graphics.rectangle("fill", 0, layout.footerY,
       layout.width, layout.footerH)
-    local message = footerMessage(screen)
+    local message, showArrows = footerMessage(screen)
     if message then
-      drawFooterMessageMarquee(screen, layout, message)
+      drawFooterMessageMarquee(screen, layout, message, showArrows)
     else
       drawPartyFooterMarquee(screen, layout)
     end
   end
 
-  local function markTrueColorOutside(rect, cutout)
+  local function markTrueColorOutside(screen, rect, cutout)
+    local frame = screen.battle and rect.sampleClip
+      and screen.game.renderer:frameRects()
+    local function mark(x, y, w, h)
+      if not frame then
+        PaletteFX.markTrueColor(x, y, w, h)
+        return
+      end
+      local scale = frame.Up
+      local ox = frame.uox * frame.dpiX
+      local oy = frame.uoy * frame.dpiY
+      local left = math.ceil(ox + x * scale - 0.5)
+      local top = math.ceil(oy + y * scale - 0.5)
+      local right = math.ceil(ox + (x + w) * scale - 0.5)
+      local bottom = math.ceil(oy + (y + h) * scale - 0.5)
+      if right <= left or bottom <= top then return end
+      PaletteFX.markTrueColor(
+        (left + 0.25 - ox) / scale,
+        (top + 0.25 - oy) / scale,
+        (right - left - 0.5) / scale,
+        (bottom - top - 0.5) / scale)
+    end
     if not cutout then
-      PaletteFX.markTrueColor(rect.x, rect.y, rect.w, rect.h)
+      mark(rect.x, rect.y, rect.w, rect.h)
       return
     end
     local x1, y1, x2, y2 = rect.x, rect.y, rect.x + rect.w, rect.y + rect.h
@@ -1409,13 +1450,13 @@ return function(mod, genderExports, compatibility, menuColors,
     local ix1, iy1 = math.max(x1, cx1), math.max(y1, cy1)
     local ix2, iy2 = math.min(x2, cx2), math.min(y2, cy2)
     if ix1 >= ix2 or iy1 >= iy2 then
-      PaletteFX.markTrueColor(x1, y1, rect.w, rect.h)
+      mark(x1, y1, rect.w, rect.h)
       return
     end
-    if y1 < iy1 then PaletteFX.markTrueColor(x1, y1, rect.w, iy1 - y1) end
-    if iy2 < y2 then PaletteFX.markTrueColor(x1, iy2, rect.w, y2 - iy2) end
-    if x1 < ix1 then PaletteFX.markTrueColor(x1, iy1, ix1 - x1, iy2 - iy1) end
-    if ix2 < x2 then PaletteFX.markTrueColor(ix2, iy1, x2 - ix2, iy2 - iy1) end
+    if y1 < iy1 then mark(x1, y1, rect.w, iy1 - y1) end
+    if iy2 < y2 then mark(x1, iy2, rect.w, y2 - iy2) end
+    if x1 < ix1 then mark(x1, iy1, ix1 - x1, iy2 - iy1) end
+    if ix2 < x2 then mark(ix2, iy1, x2 - ix2, iy2 - iy1) end
   end
 
   local function draw(screen)
@@ -1435,7 +1476,7 @@ return function(mod, genderExports, compatibility, menuColors,
     if not (type(useStockOgMenuPalette) == "function"
         and useStockOgMenuPalette(screen.game)) then
       for _, rect in ipairs(trueColorRegions) do
-        markTrueColorOutside(rect, cutout)
+        markTrueColorOutside(screen, rect, cutout)
       end
     end
     gray(WHITE)
@@ -1455,47 +1496,51 @@ return function(mod, genderExports, compatibility, menuColors,
     end
     local paper = type(menuPaper) == "function" and menuPaper(game) or base
     local dataPaper = lockedDataPaper(game) or paper
+    local sampleFrame = game.renderer
+      and type(game.renderer.frameRects) == "function"
+      and game.renderer:frameRects() or nil
     local zones = {{ colors = base, x = 0, y = 0,
       w = layout.width, h = layout.height }}
     zones[#zones + 1] = { colors = base, x = 0, y = 0,
       w = layout.width, h = layout.headerH }
     zones[#zones + 1] = { colors = base, x = 0, y = layout.footerY,
       w = layout.width, h = layout.footerH }
-    roundedPaletteFrame(zones, base, dataPaper, layout.party, 2)
+    roundedPaletteFrame(zones, base, dataPaper, layout.party, 2, sampleFrame)
     local party = screen.party or game.save.party or {}
     for index = 1, Party.MAX do
       local mon = party[index]
       local rect = rowRect(layout, index)
       if mon then
         roundedPaletteFrame(zones, ownedPalette(monPalette(screen, mon)),
-          dataPaper, rect, 1)
+          dataPaper, rect, 1, sampleFrame)
       else
         roundedPaletteFrame(zones, base, dataPaper,
           { x = rect.x + 2, y = rect.y + 2,
-            w = rect.w - 4, h = rect.h - 4 }, 1)
+            w = rect.w - 4, h = rect.h - 4 }, 1, sampleFrame)
       end
     end
     local mon = party[screen.index]
     roundedPaletteFrame(zones, base,
-      dataPaper, layout.detail, 2)
+      dataPaper, layout.detail, 2, sampleFrame)
     if mon then
       local badges = identityBadges(layout.detail, monDef(screen, mon).types or {})
       for _, badge in ipairs(badges) do
-        roundedPaletteFrame(zones, badge.palette, dataPaper, badge.rect, 1)
+        roundedPaletteFrame(zones, badge.palette, dataPaper, badge.rect, 1,
+          sampleFrame)
       end
 
       for slot = 1, 4 do
         local border = moveBorderPalette(screen, mon, slot)
         if border then
           roundedPaletteFrame(zones, border, dataPaper,
-            moveRowRect(layout.detail, slot), 1)
+            moveRowRect(layout.detail, slot), 1, sampleFrame)
         end
       end
 
       local detailBorder = moveBorderPalette(
         screen, mon, screen.betterPartyMoveSlot or 1)
       roundedPaletteFrame(zones, detailBorder or base, dataPaper,
-        moveDetailsRect(layout.detail), 2)
+        moveDetailsRect(layout.detail), 2, sampleFrame)
     end
     if screen.submenu then
       local visible = math.min(#(screen.subItems or {}), SUBMENU_PAGE)

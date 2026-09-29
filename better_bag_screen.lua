@@ -1570,6 +1570,14 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     end
   end
 
+  local function drawPocketArrows(x, y)
+    gray(WHITE)
+    love.graphics.polygon("fill", x, y + 4,
+      x + 3, y + 1, x + 3, y + 7)
+    love.graphics.polygon("fill", x + 9, y + 4,
+      x + 6, y + 1, x + 6, y + 7)
+  end
+
   local function drawFooter(menu, layout)
     gray(DARK)
     love.graphics.rectangle("fill", 0, layout.footerY,
@@ -1584,18 +1592,23 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         lines = wrappedLines(Strings(status):gsub("\n", " "),
           layout.width - 8, 2)
       elseif config and layout.wide then
-        lines = { Strings("[L/R] POCKET   [A] SELECT   [B] BACK") }
+        lines = { Strings("CHANGE POCKET   [A] SELECT   [B] BACK") }
       else
-        lines = { Strings("L/R POCKET"), Strings("A SELECT  B BACK") }
+        lines = { Strings("CHANGE POCKET"),
+          Strings("[A] SELECT  [B] BACK") }
       end
       if #lines == 0 then lines = { "" } end
       local step = 8
       local y = layout.footerY
         + math.max(0, math.floor((layout.footerH - #lines * step) / 2))
       for index, line in ipairs(lines) do
-        line = fitText(line, layout.width - 8)
-        drawText(line, (layout.width - Font.width(line)) / 2,
-          y + (index - 1) * step, layout.width - 8, WHITE)
+        local pocketHint = not status and config and index == 1
+        local arrowW = pocketHint and 12 or 0
+        line = fitText(line, layout.width - 8 - arrowW)
+        local x = (layout.width - Font.width(line) - arrowW) / 2
+        if pocketHint then drawPocketArrows(x, y + (index - 1) * step) end
+        drawText(line, x + arrowW, y + (index - 1) * step,
+          layout.width - 8 - arrowW, WHITE)
       end
       return
     end
@@ -1603,15 +1616,19 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       local line1, line2
       if swapId(menu) then
         line1 = Strings("CHOOSE NEW POSITION")
-        line2 = Strings("A PLACE  B BACK")
+        line2 = Strings("[A] PLACE  [B] BACK")
       else
-        line1 = Strings("[L/R] CHANGE POCKET")
+        line1 = Strings("CHANGE POCKET")
         line2 = Strings("[A] USE   [B] BACK")
       end
-      line1 = fitText(line1, layout.width - 8)
+      local pocketHint = not swapId(menu)
+      local arrowW = pocketHint and 12 or 0
+      line1 = fitText(line1, layout.width - 8 - arrowW)
       line2 = fitText(line2, layout.width - 8)
-      drawText(line1, (layout.width - Font.width(line1)) / 2,
-        layout.footerY + 1, layout.width - 8, WHITE)
+      local line1X = (layout.width - Font.width(line1) - arrowW) / 2
+      if pocketHint then drawPocketArrows(line1X, layout.footerY + 1) end
+      drawText(line1, line1X + arrowW,
+        layout.footerY + 1, layout.width - 8 - arrowW, WHITE)
       drawText(line2, (layout.width - Font.width(line2)) / 2,
         layout.footerY + 11, layout.width - 8, WHITE)
       return
@@ -1619,7 +1636,8 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
     if layout.wide and not swapId(menu) then
       local labels = {
-        Strings("[B] BACK"), Strings("POCKET"), Strings("[A] SELECT"),
+        Strings("[B] BACK"), Strings("CHANGE POCKET"),
+        Strings("[A] SELECT"),
       }
       local gap = 16
       local arrowW = 12
@@ -1629,19 +1647,12 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       local offset = math.floor((menu.marquee or 0) / 8) % stride
       local sx, sy, sw, sh = love.graphics.getScissor()
       love.graphics.setScissor(0, layout.footerY, layout.width, layout.footerH)
-      local function arrows(px)
-        gray(WHITE)
-        love.graphics.polygon("fill", px, layout.footerY + 5,
-          px + 3, layout.footerY + 2, px + 3, layout.footerY + 8)
-        love.graphics.polygon("fill", px + 9, layout.footerY + 5,
-          px + 6, layout.footerY + 2, px + 6, layout.footerY + 8)
-      end
       local startX = -offset
       while startX < layout.width do
         local x = startX
         drawText(labels[1], x, layout.footerY + 1, widths[1], WHITE)
         x = x + widths[1] + gap
-        arrows(x)
+        drawPocketArrows(x, layout.footerY + 1)
         drawText(labels[2], x + arrowW, layout.footerY + 1,
           Font.width(labels[2]), WHITE)
         x = x + widths[2] + gap
@@ -1660,27 +1671,32 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     if swapId(menu) then
       message = Strings("CHOOSE A NEW POSITION")
     else
-      message = Strings("[L/R] POCKET   [B] BACK")
+      message = Strings("CHANGE POCKET   [B] BACK")
     end
     local footerX = 4
     local footerW = layout.width - 8
+    local pocketHint = not swapId(menu)
+    local arrowW = pocketHint and 12 or 0
     local textW = Font.width(message)
     local marqueeEnabled = mod and mod.options
       and mod.options:get("marquee_text") ~= false
-    if textW <= footerW or not marqueeEnabled then
-      message = fitText(message, footerW)
-      drawText(message, (layout.width - Font.width(message)) / 2,
-        layout.footerY + 1, footerW, WHITE)
+    if textW + arrowW <= footerW or not marqueeEnabled then
+      message = fitText(message, footerW - arrowW)
+      local x = (layout.width - Font.width(message) - arrowW) / 2
+      if pocketHint then drawPocketArrows(x, layout.footerY + 1) end
+      drawText(message, x + arrowW,
+        layout.footerY + 1, footerW - arrowW, WHITE)
     else
       local gap = 24
-      local stride = textW + gap
+      local stride = textW + arrowW + gap
       local offset = math.floor((menu.marquee or 0) / 8) % stride
       local sx, sy, sw, sh = love.graphics.getScissor()
-      love.graphics.setScissor(footerX, layout.footerY,
-        footerW, layout.footerH)
+      love.graphics.setScissor(0, layout.footerY,
+        layout.width, layout.footerH)
       local x = footerX - offset
-      while x < footerX + footerW do
-        drawText(message, x, layout.footerY + 1, textW, WHITE)
+      while x < layout.width do
+        if pocketHint then drawPocketArrows(x, layout.footerY + 1) end
+        drawText(message, x + arrowW, layout.footerY + 1, textW, WHITE)
         x = x + stride
       end
       if sx then
@@ -2299,12 +2315,14 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         -- Font.drawBox is tile based. Keep a whole-tile frame and center the
         -- remaining one-pixel margins instead of creating a fractional final
         -- tile whose horizontal border cannot reach the right corner.
-        state.boxTw = math.max(1, math.floor(width / 8))
-        state.boxTx = (width - state.boxTw * 8) / 16
+        local textInset = state.textX - (state.boxTx + 1) * 8
+        state.boxTw = math.min(state.boxTw, math.floor(width / 8) - 2)
+        state.boxTx = (8 + math.floor(
+          (width - (state.boxTw + 2) * 8) / 2)) / 8
         if layout and layout.footerY then
           state.boxTy = (layout.footerY - state.boxTh * 8) / 8
         end
-        state.textX = (state.boxTx + 1) * 8
+        state.textX = (state.boxTx + 1) * 8 + textInset
         state.line1Y = (state.boxTy + 1) * 8
         state.line2Y = (state.boxTy + 3) * 8
         state.sgbPalettes = function(_, activeGame)
