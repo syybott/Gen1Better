@@ -4,15 +4,7 @@ Widescreen presentation, customizable menu colors, 2D battle backdrops, cinemati
 
 Choose each interface independently. Turning off a Better interface option keeps the corresponding classic interface with Gen1Better's widescreen and palette support.
 
-## Installation
-
-1. Place the complete mod folder in your Gen1Recomp `mods` directory. The folder should contain `manifest.json`, `main.lua`, and the supplied assets directly inside it.
-2. Enable **Gen1Better** in the game's mod manager.
-3. Open **START → COLORS → BetterMenus** to choose your menu palette and interfaces.
-
-Keep the supplied assets with the mod when updating. Disable the separate **Modern PC UI** mod if installed; it conflicts with BetterPC.
-
-**BetterBattle requires Crystal sprites with correct transparency.** Their opaque body pixels prevent the battle background from showing through the Pokémon. No particular sprite mod is required; the requirement concerns the sprite assets themselves. BetterBattle does not repair incorrect sprite transparency.
+**BetterBattle requires sprites with correct transparency.** Their opaque body pixels prevent the battle background from showing through the Pokémon. No particular sprite mod is required; the requirement concerns the sprite assets themselves. BetterBattle does not repair incorrect sprite transparency. My suggestion is Crystal animated sprites. 
 
 ## Choose your interfaces
 
