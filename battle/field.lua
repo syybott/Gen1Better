@@ -53,6 +53,7 @@ return function(deps)
       if not renderer.gen1BetterBattleSpriteLayers then
         local field = layerFor("field")
         field.nativeField = true
+        field.zones = WideBattle.zones()
         g.push("all")
         g.setCanvas(field.canvas)
         g.origin()

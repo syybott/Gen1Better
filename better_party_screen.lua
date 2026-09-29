@@ -275,21 +275,6 @@ return function(mod, genderExports, compatibility, menuColors,
     drawMediumText(text, centerX - mediumTextWidth(text) / 2, y, shade)
   end
 
-  local function chamfer(mode, x, y, width, height, cut)
-    cut = math.max(1, math.min(cut or 3,
-      math.floor(width / 2), math.floor(height / 2)))
-    if love.graphics.polygon then
-      love.graphics.polygon(mode, {
-        x + cut, y, x + width - cut, y,
-        x + width, y + cut, x + width, y + height - cut,
-        x + width - cut, y + height, x + cut, y + height,
-        x, y + height - cut, x, y + cut,
-      })
-    else
-      love.graphics.rectangle(mode, x, y, width, height)
-    end
-  end
-
   local function pixelRoundFill(x, y, width, height)
     x, y, width, height = math.floor(x), math.floor(y),
       math.floor(width), math.floor(height)
@@ -1295,14 +1280,10 @@ return function(mod, genderExports, compatibility, menuColors,
         local selected = screen.subIndex == scroll + slot
         if selected then
           gray(BLACK)
-          chamfer("fill", x + 3, rowY, width - 6, rowH - 1, 2)
+          pixelRoundFill(x + 3, rowY, width - 6, rowH - 1)
         end
         drawText(entry.label or "", x + 12, rowY + 2,
           width - 18, selected and WHITE or BLACK)
-        if selected then
-          gray(WHITE)
-          love.graphics.rectangle("fill", x + 6, rowY + 4, 3, 3)
-        end
       end
     end
     return { x = x - 2, y = y - 2, w = width + 4, h = height + 4 }
@@ -1546,10 +1527,11 @@ return function(mod, genderExports, compatibility, menuColors,
       local visible = math.min(#(screen.subItems or {}), SUBMENU_PAGE)
       local width = math.min(136, math.max(96, math.floor(layout.width * 0.42)))
       local height = visible * 12 + 6
-      zones[#zones + 1] = { colors = base,
-        x = layout.width - width - 6,
-        y = math.max(17, layout.footerY - height - 4),
-        w = width + 4, h = height + 4 }
+      roundedPaletteFrame(zones, base, base, {
+        x = layout.width - width - 4,
+        y = math.max(17, layout.footerY - height - 2),
+        w = width, h = height,
+      }, 2, sampleFrame)
     end
     return zones
   end

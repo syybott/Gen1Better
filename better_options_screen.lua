@@ -1,6 +1,7 @@
 -- BetterOptions presentation built from BetterModManager geometry.
 return function(mod, menuColors)
   local Font = require("src.render.Font")
+  local BindingsMenu = require("src.ui.BindingsMenu")
   local ManagerState = require("src.mods.ManagerState")
   local OptionsMenu = require("src.ui.OptionsMenu")
   local PaletteFX = require("src.render.PaletteFX")
@@ -347,6 +348,33 @@ return function(mod, menuColors)
     end
   end
 
+  local captureHooks = {
+    "onKeyPressed", "onKeyReleased",
+    "onGamepadPressed", "onGamepadReleased",
+    "onJoystickPressed", "onJoystickReleased",
+  }
+
+  local function syncBindingCapture(screen)
+    local bindings = screen.bindingsMenu
+    for _, name in ipairs(captureHooks) do
+      if bindings.capture then
+        local hook = name
+        screen[hook] = function(_, value)
+          local handler = bindings[hook]
+          if handler then handler(bindings, value) end
+          if not bindings.capture then syncBindingCapture(screen) end
+        end
+      else
+        screen[name] = nil
+      end
+    end
+  end
+
+  local function beginBindingCapture(screen, item)
+    screen.bindingsMenu:beginCapture(item)
+    syncBindingCapture(screen)
+  end
+
   local BetterOptions = {}
 
   local function buildEntries(screen)
@@ -358,26 +386,38 @@ return function(mod, menuColors)
     for _, tab in ipairs(TABS) do groups[tab.id] = {} end
     groups.time = {}
     for _, row in ipairs(source.rows) do
-      if row.id == "colors" then
-        row.activate = function()
-          if BetterOptions.openColors then
-            BetterOptions.openColors(screen)
+      if row.id == "controls" then
+        for _, item in ipairs(screen.bindingsMenu.items) do
+          groups.controls[#groups.controls + 1] = {
+            id = "binding:" .. item.button.id,
+            label = item.label,
+            value = function() return item.right end,
+            activate = function() beginBindingCapture(screen, item) end,
+            bindingItem = item,
+          }
+        end
+      else
+        if row.id == "colors" then
+          row.activate = function()
+            if BetterOptions.openColors then
+              BetterOptions.openColors(screen)
+            end
           end
         end
-      end
-      local category = CATEGORY[row.id]
-      if category == "time" then
-        groups.time[#groups.time + 1] = row
-      elseif category and category ~= "mods" then
-        local rows = groups[category]
-        rows[#rows + 1] = row
-      elseif category ~= "mods" then
-        local owner = rowOwner(game, row, owners)
-        if owner then
-          byOwner[owner] = byOwner[owner] or {}
-          byOwner[owner][#byOwner[owner] + 1] = row
-        else
-          loose[#loose + 1] = row
+        local category = CATEGORY[row.id]
+        if category == "time" then
+          groups.time[#groups.time + 1] = row
+        elseif category and category ~= "mods" then
+          local rows = groups[category]
+          rows[#rows + 1] = row
+        elseif category ~= "mods" then
+          local owner = rowOwner(game, row, owners)
+          if owner then
+            byOwner[owner] = byOwner[owner] or {}
+            byOwner[owner][#byOwner[owner] + 1] = row
+          else
+            loose[#loose + 1] = row
+          end
         end
       end
     end
@@ -446,8 +486,15 @@ return function(mod, menuColors)
     love.graphics.polygon("fill", x, y, x + 5, y + 4, x, y + 8)
   end
 
-  local function drawFooterArrows(x, y)
+  local function drawFooterArrows(x, y, direction)
     gray(WHITE)
+    if direction == "vertical" then
+      love.graphics.polygon("fill", x + 4, y, x + 1, y + 3,
+        x + 7, y + 3)
+      love.graphics.polygon("fill", x + 1, y + 5, x + 7, y + 5,
+        x + 4, y + 8)
+      return
+    end
     love.graphics.polygon("fill", x, y + 4, x + 3, y + 1, x + 3, y + 7)
     love.graphics.polygon("fill", x + 12, y + 4, x + 9, y + 1,
       x + 9, y + 7)
@@ -465,6 +512,10 @@ return function(mod, menuColors)
     Font.draw(text, math.floor(x), math.floor(y))
     love.graphics.pop()
   end
+
+  local SELECTOR_ON_SECONDS = 1.100
+  local SELECTOR_PERIOD_SECONDS = SELECTOR_ON_SECONDS + 0.550
+  local SELECTOR_ENTRY_ELAPSED = SELECTOR_ON_SECONDS - 0.350
 
   local function drawHeader(screen, layout)
     gray(DARK)
@@ -489,18 +540,16 @@ return function(mod, menuColors)
     for index, tab in ipairs(TABS) do
       local x = firstX + positions[index] - screen.tabScroll
       local selected = index == screen.tab
+      local showSelection = selected and (not screen.tabFocus
+        or (screen.tabBlinkElapsed or 0) % SELECTOR_PERIOD_SECONDS
+          < SELECTOR_ON_SECONDS)
       local rect = { x = x, y = 2, w = widths[index], h = 10 }
-      capsule(rect, selected)
+      capsule(rect, showSelection)
       drawTinyCentered(tab.label, x + rect.w / 2, 5,
-        rect.w - 8, selected and BLACK or DARK)
+        rect.w - 8, showSelection and BLACK or DARK)
     end
     if sx then love.graphics.setScissor(sx, sy, sw, sh)
     else love.graphics.setScissor() end
-  end
-
-  local function drawRule(x, y, width)
-    gray(LIGHT)
-    love.graphics.rectangle("fill", x, y, width, 1)
   end
 
   local function rowValue(row, game)
@@ -509,12 +558,21 @@ return function(mod, menuColors)
     return value
   end
 
-  local function drawRows(screen, panel, title, rows, selected, scroll)
-    panelFrame(panel, WHITE)
-    local x, width = panel.x + 8, panel.w - 16
-    drawTinyText(tinyTextFit(title, width), x, panel.y + 7, BLACK)
-    drawRule(x, panel.y + 17, width)
-    local listY = panel.y + 24
+  local function drawRows(screen, panel, rows, selected, scroll)
+    local frames = mod.gen1BetterMenusFrames
+    local _, frameName = frames and frames.current()
+    local framed = frameName and frameName ~= "default"
+    if not (frames and frames.drawPanel
+        and frames.drawPanel(panel.x, panel.y, panel.w, panel.h)) then
+      panelFrame(panel, WHITE)
+      framed = false
+    end
+    local inset = framed and 17 or 10
+    local right = panel.x + panel.w - inset
+    local width = panel.w - inset * 2
+    local selectorX = panel.x + (framed and 15 or 10)
+    local labelX = selectorX + 6
+    local listY = panel.y + (framed and 16 or 10)
     local visible = math.max(1,
       math.floor((panel.y + panel.h - listY - 5) / 10))
     if selected < scroll then scroll = selected end
@@ -526,11 +584,14 @@ return function(mod, menuColors)
       local y = listY + (slot - 1) * 10
       local value = rowValue(row, screen.game)
       local valueWidth = value ~= nil and math.floor(width * 0.35) or 0
-      if scroll + slot - 1 == selected then drawArrow(x, y, BLACK) end
-      drawTinyText(tinyTextFit(row.label, width - valueWidth - 12),
-        x + 10, y + 1, row.inert and LIGHT or BLACK)
+      if scroll + slot - 1 == selected then
+        drawArrow(selectorX, y, BLACK)
+      end
+      drawTinyText(tinyTextFit(row.label,
+        right - valueWidth - labelX - 2),
+        labelX, y + 1, row.inert and LIGHT or BLACK)
       if value ~= nil then
-        drawTinyRight(tostring(value), x + width, y + 1,
+        drawTinyRight(tostring(value), right, y + 1,
           valueWidth, BLACK)
       end
     end
@@ -543,12 +604,14 @@ return function(mod, menuColors)
     for _, item in ipairs(screen.extras) do
       names[#names + 1] = { label = item.label }
     end
-    local leftIndex = screen.extraFocus == "left" and screen.extraIndex or 0
-    screen.extraScroll = drawRows(screen, layout.party, "EXTRAS", names,
+    local leftIndex = not screen.tabFocus and screen.extraFocus == "left"
+      and screen.extraIndex or 0
+    screen.extraScroll = drawRows(screen, layout.party, names,
       leftIndex, screen.extraScroll)
-    local rightIndex = screen.extraFocus == "right" and screen.extraRow or 0
+    local rightIndex = not screen.tabFocus and screen.extraFocus == "right"
+      and screen.extraRow or 0
     screen.extraRowScroll = drawRows(screen, layout.detail,
-      entry and entry.label or "OPTIONS", entry and entry.rows or {},
+      entry and entry.rows or {},
       rightIndex, screen.extraRowScroll)
   end
 
@@ -556,34 +619,68 @@ return function(mod, menuColors)
     gray(DARK)
     love.graphics.rectangle("fill", 0, layout.footerY,
       layout.width, layout.footerH)
-    local inExtraOption = screen.tab == 7 and screen.extraFocus == "right"
-    local entry = inExtraOption and screen.extras[screen.extraIndex]
-    local row = entry and entry.rows[screen.extraRow]
-    local canStep = row and type(row.step) == "function"
-    local arrows = not inExtraOption or canStep
-    local direction = inExtraOption and "CHANGE OPTION" or "CHANGE TAB"
-    local action = screen.tab == 8 and "[A] OPEN"
-      or screen.tab == 7 and "[A] SELECT" or "[A] CHANGE"
-    if not arrows then action = row and row.activate and "[A] OPEN" or "[A] SELECT" end
-    local labels = arrows and { direction, action, "[B] BACK" }
-      or { action, "[B] BACK" }
-    local gap, arrowW = 16, arrows and 16 or 0
-    local stride = arrowW + (arrows and gap or 0)
-    for _, label in ipairs(labels) do stride = stride + Font.width(label) + gap end
+    local groups = {}
+    local function add(label, direction)
+      groups[#groups + 1] = { label = label, direction = direction }
+    end
+    if screen.bindingsMenu.footer == Strings("RESET ALL BINDINGS?") then
+      add("RESET ALL BINDINGS?")
+    elseif screen.bindingsMenu.capture then
+      add("PRESS A BUTTON")
+      add("RELEASE TO SET")
+      add("ESC/2ND CANCELS")
+    elseif screen.tabFocus then
+      add("CHANGE CATEGORY", "horizontal")
+      add("[A] SELECT")
+      add("[START] MAIN MENU")
+    else
+      add("SELECT", "vertical")
+      if screen.tab == 7 and screen.extraFocus == "left" then
+        add("[A] OPTIONS")
+      else
+        local row
+        if screen.tab == 7 then
+          local entry = screen.extras[screen.extraIndex]
+          row = entry and entry.rows[screen.extraRow]
+        elseif screen.tab ~= 8 then
+          local rows = screen.groups[TABS[screen.tab].id]
+          row = rows and rows[screen.index[screen.tab]]
+        end
+        if row and row.bindingItem then
+          add("[A] BIND")
+          add("[SELECT] CLEAR")
+        elseif row and not row.inert and row.step then
+          add("CHANGE OPTION", "horizontal")
+          add("[A] CHANGE")
+        elseif screen.tab == 8 then
+          add("[A] OPEN")
+        elseif row and not row.inert and row.activate then
+          add("[A] OPEN")
+        end
+      end
+      if screen.tab == 6 then add("HOLD SELECT RESET") end
+      add("[B] CATEGORIES")
+      add("[START] MAIN MENU")
+    end
+    local gap, stride = 16, 0
+    for _, group in ipairs(groups) do
+      local arrowW = group.direction == "vertical" and 8
+        or group.direction == "horizontal" and 16 or 0
+      stride = stride + arrowW + Font.width(group.label) + gap
+    end
     local offset = math.floor((screen.marquee or 0) / 8) % stride
     local sx, sy, sw, sh = love.graphics.getScissor()
     love.graphics.setScissor(0, layout.footerY, layout.width, layout.footerH)
     local x = 4 - offset
     while x < layout.width do
-      if arrows then
-        drawFooterArrows(x, layout.footerY + 1)
-        x = x + arrowW
+      for _, group in ipairs(groups) do
+        if group.direction then
+          drawFooterArrows(x, layout.footerY + 1, group.direction)
+          x = x + (group.direction == "vertical" and 8 or 16)
+        end
+        drawFooterText(group.label, x, layout.footerY + 1)
+        x = x + Font.width(group.label) + gap
       end
-      for _, label in ipairs(labels) do
-        drawFooterText(label, x, layout.footerY + 1)
-        x = x + Font.width(label) + gap
-      end
-      if arrows then x = x + gap end
     end
     if sx then love.graphics.setScissor(sx, sy, sw, sh)
     else love.graphics.setScissor() end
@@ -606,8 +703,9 @@ return function(mod, menuColors)
       if screen.tab == 8 then
         rows = { { label = "OPEN MOD MANAGER" } }
       end
-      screen.scroll[screen.tab] = drawRows(screen, panel, tab.label,
-        rows, screen.index[screen.tab], screen.scroll[screen.tab])
+      screen.scroll[screen.tab] = drawRows(screen, panel,
+        rows, screen.tabFocus and 0 or screen.index[screen.tab],
+        screen.scroll[screen.tab])
     end
     drawFooter(screen, layout)
     gray(WHITE)
@@ -626,9 +724,37 @@ return function(mod, menuColors)
     screen.manager.optionRows = nil
   end
 
+  local twoStateValues = {
+    animations = { "OFF", "ON" },
+    battleStyle = { "SHIFT", "SET" },
+    battleLayout = { "OG", "WIDE" },
+    battleFit = { "FIXED", "FILL" },
+    battleHud = { "STANDARD", "EXTENDED" },
+    uiLayout = { "CENTERED", "DYNAMIC" },
+    touchControls = { "OFF", "ON" },
+    hotbar = { "OFF", "ON" },
+  }
+
   local function activateRow(screen, row, direction)
-    if not row or row.inert or (direction and not row.step) then return end
+    if not row or row.inert then return end
+    if direction and not row.step then return end
     local game = screen.game
+    if direction and row.id == "textSpeed" then
+      local values = { 1, 3, 5 }
+      local index = 2
+      for i, value in ipairs(values) do
+        if game.save.options.textSpeed == value then index = i break end
+      end
+      game.save.options.textSpeed = values[(index - 1 + direction
+        + #values) % #values + 1]
+      if game.writeOptions then game:writeOptions() end
+      return
+    end
+    local pair = direction and twoStateValues[row.id]
+    if pair and tostring(rowValue(row, game))
+        == pair[direction < 0 and 1 or 2] then
+      return
+    end
     local entry = screen.tab == 7 and screen.extras[screen.extraIndex]
     if entry and entry.schema then
       screen.manager.cursor = screen.extraRow
@@ -638,7 +764,7 @@ return function(mod, menuColors)
       entry.gate.index = screen.extraRow
       if entry.gate:update() then return end
     end
-    if not direction and row.activate then
+    if row.activate and not direction then
       row.activate(game)
     elseif row.step then
       local changed = row.step(game, direction or 1)
@@ -654,33 +780,83 @@ return function(mod, menuColors)
   end
 
   local function close(screen)
+    screen.bindingsMenu:commitBindings()
     screen.game.stack:pop()
     if screen.onCancel then screen.onCancel() end
   end
 
-  local function update(screen)
+  local function focusTabs(screen)
+    screen.tabFocus = true
+    screen.tabBlinkElapsed = SELECTOR_ENTRY_ELAPSED
+  end
+
+  local function update(screen, dt)
     screen.marquee = (screen.marquee or 0) + 1
+    if screen.tabFocus then
+      screen.tabBlinkElapsed = ((screen.tabBlinkElapsed or 0)
+        + (tonumber(dt) or 1 / 60)) % SELECTOR_PERIOD_SECONDS
+    end
     local input = screen.game and screen.game.input
     if not input then return end
+    local bindings = screen.bindingsMenu
+    if bindings.capture then
+      bindings:drainCapture()
+      if not bindings.capture then syncBindingCapture(screen) end
+      return
+    end
     if screen.tab == 7 and screen.manager.optionRows then
       local entry = screen.extras[screen.extraIndex]
       if entry and entry.schema then
         rebuildEntry(screen, entry, screen.manager.optionRows)
       end
     end
-    if (input:wasPressed("left") or input:wasPressed("right"))
-        and not (screen.tab == 7 and screen.extraFocus == "right") then
-      local direction = input:wasPressed("left") and -1 or 1
-      screen.tab = (screen.tab - 1 + direction + #TABS) % #TABS + 1
-      screen.extraFocus = "left"
+    if input:wasPressed("start") then
+      close(screen)
       return
     end
-    if input:wasPressed("b") or input:wasPressed("start") then
-      if screen.tab == 7 and screen.extraFocus == "right" then
-        screen.extraFocus = "left"
-      else
-        close(screen)
+    local controlsFocused = screen.tab == 6 and not screen.tabFocus
+    if controlsFocused and input:wasPressed("select") then
+      local row = screen.groups.controls[screen.index[6]]
+      if row and row.bindingItem then
+        bindings:clearBinding(row.bindingItem)
       end
+    end
+    if controlsFocused and input.isDown and input:isDown("select") then
+      local now = love.timer and love.timer.getTime
+        and love.timer.getTime()
+      local held
+      if now then
+        screen.selectHoldStartedAt = screen.selectHoldStartedAt or now
+        held = now - screen.selectHoldStartedAt
+      else
+        screen.selectHoldElapsed = (screen.selectHoldElapsed or 0)
+          + (tonumber(dt) or 1 / 60)
+        held = screen.selectHoldElapsed
+      end
+      if held >= 1 and not screen.selectResetShown then
+        screen.selectResetShown = true
+        bindings:confirmReset()
+        return
+      end
+    else
+      screen.selectHoldStartedAt = nil
+      screen.selectHoldElapsed = 0
+      screen.selectResetShown = false
+    end
+    if screen.tabFocus then
+      if input:wasPressed("left") or input:wasPressed("right") then
+        local direction = input:wasPressed("left") and -1 or 1
+        screen.tab = (screen.tab - 1 + direction + #TABS) % #TABS + 1
+        screen.tabBlinkElapsed = SELECTOR_ENTRY_ELAPSED
+        screen.extraFocus = "left"
+      elseif input:wasPressed("down") or input:wasPressed("a") then
+        screen.tabFocus = false
+      end
+      return
+    end
+    if input:wasPressed("b") then
+      focusTabs(screen)
+      screen.extraFocus = "left"
       return
     end
     if screen.tab == 7 then
@@ -704,8 +880,10 @@ return function(mod, menuColors)
           activateRow(screen, rows[screen.extraRow],
             input:wasPressed("left") and -1 or 1)
         elseif input:wasPressed("up") then
-          screen.extraRow = screen.extraRow > 1
-            and screen.extraRow - 1 or math.max(1, #rows)
+          if #rows > 0 then
+            screen.extraRow = screen.extraRow > 1
+              and screen.extraRow - 1 or #rows
+          end
         elseif input:wasPressed("down") then
           screen.extraRow = screen.extraRow < #rows
             and screen.extraRow + 1 or 1
@@ -716,19 +894,26 @@ return function(mod, menuColors)
       return
     end
     if screen.tab == 8 then
-      if input:wasPressed("a") then Screens.push(screen.game, "ManagerState") end
+      if input:wasPressed("a") then
+        Screens.push(screen.game, "ManagerState")
+      end
       return
     end
     local tab = TABS[screen.tab]
     local rows = screen.groups[tab.id]
     if input:wasPressed("up") then
-      screen.index[screen.tab] = screen.index[screen.tab] > 1
-        and screen.index[screen.tab] - 1 or math.max(1, #rows)
+      if #rows > 0 then
+        screen.index[screen.tab] = screen.index[screen.tab] > 1
+          and screen.index[screen.tab] - 1 or #rows
+      end
     elseif input:wasPressed("down") then
       screen.index[screen.tab] = screen.index[screen.tab] < #rows
         and screen.index[screen.tab] + 1 or 1
     elseif input:wasPressed("a") then
       activateRow(screen, rows[screen.index[screen.tab]])
+    elseif input:wasPressed("left") or input:wasPressed("right") then
+      activateRow(screen, rows[screen.index[screen.tab]],
+        input:wasPressed("left") and -1 or 1)
     end
   end
 
@@ -740,6 +925,7 @@ return function(mod, menuColors)
       extraIndex = 1, extraRow = 1, extraScroll = 1,
       extraRowScroll = 1, extraFocus = "left",
       manager = ManagerState.new(game),
+      bindingsMenu = BindingsMenu.new(game),
       betterOptionsUI = true,
       isOpaque = true, holdsUIAnchors = true,
       letterboxWhite = true, BetterMenusScaleEligible = false,

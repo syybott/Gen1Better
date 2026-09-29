@@ -1810,6 +1810,16 @@ local function installMenuLayout()
       if centerPCMenu then
         self.tx = math.floor((UI_TW - self.tw) / 2)
         self.ty = math.floor((UI_TH - self.th) / 2)
+        local logOff = self.items[#self.items].onSelect
+        self.items[#self.items].onSelect = function()
+          if logOff then logOff() end
+          Screens.push(game, "StartMenu")
+        end
+        local cancel = self.onCancel
+        self.onCancel = function()
+          if cancel then cancel() end
+          Screens.push(game, "StartMenu")
+        end
       elseif not self.anchor
           and not (parent and getmetatable(parent) == ListMenu) then
         self.tx = self.tx + (UI_TW - 20)
@@ -2923,7 +2933,7 @@ local function installBattlePaletteIsolation()
         if layer.nativeField or layer.nativeBlit
             or (layer.gen1BetterMenusPlacement and layer.gen1BetterMenusPlacement.nativeBlit) then
           originalBlitCanvas(self, layer.canvas,
-            r.Ux, r.Uy, zones, r.Ux, r.Uy,
+            r.Ux, r.Uy, layer.zones, r.Ux, r.Uy,
             r.uox, r.uoy, left, top, width, height,
             r.dpiX, r.dpiY)
         else
@@ -3254,6 +3264,7 @@ local function installDialogueLayout()
       self.gen1BetterMenusSkipCenterPCTurnOn = true
     end
     local parent = game and game.stack and game.stack:top()
+    self.gen1BetterMenusPartyDialog = parent and parent.betterPartyUI or false
     widenSavePanel(game, parent)
     local viewportW = UI_W
     local inWideBattle, wideBattleState = false, nil
@@ -7108,9 +7119,20 @@ end
               effectiveMenuPalette(), 0, 12, UI_TW - 1, UI_TH - 1)
           end
         elseif state and state.isTextBox then
-          out[#out + 1] = PaletteFX.zone(effectiveMenuPalette(), state.boxTx, state.boxTy,
-            state.boxTx + state.boxTw - 1,
-            state.boxTy + state.boxTh - 1)
+          if state.gen1BetterMenusPartyDialog then
+            -- The stock frame begins below the top of its tile rectangle.
+            -- Leave that transparent strip under BetterParty's palette.
+            out[#out + 1] = {
+              colors = effectiveMenuPalette(),
+              x = state.boxTx * 8, y = state.boxTy * 8 + 6,
+              w = state.boxTw * 8, h = state.boxTh * 8 - 6,
+            }
+          else
+            out[#out + 1] = PaletteFX.zone(effectiveMenuPalette(),
+              state.boxTx, state.boxTy,
+              state.boxTx + state.boxTw - 1,
+              state.boxTy + state.boxTh - 1)
+          end
         elseif stateMt == ChoiceBox then
           out[#out + 1] = PaletteFX.zone(effectiveMenuPalette(), state.tx, state.ty,
             state.tx + state.tw - 1, state.ty + state.th - 1)

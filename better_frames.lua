@@ -357,7 +357,7 @@ return function(mod, menuPalette)
     return prepared
   end
 
-  local function markOpaqueTile(art, index, x, y, coverEarlier)
+  local function markOpaqueTile(art, index, x, y, coverEarlier, clipW, clipH)
     -- Transparent frame pixels expose the earlier screen. Marking a whole
     -- tile would replay those exposed pixels without their palette.
     local runs = art.opaqueRuns[index]
@@ -393,8 +393,12 @@ return function(mod, menuPalette)
     end
     for _, run in ipairs(runs) do
       local rx, ry = x + run.x, y + run.y
-      if coverEarlier then marks.cover(rx, ry, run.w, run.h) end
-      marks.add(rx, ry, run.w, run.h)
+      local width = math.min(run.w, (clipW or 8) - run.x)
+      local height = math.min(run.h, (clipH or 8) - run.y)
+      if width > 0 and height > 0 then
+        if coverEarlier then marks.cover(rx, ry, width, height) end
+        marks.add(rx, ry, width, height)
+      end
     end
   end
 
@@ -408,6 +412,35 @@ return function(mod, menuPalette)
     end
     love.graphics.draw(art.image, quad, x, y)
     if markBorder then markOpaqueTile(art, key, x, y) end
+  end
+
+  local function panelAxis(size)
+    local segments = { { 0, 8, 0 } }
+    local last = size - 8
+    for offset = 8, last - 1, 8 do
+      segments[#segments + 1] = { offset, math.min(8, last - offset), 1 }
+    end
+    segments[#segments + 1] = { last, 8, 2 }
+    return segments
+  end
+
+  local function panelTile(art, column, row, x, y, width, height, markBorder)
+    if width == 8 and height == 8 then
+      tile(art, column, row, x, y, markBorder)
+      return
+    end
+    local index = row * (art.width / 8) + column
+    local key = index .. ":" .. width .. ":" .. height
+    local quad = art.cells[key]
+    if not quad then
+      quad = love.graphics.newQuad(column * 8, row * 8, width, height,
+        art.width, art.height)
+      art.cells[key] = quad
+    end
+    love.graphics.draw(art.image, quad, x, y)
+    if markBorder then
+      markOpaqueTile(art, index, x, y, nil, width, height)
+    end
   end
 
   local function stripTile(art, index, x, y, markBorder, coverEarlier)
@@ -497,6 +530,28 @@ return function(mod, menuPalette)
         value = branch .. ":" .. item.name }
     end
     return result
+  end
+
+  -- BetterOptions panes use pixel geometry rather than an 8-pixel tile grid.
+  -- Keep the corners at the existing pane bounds and crop the final edge tile.
+  function api.drawPanel(x, y, width, height)
+    local branch, name = api.current()
+    if name == "default" or width < 16 or height < 16 then return false end
+    local art = prepare(branch, name, menuPalette())
+    if not art or art.width ~= 24 or art.height ~= 24 then return false end
+    local columns, rows = panelAxis(width), panelAxis(height)
+    marks.cover(x, y, width, height)
+    love.graphics.push("all")
+    love.graphics.setColor(1, 1, 1, 1)
+    for _, row in ipairs(rows) do
+      for _, column in ipairs(columns) do
+        local edge = row[3] ~= 1 or column[3] ~= 1
+        panelTile(art, column[3], row[3], x + column[1], y + row[1],
+          column[2], row[2], branch ~= "og" and edge)
+      end
+    end
+    love.graphics.pop()
+    return true
   end
 
   function api.drawBox(tx, ty, tw, th, fill, explicitRole, section)

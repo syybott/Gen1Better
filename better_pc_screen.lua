@@ -981,7 +981,7 @@ return function(mod, genderExports, compatibility, menuColors,
     local selectorY = 0
     if screen.boxSwitching then
       gray(BLACK)
-      chamfer("fill", selectorX, selectorY, selectorW, 12, 2)
+      pixelRoundFill(selectorX, selectorY, selectorW, 12)
     end
 
     local function drawArrow(x, left)

@@ -127,7 +127,10 @@ return function(mod, genderExports, compatibility, menuColors,
     ["8"] = { "111", "101", "111", "101", "111" },
     ["9"] = { "111", "101", "111", "001", "111" },
     ["-"] = { "000", "000", "111", "000", "000" },
-    ["#"] = { "010", "111", "010", "111", "010" },
+    ["."] = { "000", "000", "000", "000", "010" },
+    [","] = { "000", "000", "000", "010", "100" },
+    ["!"] = { "010", "010", "010", "000", "010" },
+    ["?"] = { "110", "001", "010", "000", "010" },
     ["/"] = { "001", "001", "010", "100", "100" },
     ["%"] = { "101", "001", "010", "100", "101" },
     ["("] = { "011", "100", "100", "100", "011" },
@@ -178,23 +181,24 @@ return function(mod, genderExports, compatibility, menuColors,
     return grayscaleShader or nil
   end
 
-  local function cleanTinyText(text)
-    return tostring(text or ""):gsub("%.", ""):upper()
+  local function cleanTinyText(text, preservePeriod)
+    local value = tostring(text or ""):upper()
+    return preservePeriod and value or value:gsub("%.", "")
   end
 
-  local function tinyTextWidth(text)
-    local length = #cleanTinyText(text)
+  local function tinyTextWidth(text, preservePeriod)
+    local length = #cleanTinyText(text, preservePeriod)
     return length > 0 and length * 4 - 1 or 0
   end
 
-  local function tinyTextFit(text, maxWidth)
-    text = cleanTinyText(text)
+  local function tinyTextFit(text, maxWidth, preservePeriod)
+    text = cleanTinyText(text, preservePeriod)
     local count = math.max(0, math.floor((math.floor(maxWidth or 0) + 1) / 4))
     return text:sub(1, count)
   end
 
-  local function drawTinyText(text, x, y, shade)
-    text = cleanTinyText(text)
+  local function drawTinyText(text, x, y, shade, preservePeriod)
+    text = cleanTinyText(text, preservePeriod)
     gray(shade == nil and BLACK or shade)
     local cursor = math.floor(x)
     y = math.floor(y)
@@ -306,21 +310,6 @@ return function(mod, genderExports, compatibility, menuColors,
   local function drawMediumCentered(text, centerX, y, maxWidth, shade)
     text = mediumTextFit(text, maxWidth)
     drawMediumText(text, centerX - mediumTextWidth(text) / 2, y, shade)
-  end
-
-  local function chamfer(mode, x, y, width, height, cut)
-    cut = math.max(1, math.min(cut or 3,
-      math.floor(width / 2), math.floor(height / 2)))
-    if love.graphics.polygon then
-      love.graphics.polygon(mode, {
-        x + cut, y, x + width - cut, y,
-        x + width, y + cut, x + width, y + height - cut,
-        x + width - cut, y + height, x + cut, y + height,
-        x, y + height - cut, x, y + cut,
-      })
-    else
-      love.graphics.rectangle(mode, x, y, width, height)
-    end
   end
 
   local function pixelRoundFill(x, y, width, height)
@@ -1318,14 +1307,10 @@ return function(mod, genderExports, compatibility, menuColors,
         local selected = screen.subIndex == scroll + slot
         if selected then
           gray(BLACK)
-          chamfer("fill", x + 3, rowY, width - 6, rowH - 1, 2)
+          pixelRoundFill(x + 3, rowY, width - 6, rowH - 1)
         end
         drawText(entry.label or "", x + 12, rowY + 2,
           width - 18, selected and WHITE or BLACK)
-        if selected then
-          gray(WHITE)
-          love.graphics.rectangle("fill", x + 6, rowY + 4, 3, 3)
-        end
       end
     end
     return { x = x - 2, y = y - 2, w = width + 4, h = height + 4 }
@@ -1496,6 +1481,16 @@ return function(mod, genderExports, compatibility, menuColors,
       :gsub("♀", ""):gsub("♂", ""):upper()
   end
 
+  local function drawDexNumber(number, x, y)
+    -- The 3-pixel font cannot show two distinct stems and two crossbars.
+    gray(BLACK)
+    love.graphics.rectangle("fill", x + 1, y, 1, 5)
+    love.graphics.rectangle("fill", x + 3, y, 1, 5)
+    love.graphics.rectangle("fill", x, y + 1, 5, 1)
+    love.graphics.rectangle("fill", x, y + 3, 5, 1)
+    drawTinyText(tostring(number or "---"), x + 6, y, BLACK)
+  end
+
   local function drawDexHeader(screen, layout)
     gray(DARK)
     love.graphics.rectangle("fill", 0, 0, layout.width, layout.headerH)
@@ -1596,7 +1591,7 @@ return function(mod, genderExports, compatibility, menuColors,
     local textX = rect.x + 22
     local textRight = rect.x + rect.w - 4 - (owned and 11 or 0)
     local textWidth = math.max(8, textRight - textX)
-    drawTinyText("#" .. tostring(item.num or "---"), textX, rect.y + 3, BLACK)
+    drawDexNumber(item.num, textX, rect.y + 3)
     drawTinyText(tinyTextFit(dexTinyText(item.name or "----------"), textWidth),
       textX, rect.y + 11, BLACK)
     if owned then
@@ -1612,12 +1607,12 @@ return function(mod, genderExports, compatibility, menuColors,
     local badges, x = {}, startX
     for index = 1, math.min(2, #(types or {})) do
       local value = types[index]
-      local text = dexTinyText(value)
+      local text = dexTinyText(tostring(value):gsub("_TYPE$", ""))
       local width = math.max(28, math.min(math.floor((available - 3) / 2),
         tinyTextWidth(text) + 8))
       badges[#badges + 1] = { value = value, text = text,
         palette = ownedPalette(paletteForType(value)),
-        rect = { x = x, y = panel.y + 28, w = width, h = 10 } }
+        rect = { x = x, y = panel.y + 16, w = width, h = 10 } }
       x = x + width + 3
     end
     return badges
@@ -1650,10 +1645,12 @@ return function(mod, genderExports, compatibility, menuColors,
 
   local function wrapDexEntry(text, maxWidth, maxLines)
     local words, lines, current = {}, {}, ""
-    for word in tostring(text or ""):gmatch("%S+") do words[#words + 1] = word end
+    for word in dexTinyText(text):gmatch("%S+") do
+      words[#words + 1] = word
+    end
     for _, word in ipairs(words) do
       local candidate = current == "" and word or (current .. " " .. word)
-      if current ~= "" and Font.width(candidate) > maxWidth then
+      if current ~= "" and tinyTextWidth(candidate, true) > maxWidth then
         lines[#lines + 1], current = current, word
         if #lines >= maxLines then break end
       else
@@ -1661,7 +1658,9 @@ return function(mod, genderExports, compatibility, menuColors,
       end
     end
     if #lines < maxLines and current ~= "" then lines[#lines + 1] = current end
-    if #lines == maxLines then lines[#lines] = fitText(lines[#lines], maxWidth) end
+    if #lines == maxLines then
+      lines[#lines] = tinyTextFit(lines[#lines], maxWidth, true)
+    end
     return lines
   end
 
@@ -1678,8 +1677,7 @@ return function(mod, genderExports, compatibility, menuColors,
     local split = math.floor(panel.w * 0.48)
     local infoX = panel.x + split + 4
     local infoW = panel.x + panel.w - 5 - infoX
-    drawTinyText("#" .. tostring(item.num or "---"), panel.x + 5,
-      panel.y + 5, BLACK)
+    drawDexNumber(item.num, panel.x + 5, panel.y + 5)
     if not def then
       drawText("----------", infoX, panel.y + 5, infoW, BLACK)
       return
@@ -1708,10 +1706,10 @@ return function(mod, genderExports, compatibility, menuColors,
     pixelRoundFill(entryRect.x + 2, entryRect.y + 2,
       entryRect.w - 4, entryRect.h - 4)
     local lines = wrapDexEntry(pokedexEntryText(screen, def), entryRect.w - 10,
-      math.max(1, math.floor((entryRect.h - 8) / 8)))
+      math.max(1, math.floor((entryRect.h - 6) / 6)))
     for index, line in ipairs(lines) do
-      drawText(line, entryRect.x + 5, entryRect.y + 4 + (index - 1) * 8,
-        entryRect.w - 10, BLACK)
+      drawTinyText(line, entryRect.x + 5,
+        entryRect.y + 4 + (index - 1) * 6, BLACK, true)
     end
   end
 
@@ -1786,15 +1784,11 @@ return function(mod, genderExports, compatibility, menuColors,
       local selected = index == screen.betterPokedexOptionIndex
       if selected then
         gray(BLACK)
-        chamfer("fill", geometry.x + 3, rowY,
-          geometry.w - 6, geometry.rowH - 1, 2)
+        pixelRoundFill(geometry.x + 3, rowY,
+          geometry.w - 6, geometry.rowH - 1)
       end
       drawText(option.label or "", geometry.x + 12, rowY + 2,
         geometry.w - 18, selected and WHITE or BLACK)
-      if selected then
-        gray(WHITE)
-        love.graphics.rectangle("fill", geometry.x + 6, rowY + 4, 3, 3)
-      end
     end
     return { x = geometry.x - 2, y = geometry.y - 2,
       w = geometry.w + 4, h = geometry.h + 4 }
@@ -1939,10 +1933,11 @@ return function(mod, genderExports, compatibility, menuColors,
       local visible = math.min(#(screen.subItems or {}), SUBMENU_PAGE)
       local width = math.min(136, math.max(96, math.floor(layout.width * 0.42)))
       local height = visible * 12 + 6
-      zones[#zones + 1] = { colors = base,
-        x = layout.width - width - 6,
-        y = math.max(17, layout.footerY - height - 4),
-        w = width + 4, h = height + 4 }
+      roundedPaletteFrame(zones, base, base, {
+        x = layout.width - width - 4,
+        y = math.max(17, layout.footerY - height - 2),
+        w = width, h = height,
+      }, 2)
     end
     return zones
   end
@@ -1990,9 +1985,7 @@ return function(mod, genderExports, compatibility, menuColors,
     end
     if screen.betterPokedexOptionsOpen then
       local geometry = dexOptionGeometry(screen, layout)
-      zones[#zones + 1] = { colors = base,
-        x = geometry.x - 2, y = geometry.y - 2,
-        w = geometry.w + 4, h = geometry.h + 4 }
+      roundedPaletteFrame(zones, base, base, geometry, 2)
     end
     return zones
   end
@@ -2064,6 +2057,13 @@ return function(mod, genderExports, compatibility, menuColors,
         self.index = self.index - 1
       elseif direction == "down" then
         self.index = self.index + 1
+      elseif direction == "left" or direction == "right" then
+        local row = self.index - self.scroll
+        local count = #self.items
+        local step = direction == "left" and -DEX_ROWS or DEX_ROWS
+        self.scroll = math.max(0, math.min(
+          math.max(0, count - DEX_ROWS), self.scroll + step))
+        self.index = math.min(count, self.scroll + row)
       elseif input:wasPressed("a") then
         local item = selectedDexItem(self)
         if item and item.value then
