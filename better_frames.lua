@@ -1,6 +1,6 @@
 -- FireRed-inspired frame art for Gen1Better.  Source PNGs stay untouched;
 -- transparency and palette variants are built once, in memory.
-return function(mod, menuPalette)
+return function(mod, menuPalette, classicPaletteLocked)
   local Font = require("src.render.Font")
   local PaletteFX = require("src.render.PaletteFX")
   local TextBox = require("src.render.TextBox")
@@ -13,6 +13,7 @@ return function(mod, menuPalette)
   local frameRects = {}
   local drawingText = false
   local drawingStockBox = false
+  local paddingDisabled = false
 
   local function canvas()
     return love.graphics.getCanvas and love.graphics.getCanvas() or nil
@@ -27,6 +28,7 @@ return function(mod, menuPalette)
   end
 
   local function paddedPosition(x, y, w)
+    if paddingDisabled then return x, y end
     local current = canvas()
     for i = #frameRects, 1, -1 do
       local frame = frameRects[i]
@@ -499,8 +501,22 @@ return function(mod, menuPalette)
 
   local api = { names = names, choices = choices }
 
+  function api.withoutPadding(draw, ...)
+    local previous = paddingDisabled
+    paddingDisabled = true
+    local ok, result = pcall(draw, ...)
+    paddingDisabled = previous
+    if not ok then error(result, 0) end
+    return result
+  end
+
   function api.current()
     local value = mod.options and mod.options:get("better_frames") or "og:default"
+    if classicPaletteLocked and classicPaletteLocked()
+        and type(value) == "string"
+        and (value:match("^hybrid:") or value:match("^fr:")) then
+      return "og", "default"
+    end
     if value == "og:default" or value == "og:preview" then
       return "og", "default"
     end

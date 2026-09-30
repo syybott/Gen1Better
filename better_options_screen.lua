@@ -353,9 +353,79 @@ return function(mod, menuColors)
     "onGamepadPressed", "onGamepadReleased",
     "onJoystickPressed", "onJoystickReleased",
   }
+  local CAPTURE_HOLD_SECONDS = 1
+
+  local function captureTime(screen)
+    return love.timer and love.timer.getTime and love.timer.getTime()
+      or screen.captureElapsed or 0
+  end
+
+  local function captureId(kind, value)
+    return kind .. ":" .. tostring(value)
+  end
+
+  local function capturePress(screen, kind, value)
+    local id = captureId(kind, value)
+    local held = screen.captureHeld
+    if not held or held[id] then return end
+    held[id] = captureTime(screen)
+    local item = screen.bindingsMenu.capture
+    if not screen.captureCandidate and item
+        and (kind ~= "key" or not item.button.action) then
+      screen.captureCandidate = id
+    end
+  end
+
+  local function captureRelease(screen, kind, value)
+    local id = captureId(kind, value)
+    local held = screen.captureHeld
+    local started = held and held[id]
+    if not started then return end
+    held[id] = nil
+    local bindings = screen.bindingsMenu
+    if captureTime(screen) - started >= CAPTURE_HOLD_SECONDS then
+      bindings:endCapture()
+    elseif id == screen.captureCandidate then
+      bindings:storeBinding(kind == "key" and "key" or "pad",
+        kind == "joy" and "joy" .. tostring(value) or value)
+    end
+  end
+
+  local function installCaptureHandlers(screen)
+    local bindings = screen.bindingsMenu
+    bindings.captureKey = function(_, value)
+      capturePress(screen, "key", value)
+    end
+    bindings.capturePad = function(_, value)
+      capturePress(screen, "pad", value)
+    end
+    bindings.captureJoy = function(_, value)
+      capturePress(screen, "joy", value)
+    end
+    bindings.captureKeyRelease = function(_, value)
+      captureRelease(screen, "key", value)
+    end
+    bindings.capturePadRelease = function(_, value)
+      captureRelease(screen, "pad", value)
+    end
+    bindings.captureJoyRelease = function(_, value)
+      captureRelease(screen, "joy", value)
+    end
+    bindings.onKeyPressed = bindings.captureKey
+    bindings.onGamepadPressed = bindings.capturePad
+    bindings.onJoystickPressed = bindings.captureJoy
+    bindings.onKeyReleased = bindings.captureKeyRelease
+    bindings.onGamepadReleased = bindings.capturePadRelease
+    bindings.onJoystickReleased = bindings.captureJoyRelease
+  end
 
   local function syncBindingCapture(screen)
     local bindings = screen.bindingsMenu
+    if not bindings.capture then
+      screen.captureHeld = nil
+      screen.captureCandidate = nil
+      screen.captureElapsed = nil
+    end
     for _, name in ipairs(captureHooks) do
       if bindings.capture then
         local hook = name
@@ -372,6 +442,10 @@ return function(mod, menuColors)
 
   local function beginBindingCapture(screen, item)
     screen.bindingsMenu:beginCapture(item)
+    screen.captureHeld = {}
+    screen.captureCandidate = nil
+    screen.captureElapsed = 0
+    installCaptureHandlers(screen)
     syncBindingCapture(screen)
   end
 
@@ -619,22 +693,19 @@ return function(mod, menuColors)
     gray(DARK)
     love.graphics.rectangle("fill", 0, layout.footerY,
       layout.width, layout.footerH)
+    if screen.bindingsMenu.capture then return end
     local groups = {}
     local function add(label, direction)
       groups[#groups + 1] = { label = label, direction = direction }
     end
     if screen.bindingsMenu.footer == Strings("RESET ALL BINDINGS?") then
       add("RESET ALL BINDINGS?")
-    elseif screen.bindingsMenu.capture then
-      add("PRESS A BUTTON")
-      add("RELEASE TO SET")
-      add("ESC/2ND CANCELS")
     elseif screen.tabFocus then
       add("CHANGE CATEGORY", "horizontal")
-      add("[A] SELECT")
+      add("[A] OPEN")
       add("[START] MAIN MENU")
     else
-      add("SELECT", "vertical")
+      add("MOVE", "vertical")
       if screen.tab == 7 and screen.extraFocus == "left" then
         add("[A] OPTIONS")
       else
@@ -648,7 +719,7 @@ return function(mod, menuColors)
         end
         if row and row.bindingItem then
           add("[A] BIND")
-          add("[SELECT] CLEAR")
+          add("[SEL] CLEAR")
         elseif row and not row.inert and row.step then
           add("CHANGE OPTION", "horizontal")
           add("[A] CHANGE")
@@ -658,7 +729,7 @@ return function(mod, menuColors)
           add("[A] OPEN")
         end
       end
-      if screen.tab == 6 then add("HOLD SELECT RESET") end
+      if screen.tab == 6 then add("HOLD [SEL] RESET") end
       add("[B] CATEGORIES")
       add("[START] MAIN MENU")
     end
@@ -686,6 +757,56 @@ return function(mod, menuColors)
     else love.graphics.setScissor() end
   end
 
+  local function wrapPopupLine(text, maxWidth)
+    local lines, line = {}, ""
+    for word in text:gmatch("%S+") do
+      local candidate = line == "" and word or line .. " " .. word
+      if line ~= "" and Font.width(candidate) > maxWidth then
+        lines[#lines + 1] = line
+        line = word
+      else
+        line = candidate
+      end
+    end
+    if line ~= "" then lines[#lines + 1] = line end
+    return lines
+  end
+
+  local function drawCapturePopup(screen, layout)
+    local item = screen.bindingsMenu.capture
+    if not item then return end
+    local width = math.min(layout.width - 8, 240)
+    local frames = mod.gen1BetterMenusFrames
+    local _, frameName = frames and frames.current()
+    local inset = frameName and frameName ~= "default" and 17 or 10
+    local textWidth = width - inset * 2
+    local name = tostring(item.label)
+    local keyOrButton = item.button.action
+      and "controller button" or "key/button"
+    local first = wrapPopupLine(
+      "Tap a " .. keyOrButton .. " to set " .. name .. ".", textWidth)
+    local second = wrapPopupLine(
+      "Hold any key/button to cancel.", textWidth)
+    local height = 16 + (#first + #second) * 12 + 4
+    local x = math.floor((layout.width - width) / 2)
+    local y = math.floor((layout.headerH + layout.footerY - height) / 2)
+    local panel = { x = x, y = y, w = width, h = height }
+    if not (frames and frames.drawPanel
+        and frames.drawPanel(x, y, width, height)) then
+      panelFrame(panel, WHITE)
+    end
+    local lineY = y + 8
+    for _, line in ipairs(first) do
+      drawCentered(line, x + width / 2, lineY, textWidth, BLACK)
+      lineY = lineY + 12
+    end
+    lineY = lineY + 4
+    for _, line in ipairs(second) do
+      drawCentered(line, x + width / 2, lineY, textWidth, BLACK)
+      lineY = lineY + 12
+    end
+  end
+
   local function draw(screen)
     local layout = layoutFor(screen)
     drawBackdrop(layout)
@@ -708,6 +829,7 @@ return function(mod, menuColors)
         screen.scroll[screen.tab])
     end
     drawFooter(screen, layout)
+    drawCapturePopup(screen, layout)
     gray(WHITE)
   end
 
@@ -800,7 +922,18 @@ return function(mod, menuColors)
     if not input then return end
     local bindings = screen.bindingsMenu
     if bindings.capture then
+      screen.captureElapsed = (screen.captureElapsed or 0)
+        + (tonumber(dt) or 1 / 60)
       bindings:drainCapture()
+      if bindings.capture then
+        local now = captureTime(screen)
+        for _, started in pairs(screen.captureHeld or {}) do
+          if now - started >= CAPTURE_HOLD_SECONDS then
+            bindings:endCapture()
+            break
+          end
+        end
+      end
       if not bindings.capture then syncBindingCapture(screen) end
       return
     end
@@ -934,6 +1067,7 @@ return function(mod, menuColors)
       screen.index[index], screen.scroll[index] = 1, 1
     end
     buildEntries(screen)
+    focusTabs(screen)
     screen.uiSize = function() return responsiveSize() end
     screen.isWideBattleLayout = function() return false end
     screen.sgbPalettes = function(self, g)

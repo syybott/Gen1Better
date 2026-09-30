@@ -4,7 +4,15 @@ Widescreen presentation, customizable menu colors, 2D battle backdrops, cinemati
 
 Choose each interface independently. Turning off a Better interface option keeps the corresponding classic interface with Gen1Better's widescreen and palette support.
 
-**BetterBattle requires sprites with correct transparency.** Their opaque body pixels prevent the battle background from showing through the Pokémon. No particular sprite mod is required; the requirement concerns the sprite assets themselves. BetterBattle does not repair incorrect sprite transparency. My suggestion is Crystal animated sprites. 
+## Installation
+
+1. Place the complete mod folder in your Gen1Recomp `mods` directory. The folder should contain `manifest.json`, `main.lua`, and the supplied assets directly inside it.
+2. Enable **Gen1Better** in the game's mod manager.
+3. Open **START → OPTION → EXTRAS → Gen1Better** to choose your menu palette and interfaces.
+
+Keep the supplied assets with the mod when updating. Disable the separate **Modern PC UI** mod if installed; it conflicts with BetterPC.
+
+**BetterBattle requires Crystal sprites with correct transparency.** Their opaque body pixels prevent the battle background from showing through the Pokémon. No particular sprite mod is required; the requirement concerns the sprite assets themselves. BetterBattle does not repair incorrect sprite transparency.
 
 ## Choose your interfaces
 
@@ -45,7 +53,7 @@ To enable it:
 
 1. Set the game's **BATTLE LAYOUT** to **WIDE**.
 2. Set **BATTLE HUD** to **EXTENDED**.
-3. Open **START → COLORS → BetterMenus** and set **BetterBattle** to **ON**.
+3. Open **START → OPTION → EXTRAS → Gen1Better** and set **BetterBattle** to **ON**.
 4. Use **Crystal sprites with correct transparency**, supplied through your preferred sprite provider.
 
 BetterBattle requires WIDE + EXTENDED. An incompatible layout can turn it off; set the layout first, then enable BetterBattle. Disable BetterBattle before switching to the Standard HUD.
@@ -96,17 +104,13 @@ Want to add your own artwork, cutscenes, or custom battles to Gen1Better? Choose
 
 ## Colors and options
 
-Open **START → COLORS → BetterMenus**. Use **UP/DOWN** to select a row, **LEFT/RIGHT** to change a value, **A** to open a palette group, and **B** to return.
+Open **START → OPTION → GRAPHICS → COLORS** to choose the game's palette while viewing the overworld. When Groovy Palette & Frames is installed, choose **DEFAULT** or **GROOVY** first. Browse with the directional controls, press **A** or **START** to keep a preview, and press **B** to cancel it.
 
-The menu palette is separate from the game's overall palette. Choose **Default** for the Game Boy, Black and White, OG Red, Advanced, and SGB menu themes, or **BetterMenus** for SoulSilver, HeartGold, FireRed, LeafGreen, Crystal, Emerald, and ten palettes numbered to match the FireRed frames. A **Groovy** group appears when the Groovy Palette mod is available.
-
-Palette browsing previews your choice. Press **A** or **START** to keep it; **B** cancels the preview. The **DEFAULT** entry on the preceding COLORS screen opens the game's own palette controls.
-
-Open **START → COLORS → BetterFrames** to choose **OG**, **Hybrid**, or **FR**, then select a numbered frame. OG includes **DEFAULT**, which keeps the current Game Boy frame. The numbers identify available choices within each group. Hybrid follows the selected BetterMenus palette while preserving the Poké Ball colors in its Poké Ball design; FR uses the FireRed colors. Dialogue and location popups use their matching artwork automatically.
+The menu palette and frames are separate Gen1Better settings under **START → OPTION → EXTRAS → Gen1Better**. Choose a **MENU PALETTE** and **BetterFrames** there. The menu palette includes Game Boy, Black and White, OG Red, Advanced, SGB, SoulSilver, HeartGold, FireRed, LeafGreen, Crystal, Emerald, ten palettes numbered to match the FireRed frames, and Groovy choices. BetterFrames includes **OG**, **Hybrid**, and **FR** designs. OG **DEFAULT** keeps the current Game Boy frame. Hybrid follows the selected menu palette while preserving the Poké Ball colors in its Poké Ball design; FR uses the FireRed colors. Dialogue and location popups use matching artwork automatically.
 
 | Option | Default | What it changes |
 | --- | --- | --- |
-| **MENU PALETTE** | **SOULSILVER** | Colors used by BetterMenus menus and panels; selected through the palette groups or mod options. |
+| **MENU PALETTE** | **SOULSILVER** | Colors used by BetterMenus menus and panels; selected in Gen1Better options. |
 | **BetterFrames** | **OG DEFAULT** | Chooses the frame artwork for menus, dialogue, location popups, and battle boxes. |
 | **Inverse** | **OFF** | Reverses the light-to-dark order of the menu palette. |
 | **BetterPC** | **ON** | Enables the responsive Pokémon storage interface. |
@@ -141,7 +145,7 @@ Mod authors and artists can find the [Artist & Creator Launch Pad](wiki/Artists.
 - **BetterBattle will not enable:** check WIDE + EXTENDED, then turn BetterBattle ON again.
 - **No pixel-art background:** check BetterBattle's mode, whether another provider is rendering the battle, and whether the encounter has completed artwork. Missing background assets also fall back to a plain field.
 - **Background visible through a Pokémon:** check that the required Crystal battle sprites are active. Other sprite packs may contain transparent body pixels that need correction by their author.
-- **Menu colors differ from the overworld:** these are separate palette choices. Change the menu theme under COLORS → BetterMenus.
+- **Menu colors differ from the overworld:** these are separate palette choices. Change the menu theme under **OPTION → EXTRAS → Gen1Better**.
 - **Menu Scale does not resize BetterPC, BetterParty, or BetterBag:** these interfaces size themselves to the available screen area.
 
 When reporting a problem, include your Gen1Recomp and Gen1Better versions, game version, enabled mods, relevant options, and a screenshot showing the issue.

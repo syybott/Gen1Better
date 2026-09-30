@@ -125,6 +125,7 @@ return function(mod, genderExports, compatibility, menuColors,
     ["("] = { "011", "100", "100", "100", "011" },
     [")"] = { "110", "001", "001", "001", "110" },
     [":"] = { "000", "010", "000", "010", "000" },
+    ["."] = { "000", "000", "000", "000", "010" },
     ["'"] = { "010", "010", "000", "000", "000" },
     [" "] = { "000", "000", "000", "000", "000" },
   }
@@ -1294,7 +1295,7 @@ return function(mod, genderExports, compatibility, menuColors,
   end
 
   local function cleanTinyText(text)
-    return tostring(text or ""):gsub("%.", ""):upper()
+    return tostring(text or ""):upper()
   end
 
   local function tinyTextWidth(text)

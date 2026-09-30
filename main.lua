@@ -419,7 +419,6 @@ local function returnToLauncher()
   require("src.core.HostShell").restart()
 end
 
-local SCALE_STEPS = { "100", "90", "80", "70" }
 local SCALE_FACTORS = {
   ["100"] = 1.00,
   ["90"] = 0.90,
@@ -485,7 +484,7 @@ local function defaultMenuScaleEnabled(game)
     elseif state and state.isBattle then
       return false
     elseif state and (state.betterPCUI or state.betterBagUI
-        or state.betterPartyUI) then
+        or state.betterPartyUI or state.betterTrainerCardUI) then
       return false
     elseif state and (state.isModOptions
         or state.BetterMenusScaleEligible) then
@@ -676,7 +675,13 @@ if not PaletteFX.gen1BetterMenusRawZoneHookInstalled then
 end
 
 local function useStockOgMenuPalette(game)
-  return false
+  game = game or activeGame
+  local options = game and game.save and game.save.options
+  if options and options.palette and options.palette ~= "" then return false end
+  if PaletteFX.customRamp then return false end
+  local mode = options and options.colors or PaletteFX.mode
+  return mode == "classic" or mode == "ogred"
+    or mode == "og" or mode == "og_inv"
 end
 
 local function bypassOgTransformForZones(zones)
@@ -700,13 +705,21 @@ end
 -- 8. Renderers must never reverse or un-reverse palettes themselves.
 
 local function colors(game)
-  local id = activeMod and activeMod.options:get("palette") or "soulsilver"
+  game = game or activeGame
+  if useStockOgMenuPalette(game) then
+    local source = game and game.data and PaletteFX.pal(game.data, "BLUEMON")
+      or PaletteFX.GRAYS
+    return rawMenuPaletteCopy(PaletteFX.effectiveColors(source))
+  end
+  local id = activeMod and (activeMod.gen1BetterMenusPalettePreview
+    or activeMod.options:get("palette")) or "soulsilver"
   local palette = PALETTES[id] or PALETTES.soulsilver
   return rawMenuPaletteCopy(palette)
 end
 
 local function effectiveMenuPalette(game)
   local palette = colors(game)
+  if useStockOgMenuPalette(game) then return palette end
   if not (activeMod and activeMod.options:get("inverse")) then
     return palette
   end
@@ -717,8 +730,10 @@ local function effectiveMenuPalette(game)
 end
 
 local function effectivePaperPalette(game)
+  if useStockOgMenuPalette(game) then return nil end
   local palette = effectiveMenuPalette(game)
-  local id = activeMod and activeMod.options:get("palette") or "soulsilver"
+  local id = activeMod and (activeMod.gen1BetterMenusPalettePreview
+    or activeMod.options:get("palette")) or "soulsilver"
   local paper = PAPER_COLORS[id]
   if type(palette) ~= "table" or type(paper) ~= "table" then return nil end
   local surface = {
@@ -925,7 +940,8 @@ local function installOverworldScaleStability()
       wideW, wideH = top:uiSize()
     end
     local stabilize = worldBelow and not battlePresent
-      and wideW and wideH and wideW > Renderer.WIDTH
+      and wideW and wideH and (wideW > Renderer.WIDTH
+        or (top.betterTrainerCardUI and wideH > Renderer.HEIGHT))
     if not stabilize then return originalDraw(self) end
 
     local classicScale = fitFor(Renderer.WIDTH, Renderer.HEIGHT)
@@ -2300,7 +2316,7 @@ local function drawTightRoundedOutline(x, y, w, h)
   love.graphics.rectangle("fill", x + 2, y + h - 1, w - 4, 1)
 end
 
-  function MovePkmnMenu:draw()
+  local function drawMovePkmnMenu(self)
     local headerTH = 3
     local footerTH = 3
     local footerTY = WIN_TY + WIN_TH - footerTH
@@ -2355,21 +2371,25 @@ end
     Font.draw(title, WIN_X + 8, WIN_Y + 8)
 
     local countText = ("%2d/%2d"):format(#list, cap)
-    Font.draw(countText, WIN_X + (WIN_TW - 1) * 8 - Font.width(countText), WIN_Y + 8)
+    local countX = WIN_X + (WIN_TW - 1) * 8 - Font.width(countText)
+    Font.draw(countText, countX, WIN_Y + 8)
+
+    if self.held and self.held.mon then
+      local heldMon = self.held.mon
+      local def = self.game.data.pokemon[heldMon.species]
+      local name = heldMon.nickname or (def and def.name) or heldMon.species
+      local movingText = "| " .. Strings("MOVING: %s", name) .. " |"
+      local left = WIN_X + 8 + Font.width(title) + 8
+      local right = countX - 8
+      Font.draw(movingText,
+        math.floor((left + right - Font.width(movingText)) / 2),
+        WIN_Y + 8)
+    end
 
     local listY = WIN_Y + 28
     if self.actionItems then
-      local actionMon = self.actionMon or self:currentMon()
-      if actionMon then
-        local def = self.game.data.pokemon[actionMon.species]
-        local name = actionMon.nickname or (def and def.name) or actionMon.species
-        Font.draw(name, WIN_X + 16, listY)
-      else
-        Font.draw(Strings("(EMPTY)"), WIN_X + 16, listY)
-      end
-
       for i, item in ipairs(self.actionItems) do
-        local y = listY + i * 16
+        local y = listY + (i - 1) * 16
         Font.draw(item.label, WIN_X + 16, y)
         if i == self.actionIndex then
           Font.drawCode(Theme.cursor, WIN_X + 8, y)
@@ -2489,6 +2509,14 @@ end
     Font.draw(partyText, partyX, footerY + 1)
     drawArrowPair(arrowsX, footerY + 1)
     Font.draw(boxText, arrowsX + arrowW + boxGap, footerY + 1)
+  end
+
+  function MovePkmnMenu:draw()
+    local frames = activeMod and activeMod.gen1BetterMenusFrames
+    if frames and frames.withoutPadding then
+      return frames.withoutPadding(drawMovePkmnMenu, self)
+    end
+    return drawMovePkmnMenu(self)
   end
 
   makeWideState(BoxMenu)
@@ -3011,19 +3039,20 @@ local function battleUIZone(palette, tx1, ty1, tx2, ty2)
   return zone
 end
 
-local function battleHpFillPixels(battler)
+local function battleHpFillPixels(battler, segments)
+  segments = segments or 11
   local mon = battler and battler.mon
   local maxHp = mon and mon.stats and mon.stats.hp or 0
   local shownPixels = tonumber(battler and battler.shownPx)
   if shownPixels ~= nil then
-    return math.min(88, math.max(0, math.floor(shownPixels * 11 / 6)))
+    return math.min(segments * 8, math.max(0, math.floor(shownPixels * segments / 6)))
   end
   local hp = math.max(0, math.floor(
     (battler and battler.shownHP) or (mon and mon.hp) or 0))
   if maxHp <= 0 then return 0 end
-  local px = math.floor(hp * 11 * 8 / maxHp)
+  local px = math.floor(hp * segments * 8 / maxHp)
   if hp > 0 then px = math.max(1, px) end
-  return math.min(88, math.max(0, px))
+  return math.min(segments * 8, math.max(0, px))
 end
 
 local function locationBannerDuration(game)
@@ -3497,15 +3526,18 @@ local function installSupportingScreens(mod)
   local stockTrainerCardDraw = TrainerCard.draw
   local trainerPortraits = {}
   local function cardPortrait(card)
+    local function stockPortrait()
+      return card.pic, card.picQuad, card.picW, card.picH
+    end
     local path = require("src.pokemon.Sprites").playerPath(
       card.game.data, "front", { kind = "trainer_card" })
-    if not path then return card.pic end
-    if trainerPortraits[path] then return trainerPortraits[path] end
+    if not path then return stockPortrait() end
+    local cached = trainerPortraits[path]
+    if cached then return cached.image, cached.quad, cached.width, cached.height end
     local ok, pixels = pcall(love.image.newImageData,
       require("src.render.Assets").resolve(path))
-    if not ok or not pixels then return card.pic end
-    local width = math.min(card.picW or 0, pixels:getWidth())
-    local height = math.min(card.picH or 0, pixels:getHeight())
+    if not ok or not pixels then return stockPortrait() end
+    local width, height = pixels:getDimensions()
     local queue, seen, head = {}, {}, 1
     local function visit(x, y)
       if x < 0 or y < 0 or x >= width or y >= height then return end
@@ -3527,22 +3559,54 @@ local function installSupportingScreens(mod)
       visit(x - 1, y); visit(x + 1, y)
       visit(x, y - 1); visit(x, y + 1)
     end
+    local left, top, right, bottom = width, height, -1, -1
+    for y = 0, height - 1 do
+      for x = 0, width - 1 do
+        local _, _, _, alpha = pixels:getPixel(x, y)
+        if alpha >= 0.01 then
+          left = math.min(left, x)
+          top = math.min(top, y)
+          right = math.max(right, x)
+          bottom = math.max(bottom, y)
+        end
+      end
+    end
+    if right < left then return stockPortrait() end
     local image = love.graphics.newImage(pixels)
     image:setFilter("nearest", "nearest")
-    trainerPortraits[path] = image
-    return image
+    local portraitWidth, portraitHeight = right - left + 1, bottom - top + 1
+    local quad = love.graphics.newQuad(left, top, portraitWidth, portraitHeight,
+      width, height)
+    trainerPortraits[path] = {
+      image = image, quad = quad,
+      width = portraitWidth, height = portraitHeight,
+    }
+    return image, quad, portraitWidth, portraitHeight
   end
+  TrainerCard.gen1BetterMenusCardPortrait = cardPortrait
   TrainerCard.draw = function(self)
     local portrait = self.pic
     self.pic = nil
     stockTrainerCardDraw(self)
     self.pic = portrait
     if portrait and self.picQuad then
-      local image = self.picTrueColor and cardPortrait(self) or portrait
-      love.graphics.setColor(1, 1, 1, 1)
-      love.graphics.draw(image, self.picQuad, 108, 8)
+      local image, quad, width, height
       if self.picTrueColor then
-        PaletteFX.markUiSpriteRedraw(image, self.picQuad, 108, 8)
+        image, quad, width, height = cardPortrait(self)
+      else
+        image, quad = portrait, self.picQuad
+      end
+      local x, y, scale = 108, 8, 1
+      if self.picTrueColor and width and height then
+        scale = math.min(1, 40 / width, 56 / height)
+        x = x + math.floor((40 - width * scale) / 2 + 0.5)
+        y = y + math.floor(56 - height * scale + 0.5)
+      end
+      love.graphics.setColor(1, 1, 1, 1)
+      love.graphics.draw(image, quad, x, y, 0, scale, scale)
+      if self.picTrueColor then
+        PaletteFX.markUiSpriteRedraw(image, quad, x, y,
+          { sx = scale, sy = scale })
       end
     end
   end
@@ -3924,9 +3988,13 @@ local function installSupportingScreens(mod)
   local function classicPartyIconPalette(game, mon)
     local def = game.data.pokemon[mon.species]
     local primary = def and def.types and def.types[1]
-    return PARTY_TYPE_PALETTES[tostring(primary or "NORMAL"):upper()]
+    local iconPalette = PARTY_TYPE_PALETTES[tostring(primary or "NORMAL"):upper()]
       or PaletteFX.monPal(game.data, mon.species)
       or PaletteFX.pal(game.data, "BLUEMON")
+    if not iconPalette then return nil end
+    return rawMenuPaletteCopy({
+      effectiveMenuPalette(game)[1], iconPalette[2], iconPalette[3], iconPalette[4],
+    })
   end
 
   local function addPaletteZoneOutside(zones, colors, rect, cutout)
@@ -4824,7 +4892,8 @@ return function(mod, menuColors)
     if frameChunk then
       local okFactory, factory = pcall(frameChunk)
       if okFactory and type(factory) == "function" then
-        local okFrames, frames = pcall(factory, mod, effectiveMenuPalette)
+        local okFrames, frames = pcall(factory, mod, effectiveMenuPalette,
+          useStockOgMenuPalette)
         if okFrames then betterFrames = frames
         else mod.log:error("BetterFrames failed: %s", tostring(frames)) end
       else
@@ -5184,6 +5253,35 @@ return function(mod, menuColors)
   end
 
   compatibility.tinyFont = betterPCScreen.tinyFont
+
+  local trainerCardSource = assert(mod:read("better_trainer_card_screen.lua"))
+  local trainerCardFactory = assert(load(trainerCardSource,
+    "@" .. mod.path .. "/better_trainer_card_screen.lua"))()
+  local betterTrainerCard = trainerCardFactory(compatibility,
+    effectiveMenuPalette, effectivePaperPalette,
+    function(card)
+      return TrainerCard.gen1BetterMenusCardPortrait(card)
+    end,
+    function(index)
+      return TrainerCard.gen1BetterMenusBadgePalette(index)
+    end)
+  local originalTrainerCard = mod.content.screens:get("TrainerCard")
+  local trainerCardWrapper = {
+    new = function(game, ...)
+      if activeMod and activeMod.options:get("better_trainer_card") ~= false then
+        return betterTrainerCard.new(game, ...)
+      end
+      if originalTrainerCard and type(originalTrainerCard.new) == "function" then
+        return markStockMenu(originalTrainerCard.new(game, ...), originalTrainerCard)
+      end
+      return markStockMenu(TrainerCard.new(game, ...))
+    end,
+  }
+  if originalTrainerCard then
+    mod.content.screens:override("TrainerCard", trainerCardWrapper)
+  else
+    mod.content.screens:register("TrainerCard", trainerCardWrapper)
+  end
 
   local betterPartySource, betterPartyReadErr =
     mod:read("better_party_screen.lua")
@@ -5693,6 +5791,8 @@ return function(mod, menuColors)
       default = true },
     { key = "modern_pokedex_ui", label = "BetterPokedex", type = "toggle",
       default = true },
+    { key = "better_trainer_card", label = "BetterTrainerCard", type = "toggle",
+      default = true },
     { key = "modern_bag_ui", label = "BetterBag", type = "toggle",
       default = true },
     { key = "better_mod_manager", label = "BetterModManager", type = "toggle",
@@ -5724,31 +5824,6 @@ return function(mod, menuColors)
       } },
   })
   
-  local defaultMenuPalettes = {
-    { "GAME BOY", "gameboy" },
-    { "BLACK AND WHITE", "blackwhite" },
-    { "OG RED", "ogred" },
-    { "ADVANCED", "redpp" },
-    { "SGB", "gbc" },
-  }
-  local betterMenusPalettes = {
-    { "SOULSILVER", "soulsilver" },
-    { "HEARTGOLD", "heartgold" },
-    { "FIRERED", "firered" },
-    { "FR 1", "fr_frame1" },
-    { "FR 2", "fr_frame2" },
-    { "FR 3", "fr_frame3" },
-    { "FR 4", "fr_frame4" },
-    { "FR 5", "fr_frame5" },
-    { "FR 6", "fr_frame6" },
-    { "FR 7", "fr_frame7" },
-    { "FR 8", "fr_frame8" },
-    { "FR 9", "fr_frame9" },
-    { "FR 10", "fr_frame10" },
-    { "LEAFGREEN", "leafgreen" },
-    { "CRYSTAL", "crystal" },
-    { "EMERALD", "emerald" },
-  }
   local groovyMenuPalettes = {
     { "AMIGA WB", "amiga_wb" }, { "AMIGA DP", "amiga_dp" },
     { "C64", "c64" }, { "SPECTRUM", "spectrum" },
@@ -5767,180 +5842,6 @@ return function(mod, menuColors)
     { "GOLD", "gold" }, { "MINT", "mint" },
     { "GRAPE", "grape" },
   }
-
-  local function setOption(game, key, value)
-    local manager = ManagerState.new(game)
-    manager:setOption("gen1-better-menus", key, value)
-  end
-
-  local function stepScaleOption(game, key, dir)
-    local current = scaleOption(key)
-    local index = 1
-    for i, value in ipairs(SCALE_STEPS) do
-      if value == current then
-        index = i
-        break
-      end
-    end
-    local delta = dir and dir < 0 and -1 or 1
-    index = ((index - 1 + delta) % #SCALE_STEPS) + 1
-    setOption(game, key, SCALE_STEPS[index])
-  end
-
-  local COMPACT_VISIBLE = 13
-
-  local function compactState(game, title, rows, onClose, wide, fixed, onStart)
-    local selectable = {}
-    for i, row in ipairs(rows) do
-      if row.selectable ~= false then selectable[#selectable + 1] = i end
-    end
-    local state = {
-      game = game, title = title, rows = rows,
-      selection = 1, scroll = 0,
-      isOpaque = false, holdsUIAnchors = true,
-      BetterMenusScaleEligible = true,
-    }
-
-    local function geometry()
-      local canvasTw = UI_TW
-      local maxTw = wide and (UI_TW - 2) or 20
-      local maxLabel = title and Font.width(Strings(title)) or 0
-      local visible = math.min(COMPACT_VISIBLE, #rows - state.scroll)
-      local widthFirst = fixed and 1 or (state.scroll + 1)
-      local widthLast = fixed and #rows or (state.scroll + visible)
-      for rowIndex = widthFirst, widthLast do
-        local row = rows[rowIndex]
-        if row and row.label then
-          local rowWidth = Font.width(Strings(row.label))
-          if wide and row.value then
-            local valueWidth = Font.width(Strings(row.value(game)))
-            for _, value in ipairs(row.widthValues or {}) do
-              valueWidth = math.max(valueWidth, Font.width(Strings(value)))
-            end
-            rowWidth = rowWidth + 8 + valueWidth
-          end
-          maxLabel = math.max(maxLabel, rowWidth)
-        end
-      end
-      local frames = activeMod and activeMod.gen1BetterMenusFrames
-      local framePadding = frames and frames.active() and 8 or 0
-      local tw = math.max(8, math.min(maxTw,
-        math.ceil((maxLabel + 24 + framePadding) / 8)))
-      local lineCount = title and 1 or 0
-      local layouts = {}
-      for slot = 1, visible do
-        local row = rows[state.scroll + slot]
-        local lines = 1
-        if row and row.value then
-          local label = Strings(row.label or "")
-          local value = Strings(row.value(game))
-          local valueWidth = Font.width(value)
-          if fixed then
-            for _, candidate in ipairs(row.widthValues or {}) do
-              valueWidth = math.max(valueWidth, Font.width(Strings(candidate)))
-            end
-          end
-          local valueX = (tw - 1) * 8 - valueWidth
-          if 16 + Font.width(label) + 8 > valueX then lines = 2 end
-        end
-        layouts[slot] = lines
-        lineCount = lineCount + lines
-      end
-      local th = math.min(18, lineCount + 2 + (framePadding > 0 and 1 or 0))
-      return math.floor((canvasTw - tw) / 2), math.floor((18 - th) / 2),
-        tw, th, visible, layouts
-    end
-
-    function state:uiSize() return UI_W, UI_H end
-    function state:frameGeometry() return geometry() end
-    function state:sgbPalettes()
-      local tx, ty, tw, th = geometry()
-      return { PaletteFX.zone(effectiveMenuPalette(game), tx, ty,
-        tx + tw - 1, ty + th - 1) }
-    end
-    function state:draw()
-      local tx, ty, tw, th, visible, layouts = geometry()
-      local ox, oy = tx * 8, ty * 8
-      local frames = activeMod and activeMod.gen1BetterMenusFrames
-      local framed = frames and frames.active()
-      Font.drawBox(tx, ty, tw, th)
-      love.graphics.setColor(0, 0, 0, 1)
-      local line = 1
-      if title then
-        Font.draw(Strings(title), ox + 16, oy + 8)
-        line = 2
-      end
-      local selectedRow = selectable[self.selection]
-      for slot = 1, visible do
-        local i = self.scroll + slot
-        local row = rows[i]
-        if not row then break end
-        local y = oy + line * 8
-        if row.separator then
-          love.graphics.rectangle("fill", ox + (framed and 10 or 8), y + 3,
-            tw * 8 - (framed and 20 or 16), 1)
-        elseif row.heading then
-          Font.draw(Strings(row.label), ox + 8, y)
-        else
-          local label = Strings(row.label)
-          Font.draw(label, ox + (framed and 20 or 16), y)
-          if row.value then
-            local value = Strings(row.value(game))
-            if layouts[slot] == 2 then
-              Font.draw(value, ox + 24, y + 8)
-            else
-              Font.draw(value,
-                ox + (tw - 1) * 8 - Font.width(value), y)
-            end
-          end
-          if i == selectedRow then
-            Font.drawCode(Theme.cursor, ox + (framed and 10 or 8), y)
-          end
-        end
-        line = line + layouts[slot]
-      end
-      love.graphics.setColor(1, 1, 1, 1)
-    end
-    local function clamp()
-      local rowIndex = selectable[state.selection]
-      if rowIndex <= state.scroll then state.scroll = rowIndex - 1
-      elseif rowIndex > state.scroll + COMPACT_VISIBLE then
-        state.scroll = rowIndex - COMPACT_VISIBLE
-      end
-      state.scroll = math.max(0,
-        math.min(state.scroll, math.max(0, #rows - COMPACT_VISIBLE)))
-    end
-    function state:update()
-      local input = game.input
-      if input:wasPressed("up") then
-        self.selection = self.selection > 1 and self.selection - 1 or #selectable
-      elseif input:wasPressed("down") then
-        self.selection = self.selection < #selectable and self.selection + 1 or 1
-      elseif input:wasPressed("left") then
-        local row = rows[selectable[self.selection]]
-        if row and row.step then row.step(game, -1) end
-      elseif input:wasPressed("right") then
-        local row = rows[selectable[self.selection]]
-        if row and row.step then row.step(game, 1) end
-      elseif input:wasPressed("start") and onStart then
-        onStart(game)
-        return
-      elseif input:wasPressed("a") then
-        local row = rows[selectable[self.selection]]
-        if row then
-          if row.activate then row.activate(game)
-          elseif row.describe then row.describe(game) end
-        end
-      elseif input:wasPressed("b") then
-        game.stack:pop()
-        if onClose then onClose() end
-        return
-      end
-      clamp()
-    end
-    clamp()
-    return state
-  end
 
   local function transitionToChild(game, parent, child)
     parent.gen1BetterMenusOpeningChild = true
@@ -6002,6 +5903,10 @@ return function(mod, menuColors)
 
   local function drawPaletteCard(labels, selected, style)
     local x, y, width, height = paletteCardGeometry(labels, style)
+    local frameMarks = PaletteFX.gen1BetterMenusFrameMarks
+    if frameMarks and frameMarks.cover then
+      frameMarks.cover(x, y, width, height)
+    end
     local singlePreview = #labels == 1
     local darkFace = singlePreview or (style and style.darkFace)
     local border = darkFace and 0 or 85 / 255
@@ -6039,6 +5944,11 @@ return function(mod, menuColors)
       math.ceil((y + height) / 8) - 1) }
   end
 
+  local classicGateSource = assert(mod:read("classic_palette_gate.lua"))
+  local classicGateFactory = assert(load(classicGateSource,
+    "@" .. mod.path .. "/classic_palette_gate.lua"))()
+  classicGateFactory(mod, useStockOgMenuPalette, drawPaletteCard, paletteCardZone)
+
   local function paletteGroupState(game, rows, onClose, style)
     local labels = {}
     for i, row in ipairs(rows) do labels[i] = row.label end
@@ -6067,39 +5977,7 @@ return function(mod, menuColors)
     return state
   end
 
-  local function betterFramesState(game, style)
-    local function branchState(g, branch)
-      local rows = {}
-      for _, entry in ipairs(betterFrames.entries(branch)) do
-        local value = entry.value
-        rows[#rows + 1] = {
-          label = entry.label,
-          activate = function(gg)
-            setOption(gg, "better_frames", value)
-            gg.stack:pop()
-          end,
-        }
-      end
-      return style and paletteGroupState(g, rows, nil, style)
-        or compactState(g, branch:upper(), rows)
-    end
-    local rows = {}
-    for _, branch in ipairs({ "og", "hybrid", "fr" }) do
-      rows[#rows + 1] = {
-        label = branch:upper(),
-        activate = function(g)
-          local parent = g.stack:top()
-          local child = branchState(g, branch)
-          if style then transitionToChild(g, parent, child)
-          else g.stack:push(child) end
-        end,
-      }
-    end
-    return style and paletteGroupState(game, rows, nil, style)
-      or compactState(game, "BetterFrames", rows)
-  end
-
-  local function upstreamLiveBrowser(game, entries, kind, cardStyle)
+  local function upstreamLiveBrowser(game, entries, kind, cardStyle, onClose)
     local openedPalette = game.save.options.palette or ""
     local openedMode = game.save.options.colors or "gbc"
     local model = PaletteScreen.new(game)
@@ -6168,9 +6046,11 @@ return function(mod, menuColors)
         apply(entries[self.index])
       elseif input:wasPressed("a") or input:wasPressed("start") then
         game.stack:pop()
+        if onClose then onClose() end
       elseif input:wasPressed("b") then
         restore()
         game.stack:pop()
+        if onClose then onClose() end
       end
     end
     function browser:draw()
@@ -6241,84 +6121,7 @@ return function(mod, menuColors)
         end,
       }
     end
-    return cardStyle and paletteGroupState(game, rows, onClose, cardStyle)
-      or compactState(game, nil, rows, onClose)
-  end
-
-  local function menuPaletteBrowser(game, parent, choices, cardStyle)
-    local openedPalette = activeMod.options:get("palette")
-    local index = 1
-    for i, choice in ipairs(choices) do
-      if choice[2] == openedPalette then index = i break end
-    end
-
-    local browser = {
-      game = game,
-      isOpaque = false,
-      holdsUIAnchors = true,
-      BetterMenusScaleEligible = true,
-      index = index,
-    }
-
-    local function apply()
-      setOption(game, "palette", choices[browser.index][2])
-    end
-
-    apply()
-
-    function browser:uiSize()
-      return cardStyle and cardStyle.width or UI_W,
-        cardStyle and cardStyle.height or UI_H
-    end
-    function browser:sgbPalettes()
-      if cardStyle then
-        return paletteCardZone({ choices[self.index][1] }, cardStyle)
-      end
-      local ptx, pty, ptw = parent:frameGeometry()
-      local label = Strings(choices[self.index][1])
-      local tw = math.min(ptw, math.max(8,
-        math.ceil((Font.width(label) + 16) / 8)))
-      local tx = ptx + math.floor((ptw - tw) / 2)
-      local ty = math.max(0, pty - 3)
-      local zones = parent:sgbPalettes() or {}
-      zones[#zones + 1] = PaletteFX.zone(effectiveMenuPalette(game),
-        tx, ty, tx + tw - 1, ty + 2)
-      return zones
-    end
-    function browser:update()
-      local input = game.input
-      local n = #choices
-      if input:wasPressed("left") or input:wasPressed("up") then
-        self.index = self.index > 1 and self.index - 1 or n
-        apply()
-      elseif input:wasPressed("right") or input:wasPressed("down") then
-        self.index = self.index < n and self.index + 1 or 1
-        apply()
-      elseif input:wasPressed("a") or input:wasPressed("start") then
-        game.stack:pop()
-      elseif input:wasPressed("b") then
-        setOption(game, "palette", openedPalette)
-        game.stack:pop()
-      end
-    end
-    function browser:draw()
-      if cardStyle then
-        drawPaletteCard({ choices[self.index][1] }, 1, cardStyle)
-        return
-      end
-      parent:draw()
-      local ptx, pty, ptw = parent:frameGeometry()
-      local label = Strings(choices[self.index][1])
-      local tw = math.min(ptw, math.max(8,
-        math.ceil((Font.width(label) + 16) / 8)))
-      local tx = ptx + math.floor((ptw - tw) / 2)
-      local ty = math.max(0, pty - 3)
-      Font.drawBox(tx, ty, tw, 3)
-      love.graphics.setColor(0, 0, 0, 1)
-      Font.draw(label, (tx + 1) * 8, (ty + 1) * 8)
-      love.graphics.setColor(1, 1, 1, 1)
-    end
-    return browser
+    return paletteGroupState(game, rows, onClose, cardStyle)
   end
 
   local function groovyAvailable()
@@ -6341,268 +6144,6 @@ return function(mod, menuColors)
     return entries
   end
 
-  local function descriptionState(game, parent, text)
-    local pages = TextBox.paginate(Strings(text), 30)
-    local lines = pages[1] or {}
-    local state = {
-      game = game, isOpaque = false, holdsUIAnchors = true,
-      BetterMenusScaleEligible = true,
-    }
-    local tw, th = 34, 8
-    local tx, ty = math.floor((UI_TW - tw) / 2), math.floor((UI_TH - th) / 2)
-    function state:uiSize() return UI_W, UI_H end
-    function state:sgbPalettes()
-      local zones = parent:sgbPalettes() or {}
-      zones[#zones + 1] = PaletteFX.zone(effectiveMenuPalette(game),
-        tx, ty, tx + tw - 1, ty + th - 1)
-      return zones
-    end
-    function state:draw()
-      parent:draw()
-      Font.drawBox(tx, ty, tw, th)
-      love.graphics.setColor(0, 0, 0, 1)
-      for i = 1, math.min(#lines, th - 2) do
-        Font.draw(lines[i], (tx + 1) * 8, (ty + i) * 8)
-      end
-      love.graphics.setColor(1, 1, 1, 1)
-    end
-    function state:update()
-      local input = game.input
-      if input:wasPressed("a") or input:wasPressed("b")
-          or input:wasPressed("start") then
-        game.stack:pop()
-      end
-    end
-    return state
-  end
-
-  local function betterMenusState(game, reopenStart)
-    local rows = {}
-    local function addGroup(label, choices)
-      rows[#rows + 1] = {
-        label = label,
-        activate = function(g)
-          local parent = g.stack:top()
-          g.stack:push(menuPaletteBrowser(g, parent, choices))
-        end,
-      }
-    end
-    if groovyAvailable() then addGroup("Groovy", groovyMenuPalettes) end
-    addGroup("Default", defaultMenuPalettes)
-    addGroup("BetterMenus", betterMenusPalettes)
-    rows[#rows + 1] = { selectable = false, separator = true }
-    rows[#rows + 1] = {
-      label = "Inverse",
-      value = function() return activeMod.options:get("inverse") and "ON" or "OFF" end,
-      widthValues = { "ON", "OFF" },
-      step = function(g) setOption(g, "inverse", not activeMod.options:get("inverse")) end,
-      description = "Invert your color palette",
-    }
-    rows[#rows + 1] = {
-      label = "BetterPC",
-      value = function() return activeMod.options:get("modern_pc_ui") and "ON" or "OFF" end,
-      widthValues = { "ON", "OFF" },
-      step = function(g) setOption(g, "modern_pc_ui", not activeMod.options:get("modern_pc_ui")) end,
-    }
-    rows[#rows + 1] = {
-      label = "BetterParty",
-      value = function() return activeMod.options:get("modern_party_ui") ~= false and "ON" or "OFF" end,
-      widthValues = { "ON", "OFF" },
-      step = function(g) setOption(g, "modern_party_ui", not (activeMod.options:get("modern_party_ui") ~= false)) end,
-    }
-    rows[#rows + 1] = {
-      label = "BetterPokedex",
-      value = function()
-        return activeMod.options:get("modern_pokedex_ui") ~= false
-          and "ON" or "OFF"
-      end,
-      widthValues = { "ON", "OFF" },
-      step = function(g)
-        setOption(g, "modern_pokedex_ui",
-          not (activeMod.options:get("modern_pokedex_ui") ~= false))
-      end,
-    }
-    rows[#rows + 1] = {
-      label = "BetterBag",
-      value = function() return activeMod.options:get("modern_bag_ui") ~= false and "ON" or "OFF" end,
-      widthValues = { "ON", "OFF" },
-      step = function(g) setOption(g, "modern_bag_ui", not (activeMod.options:get("modern_bag_ui") ~= false)) end,
-    }
-    rows[#rows + 1] = {
-      label = "BetterModManager",
-      value = function()
-        return activeMod.options:get("better_mod_manager") ~= false
-          and "ON" or "OFF"
-      end,
-      widthValues = { "ON", "OFF" },
-      step = function(g)
-        setOption(g, "better_mod_manager",
-          not (activeMod.options:get("better_mod_manager") ~= false))
-      end,
-    }
-    rows[#rows + 1] = {
-      label = "BetterOptions",
-      value = function()
-        return activeMod.options:get("better_options") ~= false
-          and "ON" or "OFF"
-      end,
-      widthValues = { "ON", "OFF" },
-      step = function(g)
-        setOption(g, "better_options",
-          not (activeMod.options:get("better_options") ~= false))
-      end,
-    }
-    rows[#rows + 1] = {
-      label = "Menu Scale",
-      value = function() return scaleOption("menu_scale") .. "%" end,
-      widthValues = { "100%", "90%", "80%", "70%" },
-      step = function(g, dir)
-        stepScaleOption(g, "menu_scale", dir)
-      end,
-      description = "Scale in-game menus and dialogue. BetterPC, BetterBag, and BetterParty keep their responsive size.",
-    }
-    rows[#rows + 1] = {
-      label = "BetterBattles",
-      value = function() return betterBattlesMode():upper() end,
-      widthValues = { "ON", "OFF" },
-      step = function(g)
-        local nextState = betterBattlesMode() ~= "on"
-        if nextState then
-          if not wideBattleLayoutSelected(g) then
-            showBetterBattlesRequiresWide(g)
-            return false
-          end
-          if not extendedBattleHudSelected(g) then
-            showBetterBattlesRequiresExtended(g)
-            return false
-          end
-        end
-        setOption(g, "better_battles", nextState)
-        return true
-      end,
-      description = "Full-color 320x180 battle backdrops, contact footprint and wing sprite shadows, and mid-battle scene transitions.",
-    }
-    rows[#rows + 1] = {
-      label = "BetterBattle UI",
-      value = function() return betterBattleUIMode():upper() end,
-      widthValues = { "ON", "OFF" },
-      step = function(g)
-        local nextState = betterBattleUIMode() ~= "on"
-        if nextState then
-          if not wideBattleLayoutSelected(g) then
-            showBetterBattleRequiresWide(g)
-            return false
-          end
-          if not extendedBattleHudSelected(g) then
-            showBetterBattleRequiresExtended(g)
-            return false
-          end
-        end
-        setOption(g, "better_battle_ui", nextState)
-        return true
-      end,
-      description = "Widescreen battle HUD: custom command/move panels, compact player/enemy status panels, XP bar glints, and trainer portraits.",
-    }
-    rows[#rows + 1] = {
-      label = "BetterAnimations",
-      value = function()
-        return activeMod.options:get("better_animations") ~= false
-          and "ON" or "OFF"
-      end,
-      widthValues = { "ON", "OFF" },
-      step = function(g)
-        setOption(g, "better_animations",
-          not (activeMod.options:get("better_animations") ~= false))
-      end,
-      description = "Color battle effects and extend full-field animations across the battlefield.",
-    }
-    rows[#rows + 1] = {
-      label = "Marquee Text",
-      value = function() return activeMod.options:get("marquee_text") ~= false and "ON" or "OFF" end,
-      widthValues = { "ON", "OFF" },
-      step = function(g) setOption(g, "marquee_text", not (activeMod.options:get("marquee_text") ~= false)) end,
-      description = "Use this to disable scrolling text in the menus if you prefer",
-    }
-    rows[#rows + 1] = {
-      label = "Pokédex Indicator",
-      value = function()
-        local value = activeMod.options:get("pokedex_indicator")
-        if value == "off" then return "OFF" end
-        return value == "red" and "RED" or "DEFAULT"
-      end,
-      widthValues = { "OFF", "DEFAULT", "RED" },
-      step = function(g)
-        local value = activeMod.options:get("pokedex_indicator")
-        setOption(g, "pokedex_indicator", value == "off" and "default"
-          or value == "default" and "red" or "off")
-      end,
-      description = function()
-        return activeMod.options:get("pokedex_indicator") == "default"
-          and "The Poké Ball follows the menu palette theme" or nil
-      end,
-    }
-    local state
-    for _, row in ipairs(rows) do
-      if row.description then
-        local describedRow = row
-        describedRow.describe = function(g)
-          local text
-          if type(describedRow.description) == "function" then
-            text = describedRow.description(g)
-          else
-            text = describedRow.description
-          end
-          if text then g.stack:push(descriptionState(g, state, text)) end
-        end
-      end
-    end
-    state = compactState(game, nil, rows, nil, true, true, function(g)
-      if g.stack:top() == state then g.stack:pop() end
-      local top = g.stack:top()
-      if top and top.gen1BetterMenusColorsMenu then g.stack:pop() end
-      if reopenStart then reopenStart() end
-    end)
-    return state
-  end
-
-  local function colorsState(game, reopenStart)
-    local rows = {}
-    if groovyAvailable() then
-      rows[#rows + 1] = {
-        label = "GROOVY",
-        activate = function(g)
-          local parent = g.stack:top()
-          local entries = groovyGameEntries()
-          if #entries > 0 then
-            transitionToChild(g, parent,
-              upstreamLiveBrowser(g, entries, "mode"))
-          end
-        end,
-      }
-    end
-    rows[#rows + 1] = {
-      label = "DEFAULT",
-      activate = function(g)
-        local parent = g.stack:top()
-        transitionToChild(g, parent, defaultPaletteState(g))
-      end,
-    }
-    rows[#rows + 1] = { selectable = false, separator = true }
-    rows[#rows + 1] = {
-      label = "BetterMenus",
-      activate = function(g) g.stack:push(betterMenusState(g, reopenStart)) end,
-    }
-    if betterFrames then
-      rows[#rows + 1] = {
-        label = "BetterFrames",
-        activate = function(g) g.stack:push(betterFramesState(g)) end,
-      }
-    end
-    local state = compactState(game, nil, rows, reopenStart)
-    state.gen1BetterMenusColorsMenu = true
-    return state
-  end
-
   if betterOptions then
     betterOptions.openColors = function(screen)
       local game = screen.game
@@ -6610,62 +6151,33 @@ return function(mod, menuColors)
       local menuStyle = { width = menuW, height = menuH }
       local gameStyle = { topCenter = true, darkFace = true }
       local root
-      local function returnToColors()
+      local function returnToOptions()
         game.stack:push(screen)
-        game.stack:push(root)
+        if root then game.stack:push(root) end
       end
-      local function openGamePalettes(g)
-        if g.stack:top() == root then g.stack:pop() end
-        if g.stack:top() == screen then g.stack:pop() end
-        if not groovyAvailable() then
-          g.stack:push(defaultPaletteState(g, gameStyle, returnToColors))
-          return
-        end
-        local rows = {}
-        rows[#rows + 1] = { label = "GROOVY", activate = function(gg)
+      local function showOverworldPalette(paletteState)
+        if root and game.stack:top() == root then game.stack:pop() end
+        if game.stack:top() == screen then game.stack:pop() end
+        game.stack:push(paletteState)
+      end
+      if not groovyAvailable() then
+        showOverworldPalette(defaultPaletteState(game, gameStyle,
+          returnToOptions))
+        return
+      end
+      local rows = {
+        { label = "DEFAULT", activate = function()
+          showOverworldPalette(defaultPaletteState(game, gameStyle,
+            returnToOptions))
+        end },
+        { label = "GROOVY", activate = function()
           local entries = groovyGameEntries()
           if #entries > 0 then
-            local parent = gg.stack:top()
-            transitionToChild(gg, parent,
-              upstreamLiveBrowser(gg, entries, "mode", gameStyle))
+            showOverworldPalette(upstreamLiveBrowser(game, entries, "mode",
+              gameStyle, returnToOptions))
           end
-        end }
-        rows[#rows + 1] = { label = "DEFAULT", activate = function(gg)
-          local parent = gg.stack:top()
-          transitionToChild(gg, parent,
-            defaultPaletteState(gg, gameStyle))
-        end }
-        g.stack:push(paletteGroupState(g, rows, returnToColors,
-          gameStyle))
-      end
-
-      local function openMenuPalettes(g)
-        local rows = {}
-        local function addGroup(label, choices)
-          rows[#rows + 1] = { label = label, activate = function(gg)
-            local parent = gg.stack:top()
-            transitionToChild(gg, parent,
-              menuPaletteBrowser(gg, parent, choices, menuStyle))
-          end }
-        end
-        if groovyAvailable() then addGroup("GROOVY", groovyMenuPalettes) end
-        addGroup("DEFAULT", defaultMenuPalettes)
-        addGroup("BETTERMENUS", betterMenusPalettes)
-        local parent = g.stack:top()
-        transitionToChild(g, parent,
-          paletteGroupState(g, rows, nil, menuStyle))
-      end
-
-      local rows = {
-        { label = "GAME PALETTES", activate = openGamePalettes },
-        { label = "MENU PALETTES", activate = openMenuPalettes },
+        end },
       }
-      if betterFrames then
-        rows[#rows + 1] = { label = "BETTERFRAMES", activate = function(g)
-          local parent = g.stack:top()
-          transitionToChild(g, parent, betterFramesState(g, menuStyle))
-        end }
-      end
       root = paletteGroupState(game, rows, nil, menuStyle)
       game.stack:push(root)
     end
@@ -6733,19 +6245,6 @@ return function(mod, menuColors)
         break
       end
     end
-
-    local insertAt = #items + 1
-    for i, item in ipairs(items) do
-      if tostring(item.label) == "QUIT" then insertAt = i break end
-    end
-    table.insert(items, insertAt, {
-      label = Strings("COLORS"),
-      onSelect = function()
-        game.stack:push(colorsState(game, function()
-          Screens.push(game, "StartMenu")
-        end))
-      end,
-    })
 
 	  return items
 	end, 7)
@@ -7009,8 +6508,8 @@ end
     local top = game and game.stack and game.stack:top()
     local mt = top and getmetatable(top)
 
-    -- BetterBag composes a responsive pixel-space surface and supplies its
-    -- complete palette map through its own sgbPalettes method.  Appending the
+    -- BetterBag and BetterTrainerCard supply their complete palette maps
+    -- through their own sgbPalettes methods. Appending the
     -- legacy tile-space Menu/ListMenu zones below recolors the old 160px Bag
     -- region over that surface, producing the vertical palette stripe.  Once
     -- BetterBag owns the visible palette map, leave it unchanged here.
@@ -7018,7 +6517,7 @@ end
     local stack = game and game.stack
     local first = stack and stack.visibleBase and stack:visibleBase() or 1
     for i = first, #states do
-      if states[i] and states[i].betterBagUI then
+      if states[i] and (states[i].betterBagUI or states[i].betterTrainerCardUI) then
         return out
       end
     end
@@ -7069,8 +6568,8 @@ end
           }
         end
       elseif battleMode == "off" then
-        local function addStockHpFill(battler, x, y)
-          local px = battleHpFillPixels(battler)
+        local function addStockHpFill(battler, x, y, segments)
+          local px = battleHpFillPixels(battler, segments)
           if px > 0 then
             out[#out + 1] = {
               colors = false, x = x, y = y, w = px, h = 2,
@@ -7079,7 +6578,7 @@ end
           end
         end
         addStockHpFill(top.enemy, 24, 19)
-        addStockHpFill(top.player, 208, 75)
+        addStockHpFill(top.player, 208, 75, 10)
       elseif battleMode ~= "on" then
         out[#out + 1] = {
           colors = false, x = 8, y = 16, w = 112, h = 8,

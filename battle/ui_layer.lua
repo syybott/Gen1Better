@@ -126,9 +126,9 @@ return function(deps)
         176,
         0,
         128,
-        32,
+        40,
         "topright",
-        Geometry.betterBattlePlacement("top-right", 4, -12)
+        Geometry.betterBattlePlacement("top-right", 4, 0)
       )
     end
     if playerStatusDrawn then

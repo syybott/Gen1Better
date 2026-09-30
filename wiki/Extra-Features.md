@@ -2,19 +2,13 @@
 
 Gen1Better keeps the original Gen 1 menu structure and adds optional widescreen interfaces, BetterPC, BetterParty, BetterBag, BetterBattle, and the BetterScenes cinematic staging system. The extra controls are available from the in-game Start Menu.
 
-## Open the BetterMenus options
+## Open the Gen1Better options
 
 1. Enter the game and press **START**.
-2. Select **COLORS**.
-3. Select **BetterMenus**.
+2. Select **OPTION**, then **EXTRAS**.
+3. Select **Gen1Better**.
 
-The **BetterMenus** screen contains the menu-palette groups and the BetterMenus feature switches. Use **UP** and **DOWN** to select a row, **LEFT** and **RIGHT** to change a value, **A** to open a palette group, and **B** to return.
-
-The **COLORS** screen also contains:
-
-- **DEFAULT**: the upstream Gen1Recomp palette screen.
-- **GROOVY**: the Groovy Palette & Frames palettes, when that mod is installed.
-- **BetterMenus**: BetterMenus palettes and BetterMenus feature switches.
+The Gen1Better settings include the menu palette, frames, and interface switches. Press **A** to focus its settings, use **UP/DOWN** to select a row and **LEFT/RIGHT** to change a value, and press **B** to return to the Extras list.
 
 ## Favorite and pin Start Menu entries
 
@@ -45,7 +39,7 @@ To choose the game's palette:
 1. Open **OPTION**.
 2. Open **GRAPHICS**.
 3. Open **COLORS**.
-4. Choose the upstream palette category and color you want.
+4. Choose the palette category and color you want while viewing the overworld. If Groovy Palette & Frames is installed, first choose **DEFAULT** or **GROOVY**.
 
 The upstream screen provides **FULL COLOR**, **SINGLE COLOR**, **GREYSCALE**, **MONOCHROME**, and **OG** categories. The **OG** category contains the familiar Game Boy, Red, Blue, Yellow, SGB, and related original-style modes supplied by Gen1Recomp.
 
@@ -53,12 +47,10 @@ That setting controls the game's normal palette selection. It is separate from t
 
 ## Choose a BetterMenus menu palette
 
-1. Open **START > COLORS > BetterMenus**.
-2. Select one of the menu-palette entries:
+1. Open **START > OPTION > EXTRAS > Gen1Better**.
+2. Select **MENU PALETTE** and choose a palette. The choices include `SOULSILVER`, `HEARTGOLD`, `FIRERED`, `LEAFGREEN`, `CRYSTAL`, `EMERALD`, Game Boy themes, numbered FireRed frame palettes, and Groovy entries.
 
-- **BetterMenus**: `SOULSILVER`, `HEARTGOLD`, `FIRERED`, `LEAFGREEN`, `CRYSTAL`, and `EMERALD`.
-- **Default**: `GAMEBOY`, `BLACK & WHITE`, `OG RED`, `ADVANCED`, and `SGB`.
-- **Groovy**: the Groovy Palette entries, when available.
+Choose **BetterFrames** in the same list to change the menu frame.
 
 The menu palette applies to the widescreen menu border, dialogue frames, BetterPC, BetterParty, BetterBag, and BetterBattle's menu overlays.
 

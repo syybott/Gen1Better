@@ -9,8 +9,8 @@ interface with Gen1Better's widescreen and palette support.
 
 1. Place the complete mod folder in the Gen1Recomp `mods` directory.
 2. Enable **Gen1Better** in the game's mod manager.
-3. Open **START > COLORS > BetterMenus** to choose your menu palette and
-   interfaces.
+3. Open **START > OPTION > EXTRAS > Gen1Better** to choose your menu palette
+   and interfaces.
 
 Keep the supplied assets with the mod when updating.
 

@@ -239,13 +239,10 @@ return function(deps)
 
     local enemyDrawn = battle.kind == "trainer" or battle.kind == "link"
     if enemyDrawn then
-      love.graphics.push()
-      love.graphics.translate(0, 1)
-      Font.drawBox(22, 0, 16, 4)
-      love.graphics.pop()
-      drawPartyRow(battle, battle.enemyParty, 233, 16 - Layout.framePadding(), -9, nativeRow)
+      Font.drawBox(22, 0, 16, 5)
+      drawPartyRow(battle, battle.enemyParty, 233, 17, -9, nativeRow)
       local image, crop, trueColor = opponentHead(battle)
-      drawHeadImage(image, crop, 264, 2, trueColor)
+      drawHeadImage(image, crop, 264, 8, trueColor)
     end
     return true, enemyDrawn
   end

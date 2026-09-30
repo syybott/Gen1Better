@@ -154,7 +154,7 @@ return function(deps)
                   battle.player,
                   24,
                   9,
-                  11,
+                  10,
                   battle.player.shownPx,
                   1,
                   0,

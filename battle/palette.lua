@@ -187,7 +187,7 @@ return function(deps)
           trueColorFill(battle.enemy, 24, 19, 11, battle.enemy.shownPx)
         end
         if Policy.playerVisible(battle) then
-          trueColorFill(battle.player, 208, 75, 11, battle.player.shownPx)
+          trueColorFill(battle.player, 208, 75, 10, battle.player.shownPx)
         end
       else
         -- MOD provider HUDs retain their existing provider-owned exemption.
