@@ -2,34 +2,33 @@
 
 This wiki reference describes the interfaces implemented in the current
 Gen1Better source. Feature files and public exports use the BetterBattle,
-BetterScenes, BetterPC, BetterBag, and BetterParty names. Existing hook names
-and stored settings keys remain unchanged.
+BetterScenes, BetterPC, BetterBag, and BetterParty names. The mod ID `gen1-better-menus` and `bettermenus.*` hook names remain the integration identifiers. Current settings include the replacement battle toggles; see [all settings](https://github.com/syybott/Gen1Better/wiki/Extra-Features).
 
 ## Interface index
 
 | Interface | Kind | Purpose |
 | --- | --- | --- |
-| `bettermenus.betterbattle_provider` | BetterMenus hook | Declare who owns battle rendering and whether BetterBattle may draw its HUD. |
-| `bettermenus.battle_backdrop` | BetterMenus hook | Select a registered 2D scene for a normal or custom-spawn battle. |
-| `bettermenus.battle_shadow` | BetterMenus hook | Modify, tint, reposition, or suppress species shadows during battle rendering. |
-| `bettermenus.battle_geometry` | BetterMenus hook | Supply custom actor presentation geometry, ground lines, and coordinate space. |
-| `bettermenus.ui_scale` | BetterMenus hook | Opt a custom menu into the user's Menu Scale, or keep native scale. |
+| `bettermenus.betterbattle_provider` | Gen1Better hook | Declare who owns battle rendering and whether BetterBattle may draw its HUD. |
+| `bettermenus.battle_backdrop` | Gen1Better hook | Select a registered 2D scene for a normal or custom-spawn battle. |
+| `bettermenus.battle_shadow` | Gen1Better hook | Modify, tint, reposition, or suppress species shadows during battle rendering. |
+| `bettermenus.battle_geometry` | Gen1Better hook | Supply custom actor presentation geometry, ground lines, and coordinate space. |
+| `bettermenus.ui_scale` | Gen1Better hook | Opt a custom menu into the user's Menu Scale, or keep native scale. |
 | `betterBattle` | Export | Query battle ownership, draw the BetterBattle HUD, inspect backdrop selection. |
-| `betterBattle.registerBattleGeometryProvider` | Export | Register an ordered, priority-aware actor presentation geometry provider. |
+| `betterBattle.registerBattleGeometryProvider` | Export | Register/update a provider by ID; true on success, false for missing ID or non-function callback. |
 | `betterBattle.getBattleGeometry` | Export | Query the resolved battle presentation geometry for a battle instance. |
 | `betterBattle.shadowSettings` | Export | Register custom species shadow profiles and scene-wide shadow adjustments. |
 | `betterScenes` | Export | Top-level 16:9 story stage for cutscenes, underlays, and narrative presentation. |
 | `isModOptions = true` | Screen marker | Identify a third-party settings screen. |
-| `ui.party.submenu` | Engine hook supported by BetterMenus | Add actions to party menus and BetterPC's party-side action list. |
+| `ui.party.submenu` | Engine hook supported by Gen1Better | Add actions to party menus and BetterPC's party-side action list. |
 | `betterPC*` methods | BetterPC instance helpers | Operate the active PC screen through its existing controller. |
-| `betterParty`, `betterBag`, `betterBagInventoryLimits` | Exports | Access installed screen factories and active inventory limits. |
+| `betterParty`, `betterPokedex`, `betterModManager`, `betterOptions`, `betterBag` | Exports | Screen factories. Prefer registered screen navigation so options-based routing applies. |
+| `betterBagInventoryLimits` | Export | Current `slots` and `stack` limits. |
 
 The `render.*`, `pokemon.sprite`, and `ui.*` engine hooks mentioned below are
-engine interfaces, not additional BetterMenus-owned hooks.
+engine interfaces, not additional Gen1Better-owned hooks.
 
 > [!NOTE]
-> **API Stability & Contract Guarantee**:
-> `registerArtistScene`, `registerScene`, `registerBattleGeometryProvider`, `bettermenus.battle_backdrop`, `bettermenus.battle_shadow`, `bettermenus.battle_geometry`, and scene shadow config are public compatibility surfaces that maintain backward compatibility across updates.
+> **Public integration surfaces**: Use the documented exports, hooks, and screen markers below when building a consuming mod. Check availability before calling an export.
 
 ## Registering hooks and finding exports
 
@@ -45,10 +44,10 @@ local function betterBattle()
 end
 ```
 
-`mod.find()` returns nil if BetterMenus is absent, disabled, failed, or has not
+`mod.find()` returns nil if Gen1Better is absent, disabled, failed, or has not
 loaded yet. Query at use time or after `game.ready`; do not assume another mod's
 exports exist during your entry script. Hook registration itself can be done
-without looking up BetterMenus. A registered hook has no effect until called.
+without looking up Gen1Better. A registered hook has no effect until called.
 
 The equivalent lookup with a live game is:
 
@@ -100,30 +99,25 @@ end)
 Only `id`, `active`, and `betterBattle` are retained in the normalized claim.
 Ownership is cached per battle's `frame`; establish it before that frame's first
 ownership query. Do not use this hook to force the user's BetterBattle setting ON.
-When the user selected ON, a claim with `betterBattle = false` makes the effective
-mode `mod`. OFF and explicitly selected MOD remain their selected modes.
+When BetterBattle UI is ON, a claim with `betterBattle = false` makes the effective mode `mod`. OFF stays off. MOD is an automatic provider mode, not a current selectable setting.
 
-Any active provider claim suppresses BetterMenus' 2D backdrop, **including a claim
+Any active provider claim suppresses Gen1Better' 2D backdrop, **including a claim
 with `betterBattle = true`**. That flag permits the HUD, not the built-in art.
 
 ### 3D / voxel renderers
 
-BetterMenus also yields when `renderer.worldOverride ~= nil` during composition,
+Gen1Better also yields when `renderer.worldOverride ~= nil` during composition,
 or when a downstream `render.compose` handler returns true to own composition.
 Supply your actual canvas through the engine's `renderer:setWorldOverride(canvas)`;
 the renderer rejects non-canvas sentinels and clears ownership each frame.
 
 Use the provider hook as well if your renderer owns HUD/layout behavior. A world
 override alone suppresses 2D art but does not automatically claim BetterBattle's
-HUD layout. Publish your current frame's canvas before the BetterMenus composition
-check. BetterMenus' wrapper runs at priority `math.huge`, calls `next` first, then
+HUD layout. Publish your current frame's canvas before the Gen1Better composition
+check. Gen1Better' wrapper runs at priority `math.huge`, calls `next` first, then
 checks existing ownership before supplying its own outer canvas.
 
-Built-in staged detection currently recognizes `battle.dramaticShapeShot ~= nil`
-or `battle.letterboxWhite == false`. It identifies known companion exports
-`DRAMATIC_SHAPE`, `BATTLE_ART_VOXEL_FORK`, and `DRAMALESS_SHAPE`, otherwise using
-`detected-3d-battle-provider`. New providers should use the explicit hook instead
-of imitating another mod's private fields. Installation alone is not a claim.
+For new providers, declare ownership through `bettermenus.betterbattle_provider`. Installing a provider alone is not a claim; report whether your renderer actually owns the current battle. Preserve downstream detection with `next(ctx)` when inactive.
 
 ## 2. Custom battle backgrounds
 
@@ -184,11 +178,11 @@ Setting a flag only around the earlier dialogue/scheduling call is insufficient.
 
 All 63 supplied scenes are selectable, including `custom_desert`,
 `custom_mountain_snow`, `custom_snow_grass`, `custom_space`, and `custom_spaceship`.
-See [the full scene registry and location rules](Battle-Backdrops.md#registered-scenes).
+See [the full scene registry and location rules](https://github.com/syybott/Gen1Better/wiki/Battle-Backdrops#registered-scenes).
 
 ### Registering new custom 320×180 scenes
 
-See the [Artist Backdrop Pack Quickstart](Artist-Backdrop-Packs.md) for a complete,
+See the [Artist Backdrop Pack Quickstart](https://github.com/syybott/Gen1Better/wiki/Artist-Backdrop-Packs) for a complete,
 beginner-friendly guide to building standalone backdrop mods.
 
 Other mods can register their own custom 320×180 battle backdrops using the unified
@@ -224,7 +218,11 @@ reasons include:
 - `"invalid_shadows"` / `"invalid_color"` / `"invalid_opacity_scale"` / `"invalid_offset_y"` / `"invalid_player_offset_y"` / `"invalid_enemy_offset_y"` / `"invalid_enabled"`: Schema validation failures.
 
 
-Images must be strictly 320×180 pixels. See [Verifying backdrops for 1080p and 4K](Battle-Backdrops.md#verifying-backdrops-for-1080p-and-4k-python)
+`registerScene(id, imageOrPath, sourceMod)` returns `true, id` or expected `false, "reserved" / "collision"` failures. It asserts on invalid IDs/types and on incorrect dimensions of an already loaded Image. String paths are loaded lazily through the owning mod's assets; factories are evaluated lazily. Therefore registration success does not validate a path/factory image's dimensions in advance. Pass your own `mod` for asset resolution and ownership; omission uses Gen1Better.
+
+`registerArtistScene` performs supported shadow validation before image registration. It returns the documented expected-error tuples, but invalid configuration types or a loaded Image with incorrect dimensions can still raise errors. This is not a blanket no-exception contract.
+
+Images must be strictly 320×180 pixels. See [Verifying backdrops for 1080p and 4K](https://github.com/syybott/Gen1Better/wiki/Battle-Backdrops#verifying-backdrops-for-1080p-and-4k-python)
 for the Python validation script.
 
 Alternatively, `bettermenus.battle_backdrop` can return a dynamic table containing
@@ -257,7 +255,7 @@ local ok, sceneId, status = api.backdrop.refresh(battle, { transition = "crossfa
 -- Returns: true, sceneId, "changed" | true, sceneId, "unchanged" | false, err
 ```
 
-Normal scene selection is cached. `refresh()` is an explicit API escape hatch that re-runs selection against the captured context.
+Normal scene selection is cached. `refresh()` re-runs the hook against the original captured encounter context; it does not recapture map/position fields. Inspect `ctx.battle` for live state when needed.
 
 #### Geometry timing vs. scene identity
 Scene identity switches immediately (`diagnostics(battle).sceneId` updates to target scene on call), while visible geometry moves according to `opts.geometry`:
@@ -269,7 +267,7 @@ Query presentation-time values using:
 ```lua
 local playerOffsetY, enemyOffsetY = api.backdrop.effectiveGroundOffsets(battle)
 ```
-Diagnostics also reports `effectivePlayerOffsetY` and `effectiveEnemyOffsetY` alongside target `playerOffsetY` and `enemyOffsetY`.
+Diagnostics also reports `effectivePlayerOffsetY` and `effectiveEnemyOffsetY` alongside target `playerOffsetY` and `enemyOffsetY`. The built-in BetterBattle UI geometry incorporates these offsets. Custom geometry providers must incorporate them into their own ground lines/shifts to keep sprites and shadows aligned.
 
 Selection does not enable BetterBattle or override an external renderer.
 The 320×180 art retains its full colors; front sprites are required for
@@ -338,7 +336,7 @@ end)
 | `shapeIndex` | 1-based index of this shape within its profile or wing list. |
 | `x`, `y` | Canvas coordinates of shadow center in virtual screen pixels. |
 | `width`, `height` | Pixel dimensions of the outer ellipse. |
-| `alpha` | Effective opacity multiplier (0.0 to 1.0). |
+| `alpha` | Effective rendering gain; can exceed 1. This is not a final opacity value. |
 | `color` | Current RGB tint `{ r, g, b }` (0.0 to 1.0), or nil for standard black. |
 | `rotationDegrees` | Ellipse rotation angle in degrees. |
 | `innerRing`, `middleRing` | Feathering ring configurations, or false/nil. |
@@ -350,6 +348,8 @@ end)
 | `false` | Cancel and suppress this shadow shape completely. |
 | Context table or override table | Apply modified shadow properties (`x`, `y`, `width`, `height`, `alpha`, `color`, `rotationDegrees`, `innerRing`, `middleRing`). |
 | `next(ctx)` or nil | Delegate through remaining hook wrappers or keep default drawing. |
+
+The detected wing rendering branch does not apply inner/middle ring overrides. Color and ring fallbacks mean false/nil are not general-purpose clearing values; return false to suppress a whole shape.
 
 ### Declarative scene shadows: `registerScene`
 
@@ -440,12 +440,14 @@ local function registerCustomSpeciesShadows()
 end
 ```
 
+Direct `shadowSettings.registerScene` merges configuration and returns the live scene entry; it does **not** call `validateSceneConfig`. Validate untrusted input first, check `ok`, then register the normalized table. `sceneConfig(id)` returns the live entry or nil.
+
 Helper methods on `betterBattle.shadowSettings`:
-- `registerSpecies(species, config)`: Register or merge species configuration.
-- `registerScene(sceneId, config)`: Register or merge scene shadow configuration.
-- `setSpecies(species, key, value)`: Set a species property.
-- `setContext(species, context, key, value)`: Set a context-specific property (`player`, `enemy`, or `scene`).
-- `addShape(species, shape, context)`: Append a manual shadow shape at species level or within a presentation context.
+- `registerSpecies(species, config)`: Register or merge species configuration; returns its live entry.
+- `registerScene(sceneId, config)`: Merge scene configuration without validation; returns its live entry.
+- `setSpecies(species, key, value)`: Set a species property; returns nil.
+- `setContext(species, context, key, value)`: Set a context-specific property (`player`, `enemy`, or `scene`); returns nil and asserts on an invalid context.
+- `addShape(species, shape, context)`: Append a shadow shape at species level or within a presentation context. Returns nil.
 
 For species-profile values, resolution is:
 
@@ -459,25 +461,35 @@ instance override
 `player`, `enemy`, and `scene` overrides do not cross-inherit.
 
 #### Unified Shadow Configuration Schema
-| Property | Type | Description |
-| :--- | :--- | :--- |
-| `baseWidth` | number | Baseline ellipse width in virtual pixels. |
-| `baseHeight` | number | Baseline ellipse height in virtual pixels. |
-| `widthScale` / `heightScale` | number | Scaling multipliers applied to base dimensions (default `1.0`). |
-| `offsetX` / `offsetY` | number | Positional offsets relative to ground contact point. |
-| `rotationDegrees` | number | Stance tilt angle in degrees. |
-| `opacity` / `alpha` | number | Shadow opacity (0.0 to 1.0). |
-| `color` | table | Normalized RGB `{ r, g, b }` for environment tinting. |
-| `grounding` | string | Stance behavior: `"grounded"`, `"hovering"`, `"floating"`, `"flying"`. |
-| `anchorMode` | string | Anchor resolution: `"feet"`, `"manual"`, or `"auto"`. |
-| `manualAnchorX` / `manualContactY` | number | Explicit sprite pixel coordinates for contact anchor. |
-| `sourceSpace` | table | Optional profile coordinate space `{ width, height, originX, originY }`. The built-in Pokémon preset dataset uses canonical 56×56 front-sprite coordinates. |
-| `shapeSpace` | string | Coordinate interpretation for instance shapes: `"origin"` for actor-relative offsets or `"source"` for source-image coordinates. Species profile shapes use source coordinates. |
-| `bodyRegion` | table | Normalized sub-rectangle `{ left, right, top, bottom }` for measurement. |
-| `wingShadows` | table | Array of wing detector zones `{ region = { left, right, top, bottom }, opacity }`. |
-| `shadowShapes` | table | Array of explicit custom shapes (`{ width, height, offsetX, offsetY, alpha, ... }`). |
-| `innerRing` / `middleRing` | table | Concentric inner feathering ring specifications. |
-| `soft` | boolean | Enables cosine multi-ring soft edge feathering (default `true`). |
+
+The shared engine uses `schemaVersion = 2` and `profileVersion = 1`. Species presets use `profileSpace = { width = 56, height = 56, originX = 28, originY = 56 }`. Defaults apply after instance/context/species resolution.
+
+| Property | Contract / default |
+| --- | --- |
+| `baseWidth` / `baseHeight` | Baseline virtual dimensions, defaults 12 / 3.75. Automatic measurement can adjust effective sizing. |
+| `widthScale` / `heightScale` / `opacityScale` | Multipliers, default 1. |
+| `offsetX` / `offsetY` / `rotationDegrees` | Contact-relative offsets and rotation, default 0. |
+| `opacity` / `alpha` | Optional gain aliases: soft rendering normalizes by 0.075. Prefer opacityScale; these are not a final combined-opacity guarantee. |
+| `color` | RGB tint; nil uses black. |
+| `grounding` | Default grounded; flying selects special flight behavior. Hovering/floating have no distinct implemented behavior. |
+| `anchorMode` / `anchorX` | contact (default) or body; optional normalized horizontal anchor. |
+| `manualAnchorX` / `manualContactY` | Source-space manual coordinates; defaults false. |
+| `sourceSpace` | Optional `{ width, height, originX, originY }` for authored data. Actor instances otherwise use their effective image dimensions. |
+| `shapeSpace` | origin for actor-relative instance shapes (default for instances), source for source-image coordinates (default for species profiles). |
+| `bodyRegion` | Normalized opaque-bounds sub-rectangle `{ left, right, top, bottom }`. A context bodyRegion replaces the species region as a whole. |
+| `wingShadows` | Detector zones containing region and optional opacity. |
+| `shadowMode` | Species-profile selection: manual, automatic, combined, or false for legacy resolution. An instance shadowMode does not select the species filter. |
+| `shadowShapes` | Authored/detected shapes: x/y, width/height, offsets, opacity/alpha, opacityScale, rotationDegrees, color, rings, soft, and optional `animate(context)` overrides. Declare source = manual or detected when using mode filtering. |
+| `innerRing` / `middleRing` | widthScale, heightScale, offsetX, offsetY. The renderer uses fixed ring alpha; ring alpha/scaleX/scaleY are not supported tuning fields. |
+| `soft` | Three-layer ellipse feathering, default true; no cosine falloff. |
+| `detectionSizing` | Automatic geometry bounds and scale controls; defaults below. |
+| `automaticBody` | Separate automatic-body contribution policy; defaults below. |
+
+`detectionSizing` defaults: **contactWidthScale 1.30**, **bodyWidthScale 0.44**, **minimumWidth 8**, **maximumWidthScale 0.70**, **heightScale 0.16**, **minimumHeight 2.5**, **maximumHeight 4.5**. Values resolve through contribution → context → species → defaults; false can disable optional bounds.
+
+`automaticBody` defaults: **sizeScale 2**, **spriteWidthScale 0.44**, **majorExtentScale 0.44**, **minimumContactCoverage 0.20**, **maximumContactOffset 0.25**. Values resolve through context → species → defaults.
+
+Soft ellipses use outer/middle/inner scale factors 1, 0.82, and 0.64 with fixed alpha 0.025, 0.050, and 0.075 and global gain 1.035, then apply configured gain. This is a layered draw, not one opacity value.
 
 ## 4. Custom-menu scaling
 
@@ -498,13 +510,12 @@ Return exactly true to opt into the requested factor, false to use native scale,
 or `next(ctx)` to preserve the downstream decision. Numeric factors are not
 accepted; any result other than true yields native scale.
 
-This hook runs when Menu Scale is below 100%, an overworld exists below a menu,
+This hook runs even at 100% when an overworld exists below a menu,
 and no battle is in the stack. It cannot enable scaling for a title screen or
 an in-battle menu outside those dispatch conditions. The renderer also enforces
 its minimum UI scale, so the requested factor is not a pixel-size guarantee.
 
-Stock supported menus opt in by default. BetterPC, BetterBag, BetterParty,
-registered mod-owned screens, and unknown screen types default to native scale.
+Stock supported menus opt in by default. Explicit `isModOptions` and `BetterMenusScaleEligible` markers opt in before the general mod-owned screen check. The seven responsive interfaces (PC, party, Pokédex, trainer card, bag, mod manager, and options) retain their own sizing. Other registered mod-owned and unknown screens default to native scale.
 There is no current detached-battle-HUD dispatch for this hook. BetterBattle's
 own panels use their separate internal half-size target and pixel snapping.
 
@@ -608,12 +619,16 @@ use the `mod.find` helper above. Call these functions with dot syntax:
 | `drawLayer(battle, bottomVisible)` | Draw BetterBattle's detached HUD and register its anchors. Requires the appropriate HUD pass and eligible topmost battle. |
 | `expPixels(battle)` | Current animated XP-display pixel count, floored and nonnegative. |
 | `registerBattleGeometryProvider(id, fn, priority)` | Register an ordered, priority-aware actor presentation geometry provider. |
-| `unregisterBattleGeometryProvider(id)` | Unregister a previously registered battle presentation geometry provider. |
+| `unregisterBattleGeometryProvider(id)` | True when removed; false for missing or unknown ID. |
 | `getBattleGeometry(battle)` | Query the resolved battle presentation geometry for a live battle instance. |
+| `shadowEngine` | Shared shadow measurement/rendering module, when available. Ordinary artist integrations use the settings and hooks above. |
 | `shadowSettings` | Shadow configuration table exposing `validateSceneConfig`, `registerSpecies`, `registerScene`, `setSpecies`, `setContext`, `addShape`, and species profiles. |
 | `backdrop.sceneIds()` | Sorted copy of all registered scene IDs (including custom registered scenes). |
 | `backdrop.registerArtistScene(id, config, sourceMod)` | One-stop registration helper for custom 320×180 backdrops and their shadow styles. |
 | `backdrop.registerScene(id, imageOrPath, sourceMod)` | Direct registration helper for custom 320×180 backdrops. |
+| `backdrop.setScene(battle, id, opts)` | Change a captured battle's scene; default crossfade 0.4 seconds and immediate geometry. Returns true, id or false, error. |
+| `backdrop.refresh(battle, opts)` | Re-run selection using captured context. Returns true, id, changed/unchanged or false, error. |
+| `backdrop.effectiveGroundOffsets(battle)` | Presentation-time player/enemy offsets, including configured transition timing. |
 | `backdrop.resolve(context)` | Pure automatic resolver: returns scene ID or false, plus a reason string. Does not invoke the custom hook. |
 | `backdrop.diagnostics(battle)` | Detached diagnostic table, or nil before context was captured. |
 
@@ -649,200 +664,118 @@ Changing the returned diagnostic table does not change scene selection.
 
 ## 7. BetterScenes story stage exports
 
-`mod.exports.betterScenes` provides a standalone 16:9 widescreen story stage (320×180 native integer-scaled pixels) decoupled from combat states. It allows modders and story authors to create narrative cutscenes, character staging, comic dialogue bubbles, camera effects, atmospheric weather, and seamless transitions into battle.
+Resolve `handle.exports.betterScenes` after availability checks. Call methods with dot syntax. The [BetterScenes guide](https://github.com/syybott/Gen1Better/wiki/BetterScenes) supplies complete manifest, update/input controller, asset resolution, cleanup, sequence, and handoff examples.
 
-```lua
-local mod = ...
-local betterScenes = mod.find("gen1-better-menus").exports.betterScenes
+Gen1Better draws an active stage. The consuming mod must call `update(dt)`, forward advance/skip input, and start/finish encounters. `hide` does not clear all stage resources; completion and skipping do not automatically apply sequence cleanup.
 
--- Register custom 320x180 story backdrop
-betterScenes.registerScene("ship_intro", { path = "assets/ship_320.png", underlay = "black" }, mod)
+### Complete public API reference
 
--- Display story scene with animated transition
-betterScenes.show("ship_intro", { transition = "crossfade", duration = 0.5 })
+A mutator listed with an error return uses `false, error` for its handled failures. Malformed nested values can still raise ordinary Lua errors; the tables do not promise universal validation. Getters have method-specific returns. Treat nested resource/config references as read-only unless a method explicitly supports editing.
 
--- Present active underlay only (e.g. blackout or psychic void without an image)
-betterScenes.show(false, { underlay = "black" })
+#### Scene presentation
 
--- Cleanly end cutscene and return screen ownership to the game
-betterScenes.hide({ transition = "crossfade", duration = 0.35 })
-```
+| Method | Return / behavior |
+| --- | --- |
+| `registerScene(id, config, sourceMod)` | true, id / false, error. Ownership/collisions, protected prefixes gen1_/better_/system_. config.image or config.path required. Use mod.assets for consumer paths; sourceMod alone does not scope paths. Loaded measurable images must be 320×180; unreadable paths are not proven by registration. |
+| `show(idOrFalse, opts)` | true, id-or-false / false, error. cut (default), crossfade, flash; underlay black/paper/transparent. |
+| `hide(opts)` | true, nil / false, error. Clears background presentation, not other stage resources. |
+| `current()` | ID, false (underlay), or nil (no current background). |
+| `isActive()` | Boolean considering background/transition, actors, bubble, subtitle, emotes, or sequence. FX/handoff alone do not activate drawing. |
+| `update(dt)` | nil. Consumer-driven timeline, FX/weather, and handoff updates. |
+| `draw()` | nil. Gen1Better calls this for an active stage; avoid drawing twice. |
+| `diagnostics()` | Inspection table. actors is keyed by slot, with no actorCount. active also considers FX/handoff and can differ from isActive. |
 
-### Complete Public API Reference
+#### Actors and dialogue
 
-#### 1. Scene Presentation & Underlays
+| Method | Return / behavior |
+| --- | --- |
+| `setActor(slot, config, opts)` | true, slot / false, error. Built-in left/center/right or custom x/y. Feet-based origin; opts transitions cut/fade/slide. |
+| `updateActor(slot, config, opts)` | true, slot / false, error. Merge existing actor data; actor-not-found if absent. |
+| `clearActor(slot, opts)` | true, slot (or nil if absent) / false, error. |
+| `clearActors(opts)` | true, count. Does not aggregate per-actor validation failures into an error return. |
+| `getActor(slot)` | Inspection table or nil, including configured position, scale, mirror, path/pose/frame/shadow and transition flags. |
+| `getActorAnchor(slot, name)` | x, y / nil, error. Anchors are feet-relative scaled/mirrored offsets; resolves configured positions, not interpolated motion. |
+| `showBubble(speaker, text, opts)` | true, bubbleId / false, error. speech/thought/shout; cut/fade/pop; actor, narrator, or coordinate speaker. |
+| `hideBubble(opts)` | true, nil / false, error. cut/fade/pop. |
+| `getBubble()` | Table or nil. Text/style/position/size/tail; no lines field. Refreshes actor tail using configured anchor. |
+| `setSubtitle(text, opts)` | true, nil / false, error. top/bottom/center; cut/fade, optional bar/align; duration controls visibility, not fade speed. |
+| `clearSubtitle(opts)` | true, nil / false, error. |
+| `getSubtitle()` | Table or nil. |
+| `showEmote(target, type, opts)` | true, targetKey / false, error. exclamation/question/heart/anger/sweat/dots/music. |
+| `clearEmote(target)` | true, count; nil target clears all. |
+| `getEmotes()` | Inspection array, empty when none. |
 
-| Function | Returns | Description |
-| :--- | :--- | :--- |
-| `registerScene(id, config, sourceMod)` | `true, id` or `false, err` | Register a 320×180 story scene. Reserved prefixes (`gen1_*`, `better_*`, `system_*`) are protected. |
-| `show(idOrFalse, opts)` | `true, id` or `false, err` | Transition into a registered scene (`string`) or plain underlay (`false`). Transitions: `"cut"`, `"crossfade"`, `"flash"`. |
-| `hide(opts)` | `true, nil` or `false, err` | Transition toward inactive, clearing presentation and unhooking renderer. |
-| `current()` | `string`, `false`, or `nil` | Current scene ID (`string` = image, `false` = active plain underlay, `nil` = inactive). |
-| `isActive()` | `boolean` | `true` when BetterScenes is actively presenting an image, underlay, actor, sequence, or effect. |
+#### Stage FX
 
-#### 2. Actor Staging & Relative Anchors
+| Method | Return / behavior |
+| --- | --- |
+| `shakeScreen(opts)` | true, nil / false, error. Intensity, duration, direction both/horizontal/vertical, frequency, pixelSnap, shakeUI. |
+| `stopShake()` | true, nil. |
+| `getShake()` | State table with active flag. |
+| `setTint(colorOrPreset, opts)` | true, nil / false, error. RGB(A) or sunset/night/cave/underwater/poison/sepia; duration. |
+| `clearTint(opts)` | true, nil / false, error; optional duration. |
+| `getTint()` | State table with active flag. |
+| `flashScreen(colorOrPreset, opts)` | true, nil / false, error. white/red/yellow/black or RGB; duration/mode out or inout/scope stage or full. |
+| `stopFlash()` | true, nil. API method, not a sequence action. |
+| `getFlash()` | State table with active flag. |
+| `setVignette(style, opts)` | true, nil / false, error. letterbox/spotlight/dither. |
+| `clearVignette(opts)` | true, nil / false, error. |
+| `getVignette()` | State table with active flag. |
+| `setWeather(type, opts)` | true, nil / false, error. rain/snow/leaves/cherry_blossom/embers/dust; count/speed/seed/duration. speed is a multiplier, default 1. |
+| `clearWeather(opts)` | true, nil / false, error. |
+| `getWeather()` | State table with active flag. |
 
-Theatrical cast layer positioned in 320×180 stage coordinates. The actor base point (`x`, `y`) represents the actor's feet / bottom-center. Relative anchors (`head`, `mouth`, `top`) automatically scale and mirror with the actor. Staged actors can automatically inherit species shadow profiles or render custom soft floor contact shadows.
+#### Battle handoff
 
-| Function | Returns | Description |
-| :--- | :--- | :--- |
-| `setActor(slot, config, opts)` | `true, slot` or `false, err` | Stage an actor in preset slot (`"left"`, `"center"`, `"right"`) or custom named slot with explicit coordinates (`x`, `y`). Supports `path`, `species`, `shadow` (`true`, `false`, or schema table), and relative `anchors`. Transitions: `"cut"`, `"fade"`, `"slide"`. |
-| `clearActor(slot, opts)` | `true, slot` or `false, err` | Remove actor from stage with optional exit transition (`fade`, `slide`). |
-| `clearActors(opts)` | `true, count` | Remove all active actors from stage. |
-| `getActor(slot)` | `table` or `nil` | Query actor state (`x`, `y`, `scale`, `mirror`, `transitionActive`, `exiting`, `shadowState`). |
-| `getActorAnchor(slot, anchorName)` | `x, y` or `nil, err` | Resolve live stage coordinates for anchor (`"mouth"`, `"head"`, `"top"`). |
+| Method | Return / behavior |
+| --- | --- |
+| `prepareBattleHandoff(opts)` | true, token / false, error. trainer/wild/boss; cut/flash/blinds/mosaic/swirl, default swirl 0.8s. onHandoff(token) fires after timing. Consumer starts combat and applies music/atmosphere data. |
+| `getBattleHandoff()` | Token snapshot or nil, with generated id, state, captured storySceneId, battleBackdropId, encounter data, music/atmosphere, timing, outcome. |
+| `cancelBattleHandoff()` | true, nil / false, no-handoff or handoff-locked. Cannot cancel after handing off. |
+| `resumeFromBattle(result)` | true, outcome / false, error. result.handoffId must equal token.id; outcome win/lose/flee/draw. Calls matching onWin/onLose/onFlee and onReturn(api, result), then continues a waiting sequence. |
 
-```lua
--- Stage trainer on the left with custom shadow, and Charizard on the right with calibrated species shadow:
-betterScenes.setActor("left", {
-  path = "assets/red.png",
-  mirror = false,
-  shadow = { baseWidth = 24, baseHeight = 6, offsetY = 1 },
-}, { transition = "fade", duration = 0.3 })
+#### Sequences
 
-betterScenes.setActor("right", {
-  path = "assets/charizard.png",
-  species = "CHARIZARD",
-  shadow = true,
-  scale = 1.0,
-}, { transition = "slide", duration = 0.4 })
-```
+| Method | Return / behavior |
+| --- | --- |
+| `playSequence(steps, opts)` | true, sequenceId / false, error. skippable true, cleanup false by default. onComplete(api), onAbort(api[, error]). Stops an existing sequence first. |
+| `stopSequence(opts)` | true, nil. Uses cleanup policy from playSequence; stop opts does not change it. |
+| `skipSequence()` | true, nil / false, not-skippable. Runs remaining non-wait/non-input/non-battle actions and onComplete; no automatic completion cleanup. |
+| `advanceSequence()` | true, nextIndex-or-nil / false, not-waiting. Clears input barrier or timed wait; only forward dialogue input while waitingInput if timed waits should remain intact. |
+| `getSequence()` | Table or nil: active/id, stepIndex/totalSteps, waitingInput/waitingBattle, lastBattleOutcome, waitRemaining, currentAction, skippable, aborted, lastError. |
 
-#### 3. Comic Dialogue Bubbles, Subtitles & Emotes
+#### Scale defaults and cache
 
-Anchored dialogue bubbles dynamically track speaker mouth coordinates live, clamping within stage bounds while the tail points directly to the speaker.
+| Method | Return / behavior |
+| --- | --- |
+| `getDefaultScaleMode()` | String, default nearest. |
+| `setDefaultScaleMode(mode)` | true, mode / false, invalid-scale-mode. nearest/auto/variant/clean/area/custom. |
+| `getDefaultPixelSnap()` | Boolean, default true. |
+| `setDefaultPixelSnap(value)` | true, boolean; coerces Lua truthiness (0 and strings are true). |
+| `clearScaleCache()` | true. |
+| `setScaleCacheLimit(n)` | true, positive floored limit / false, invalid-limit. Default 128, FIFO eviction. |
+| `getScaleCacheCount()` | Number of cached entries. |
 
-| Function | Returns | Description |
-| :--- | :--- | :--- |
-| `showBubble(speaker, text, opts)` | `true, bubbleId` or `false, err` | Show dialogue bubble. `speaker` can be actor slot string, `{ x, y }`, or `"narrator"`. Styles: `"speech"`, `"thought"`, `"shout"`. Transitions: `"cut"`, `"fade"`, `"pop"`. |
-| `hideBubble(opts)` | `true, nil` or `false, err` | Hide active dialogue bubble. |
-| `getBubble()` | `table` or `nil` | Query active bubble layout, text, lines, tail coordinates, and state. |
-| `setSubtitle(text, opts)` | `true, nil` or `false, err` | Display widescreen cinematic letterbox subtitle (`bar = true`, `position = "bottom"|"top"|"center"`). |
-| `clearSubtitle(opts)` | `true, nil` or `false, err` | Clear active subtitle with optional fade transition. |
-| `getSubtitle()` | `table` or `nil` | Query active subtitle state. |
-| `showEmote(target, emoteType, opts)` | `true, emoteKey` or `false, err` | Display floating animated bounce emote over actor or coordinate (`"exclamation"`, `"question"`, `"heart"`, `"anger"`, `"sweat"`, `"dots"`, `"music"`). |
-| `clearEmote(target)` | `true, count` | Clear active emote by target, or all emotes if target is nil. |
-| `getEmotes()` | `table` | Query all active emotes. |
+### Common configuration defaults
 
-```lua
--- Oak speaks with an anchored comic bubble
-betterScenes.showBubble("left", "Welcome to the world of Pokémon!", { style = "speech" })
+| Surface | Supported options and defaults |
+| --- | --- |
+| Scene | `config.image` or `path`, underlay, scaleMode, pixelSnap. show/hide opts transition cut, non-cut duration 0.35; underlay resolves from call → target scene → current → transparent. |
+| Actor | image/path, x/y, mirror, scale (1), scaleMode, fallbackScaleMode, pixelSnap, variants, customDraw/scaleFn, pose (idle), frame (1), species, shadow, anchors. Transition options cut/fade/slide; non-cut duration 0.3; from/to left/right/top/bottom. |
+| Bubble | style speech, transition cut, anchor mouth, maxWidth 180, padding 6, tail true. duration is optional visibility lifetime; fade/pop uses fixed 0.2s. |
+| Subtitle | position bottom, transition cut, bar true, align center. duration is optional visibility lifetime; fade uses fixed 0.25s. color is not a supported option. |
+| Emote | duration optional, bounce true. Target actor slot or `{ x, y }`. |
+| Shake | intensity 4, duration 0.4, frequency 24, direction both, pixelSnap true, shakeUI false. |
+| Tint | Named preset or RGB(A); transition duration 0 (immediate). |
+| Flash | white default, duration 0.3, mode out, scope stage. No intensity option. |
+| Vignette | style required; duration 0, alpha 0.75, color black, target center, radius 80. |
+| Weather | type required; speed multiplier 1, seed 1, count 20, transition duration 0. |
+| Handoff | battleType trainer, transition swirl, duration 0.8 (cut 0); battleBackdropId/backdropId, trainerId/species/level/music, onHandoff/onWin/onLose/onFlee/onReturn callbacks. |
+| Sequence | id optional, skippable true, cleanup false, onComplete/onAbort callbacks. |
 
--- Mew reacts with an emote puff
-betterScenes.showEmote("right", "exclamation", { duration = 1.5 })
-```
+Actor scaling resolves an override → actor → current scene → global default. Pixel snapping follows the same precedence. Custom drawing is only called in effective custom mode as `callback(actor, ctx)`, where ctx contains image, requested scale, scaleMode, pixelSnap, fallbackScaleMode, screen x/y, and mirror. Any truthy return claims drawing; false/nil or an error uses the fallback. The regular path draws with its own stage scale and actor alpha, so a custom callback must implement its intended presentation.
 
-#### 4. Declarative Story Sequence Runner
-
-Choreograph multi-step cutscenes using a linear step queue. Sequences handle pauses, player interaction, skipping, and clean resource scoping.
-
-| Function | Returns | Description |
-| :--- | :--- | :--- |
-| `playSequence(steps, opts)` | `true, seqId` or `false, err` | Run array of timeline steps. Options: `skippable = true/false`, `cleanup = true`, `onComplete = fn`, `onAbort = fn`. |
-| `stopSequence(opts)` | `true, nil` | Halts active sequence immediately and triggers `onAbort`. If `cleanup = true`, clears sequence-owned elements. |
-| `skipSequence()` | `true, nil` or `false, err` | Fast-forwards remaining instant steps to land safely on intended final scene state. |
-| `advanceSequence()` | `true, nextStep` or `false, err` | Unblocks player input barriers (`waitInput`) or fast-forwards timed waits. |
-| `getSequence()` | `table` or `nil` | Query sequence progress (`stepIndex`, `totalSteps`, `waitingInput`, `currentAction`, `skippable`). |
-
-**Supported Sequence Actions**:
-- `show` / `hide`: Background scenes and transitions (supports `wait = true`).
-- `actor` / `clearActor` / `clearActors`: Cast staging (supports `wait = true`).
-- `bubble` / `hideBubble`: Anchored dialogue bubbles.
-- `subtitle` / `clearSubtitle`: Cinematic letterbox narration.
-- `emote` / `clearEmote`: Floating reaction emotes.
-- `shake` / `stopShake`: Screen camera trauma (supports `wait = true`).
-- `flash`: Momentary combat strobe pulse (supports `wait = true`).
-- `tint` / `clearTint`: Ambient color grading (supports `wait = true`).
-- `vignette` / `clearVignette`: Restomod framing masks (supports `wait = true`).
-- `weather` / `clearWeather`: Atmospheric particle simulation.
-- `battle`: Decoupled combat transition (halts progression until battle concludes).
-- `wait`: Timed pause `{ action = "wait", duration = 0.5 }`.
-- `waitInput`: Player button prompt barrier `{ action = "waitInput" }`.
-- `call`: Custom script callback `{ action = "call", fn = function(api, seq) ... end }` (pcall-guarded).
-
-```lua
-betterScenes.playSequence({
-  { action = "show", scene = "dock_scene", transition = "crossfade", duration = 0.5, wait = true },
-  { action = "actor", slot = "left", path = "assets/oak.png", transition = "fade", wait = true },
-  { action = "bubble", speaker = "left", text = "Are you ready for your journey?" },
-  { action = "waitInput" },
-  { action = "hideBubble" },
-  { action = "weather", type = "rain", count = 25 },
-  { action = "shake", intensity = 4, duration = 0.5, wait = true },
-}, {
-  skippable = true,
-  cleanup = true,
-})
-```
-
-#### 5. 320×180 Stage FX & Camera Dynamics
-
-Atmospheric effects run natively in 320×180 integer space before scaling, preserving crisp pixel-art restomod visuals without subpixel blur.
-
-| Function | Returns | Description |
-| :--- | :--- | :--- |
-| `shakeScreen(opts)` | `true, nil` or `false, err` | Trigger deterministic camera shake. Options: `intensity`, `duration`, `direction` (`"both"`, `"horizontal"`, `"vertical"`), `pixelSnap = true`, `shakeUI = false`. |
-| `stopShake()` | `true, nil` | Immediately cancel active camera shake. |
-| `getShake()` | `table` | Query shake active state, offsets (`offsetX`, `offsetY`), and decay progress. |
-| `setTint(colorOrPreset, opts)` | `true, nil` or `false, err` | Apply full-stage ambient color wash. Presets: `"sunset"`, `"night"`, `"cave"`, `"underwater"`, `"poison"`, `"sepia"`, or custom `{ r, g, b, a }`. Supports smooth fade `duration`. |
-| `clearTint(opts)` | `true, nil` or `false, err` | Clear ambient tint back to neutral with optional fade duration. |
-| `getTint()` | `table` | Query active tint color, alpha, and transition progress. |
-| `flashScreen(colorOrPreset, opts)` | `true, nil` or `false, err` | High-impact momentary pulse. Modes: `"out"` (instant peak, decays to 0), `"inout"` (fades in, peaks at midpoint, decays to 0). Scope: `"stage"` or `"full"`. |
-| `stopFlash()` | `true, nil` | Immediately clear active flash. |
-| `getFlash()` | `table` | Query flash alpha and status. |
-| `setVignette(style, opts)` | `true, nil` or `false, err` | Apply framing mask: `"letterbox"` (top/bottom bars), `"spotlight"` (circle focus on coordinate/slot), `"dither"` (restomod Bayer border fade). |
-| `clearVignette(opts)` | `true, nil` or `false, err` | Clear vignette with optional fade duration. |
-| `getVignette()` | `table` | Query vignette style and alpha. |
-| `setWeather(weatherType, opts)` | `true, nil` or `false, err` | Simulate atmospheric retro particles (`"rain"`, `"snow"`, `"leaves"`, `"cherry_blossom"`, `"embers"`, `"dust"`). Supports isolated deterministic `seed`. |
-| `clearWeather(opts)` | `true, nil` or `false, err` | Clear weather with optional fade duration. |
-| `getWeather()` | `table` | Query weather active state, particle count, and particle positions. |
-
-#### 6. Decoupled Battle Handoff
-
-Seamlessly transition from a narrative cutscene into active combat (`BetterBattle`) using a decoupled, data-only token protocol.
-
-| Function | Returns | Description |
-| :--- | :--- | :--- |
-| `prepareBattleHandoff(opts)` | `true, token` or `false, err` | Generate serializable handoff token and begin pre-battle transition (`"swirl"`, `"blinds"`, `"mosaic"`, `"flash"`, `"cut"`). Snapshots atmosphere (`tint`, `weather`) into combat. |
-| `getBattleHandoff()` | `table` or `nil` | Query active or latest handoff token (`id`, `state`, `storySceneId`, `battleBackdropId`, `battleType`, `transitionProgress`, `outcome`). |
-| `cancelBattleHandoff()` | `true, nil` or `false, err` | Safely cancel handoff prior to combat handoff lock (`state = "cancelled"`). |
-| `resumeFromBattle(resultToken)` | `true, outcome` or `false, err` | Consume combat outcome (`"win"`, `"lose"`, `"flee"`, `"draw"`). Dispatches author callbacks and unblocks paused sequence. |
-
-```lua
--- Trigger battle handoff from cutscene
-betterScenes.prepareBattleHandoff({
-  battleType = "boss",
-  trainerId = "giovanni",
-  battleBackdropId = "boss_giovanni_gym",
-  transition = "swirl",
-  duration = 0.8,
-  onHandoff = function(token)
-    -- BetterBattle consumes the token and starts combat
-  end,
-  onWin = function(api, result)
-    -- Play victory cutscene upon return
-    api.showBubble("left", "You have bested me...", { style = "speech" })
-  end,
-})
-
--- When combat concludes, BetterBattle resumes the story:
-betterScenes.resumeFromBattle({
-  handoffId = "bh_1",
-  outcome = "win",
-})
-```
-
-#### 7. Diagnostics
-
-`betterScenes.diagnostics()` returns a detached, comprehensive snapshot of stage activity:
-- `active`: Boolean indicating if any visual element, transition, sequence, or effect is live.
-- `state`: `"inactive"`, `"plain"`, or `"image"`.
-- `sceneId`, `underlay`, `assetPath`: Active scene and underlay configuration.
-- `actors`: Table of all currently staged actors (including coordinates, scaling, mirroring, and `shadowState` telemetry: `mode`, `context`, `profileId`, `profileVersion`, `schemaVersion`, `sourceSpace`, `anchor`, `shapes`).
-- `bubble`, `subtitle`, `emotes`: Active dialogue and reaction elements.
-- `sequence`: Active sequence status and step indices.
-- `shake`, `tint`, `flash`, `vignette`, `weather`: Active camera and atmosphere FX.
-- `battleHandoff`: Active or last battle handoff token state.
+The [sequence action guide](https://github.com/syybott/Gen1Better/wiki/BetterScenes#6-declarative-sequences) documents aliases and option nesting. Actor action transitions must be in `step.opts`. Emote actions do not block on wait=true. Use a call step for `stopFlash`.
 
 ## 8. Options-screen marker
 
@@ -855,12 +788,11 @@ end
 ```
 
 Add the marker to your actual factory or instance, retaining its existing draw
-and input methods. BetterMenus propagates the factory marker for screens built
+and input methods. Gen1Better propagates the factory marker for screens built
 through `Screens.build` / `Screens.push`; manually pushed instances should carry
-the marker themselves. This identifies options-style layout behavior. It is not
-an automatic opt-in to Menu Scale. No BetterMenus dependency is required.
+the marker themselves. This identifies options-style layout behavior and automatically opts the screen into Menu Scale in the eligible overworld/menu path. `BetterMenusScaleEligible = true` also opts in. No Gen1Better dependency is required.
 
-See [Mod Options Screen Compatibility](Mod-Options-Screen-Compatibility.md).
+See [Mod Options Screen Compatibility](https://github.com/syybott/Gen1Better/wiki/Mod-Options-Screen-Compatibility).
 
 ## 9. Party actions and BetterPC helpers
 
@@ -901,34 +833,41 @@ The active BetterPC instance (`state.betterPCUI == true`) exposes colon methods:
 
 Resolve the active BetterPC screen before calling these methods.
 
-Other exports are `betterParty` and `betterBag` screen factories, plus
+Other exports are `betterParty`, `betterPokedex`, `betterModManager`, `betterOptions`, and `betterBag` screen factories, plus
 `betterBagInventoryLimits` with `slots` and `stack`. Prefer the engine's registered
 `PartyMenu` / `BagMenu` screens for ordinary navigation so settings-based routing
 continues to apply. BetterPC is routed through the registered `BoxMenu`; there is
-no top-level `betterPC` export in this source.
+no top-level `betterPC` or `betterTrainerCard` export. The trainer card uses its registered screen routing.
+
+### Exported screen factories
+
+| Export | Entry points |
+| --- | --- |
+| `betterParty` | `new(game, opts)` |
+| `betterPokedex` | `new(game, opts)` |
+| `betterBag` | `new(game, opts)` |
+| `betterModManager` | `new(game, ...)`, forwarding the registered mod-manager screen arguments. |
+| `betterOptions` | `new(game, opts)`; `wrapStartItem(game, items, enabled, onError)`; TABS and CATEGORY tables. |
+
+`betterOptions.wrapStartItem` wraps the OPTION Start Menu entry and returns nil. Pass an `enabled()` callback and optional `onError(error)` callback. Its factory supports `opts.onCancel`. Prefer registered screen navigation for ordinary use; directly constructing a factory bypasses the routing decision that selects classic or Better interfaces.
 
 ## Existing provider bridges and limits
 
-BetterMenus installs compatibility bridges for Gender Mod and staged providers
-at `game.ready`. Staged bridges discover provider exports with
-`api.lib.require("OverworldBattle")` and a `hudTexture` function. These are
-implementation-specific adapters, not a general public HUD-texture hook. A new
-provider should use the ownership hook and exported HUD API above instead of
-assuming a private bridge will match its geometry or palette layout.
+Integrate new renderers through the public ownership hook, geometry providers, and exported HUD API. An existing companion integration does not define a general interface for another mod's private textures or internal functions.
 
 The provider claim controls layout ownership; it does not promise universal
 recoloring of arbitrary third-party textures. Known provider bridges can apply
-BetterMenus palette coverage separately even when BetterBattle's layout yields.
+Gen1Better palette coverage separately even when BetterBattle's layout yields.
 
-BetterMenus also wraps engine hooks including `render.compose`, `render.letterbox`,
+Gen1Better also wraps engine hooks including `render.compose`, `render.letterbox`,
 `render.hud`, `render.zones`, `battle.overlay`, `screen.render_visible`,
 `ui.options.rows`, and `ui.start_menu.items`. Preserve their engine contracts and
-chain with `next`; they are not interchangeable with the BetterMenus hooks.
+chain with `next`; they are not interchangeable with the Gen1Better hooks.
 
 ## Compatibility testing
 
 When testing compatibility with other mods, verify behavior across standard in-game states:
-check your provider active and inactive, BetterBattle ON and OFF, fishing versus
+check your provider active and inactive, each BetterBattles/BetterBattle UI combination, fishing versus
 surfing, nickname entry, and menu overlays. An inactive 2D backdrop while your 3D
-provider owns the frame is expected. Use the [Diagnostics API](Battle-Backdrops.md#diagnostics)
+provider owns the frame is expected. Use the [Diagnostics API](https://github.com/syybott/Gen1Better/wiki/Battle-Backdrops#diagnostics)
 to inspect the active scene state and verify whether the backdrop is drawn.

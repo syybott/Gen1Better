@@ -208,10 +208,10 @@ Preserve explicit `false` values where the contract gives `false` distinct meani
 
 Use the documented registration and validation functions (`registerArtistScene`, `registerScene`, `validateSceneConfig`, `setScene`, `refresh`).
 
-- **16:9 (`320×180`) artwork requirement**: All 2D battle backdrops and full-stage scene images must be `320×180` pixels (16:9 aspect ratio). Non-`320×180` backdrop images are rejected at registration.
+- **16:9 (`320×180`) artwork requirement**: All 2D battle backdrops and full-stage scene images must be `320×180` pixels (16:9 aspect ratio). Loaded battle Images with incorrect dimensions raise an assertion at registration; battle paths/factories are checked when loaded. BetterScenes checks measurable loaded images and readable paths, but successful path registration does not prove file availability. Validate artwork before distribution.
 - **Representation and types**: Follow the public contract for field types. `registerArtistScene` and `validateSceneConfig` accept numeric strings (such as `"0.85"` or `"-4"`) for numeric fields and normalize them automatically, while boolean fields like `shadows.enabled` strictly require a real boolean (`true` or `false`).
 - **Custom metadata**: You may include custom extension keys inside a scene's `shadows` table; `validateSceneConfig` preserves unrecognized keys so your own hooks or tools can read them back via `shadowSettings.sceneConfig(sceneId)`.
-- **Atomic error handling**: Registration and transition functions return `(true, result)` on success or `(false, err)` on validation/collision/reservation failure. Always check the returned tuple and surface or handle errors cleanly rather than assuming registration succeeded.
+- **Method-specific error handling**: Check each documented return. Expected registration/transition failures commonly return `false, err`, but loaded battle-image assertions and malformed input can raise errors. Direct `shadowSettings.registerScene` does not validate and returns a live entry; species/context setters can return nil. Validate shadow input explicitly rather than assuming a universal tuple or validation guarantee.
 
 ## Working within the public API boundary
 
@@ -233,6 +233,8 @@ Before writing code in a consuming mod, answer:
 - Which values belong in shared species/scene registrations and which belong in local context or instance overrides?
 - Are context (`player` / `enemy` / `scene`), source transform, coordinate space, and stage placement kept separate?
 - Are all edits strictly confined to the user's consuming mod or tool?
+
+For BetterScenes, drive `update(dt)`, forward input, scope your assets through `mod.assets`, and explicitly clean up on completion/skip. Battle handoff callbacks carry data; your mod owns encounter startup and result reporting.
 
 Read the relevant Gen1Better wiki documentation and public API contracts rather than reverse-engineering internal files. Keep artist-facing explanations in artist-facing terms (actors, stages, backdrops, ledges, profiles, shadows, transforms, providers, and overrides).
 

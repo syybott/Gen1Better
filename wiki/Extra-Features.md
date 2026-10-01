@@ -1,83 +1,108 @@
-# Extra Features: Start Menu, Favorites, Palettes, and UI Choices
-
-Gen1Better keeps the original Gen 1 menu structure and adds optional widescreen interfaces, BetterPC, BetterParty, BetterBag, BetterBattle, and the BetterScenes cinematic staging system. The extra controls are available from the in-game Start Menu.
+# Extra Features and Options
 
 ## Open the Gen1Better options
 
-1. Enter the game and press **START**.
-2. Select **OPTION**, then **EXTRAS**.
-3. Select **Gen1Better**.
+Open **START → OPTION → EXTRAS → Gen1Better**. With BetterOptions enabled, focus the Gen1Better row and press **A** to enter its settings pane; press **B** to return to the mod list. The classic options route remains available when BetterOptions is off.
 
-The Gen1Better settings include the menu palette, frames, and interface switches. Press **A** to focus its settings, use **UP/DOWN** to select a row and **LEFT/RIGHT** to change a value, and press **B** to return to the Extras list.
+BetterOptions groups the game's settings into **SPEED**, **VIDEO**, **GRAPHICS**, **AUDIO**, **BATTLE OPTIONS**, **CONTROLS**, **EXTRAS**, and **MODS**.
 
-## Favorite and pin Start Menu entries
+## All Gen1Better settings
 
-BetterMenus lets you pin frequently used Start Menu entries.
+| Option | Saved key | Default | What it changes |
+| --- | --- | --- | --- |
+| **BetterFrames** | `better_frames` | **OG DEFAULT** (`og:default`) | Frame artwork for menus, dialogue, location popups, and battle boxes. |
+| **MENU PALETTE** | `palette` | **SOULSILVER** (`soulsilver`) | Menu and panel colors, subject to the game's CLASSIC palette lock. |
+| **Inverse** | `inverse` | **OFF** | Reverses the menu palette's light-to-dark order when the palette is unlocked. |
+| **BetterPC** | `modern_pc_ui` | **ON** | Responsive Pokémon storage. |
+| **BetterParty** | `modern_party_ui` | **ON** | Responsive party screen. |
+| **BetterPokedex** | `modern_pokedex_ui` | **ON** | Responsive Pokédex. |
+| **BetterTrainerCard** | `better_trainer_card` | **ON** | Responsive trainer card. |
+| **BetterBag** | `modern_bag_ui` | **ON** | Pocket-based bag interface. Expanded inventory limits apply independently. |
+| **BetterModManager** | `better_mod_manager` | **ON** | Responsive mod manager. |
+| **BetterOptions** | `better_options` | **ON** | Tabbed game options screen. |
+| **Menu Scale** | `menu_scale` | **100%** (`100`) | 100%, 90%, 80%, or 70% for eligible compact menus and dialogue. The seven responsive interfaces keep their own sizing. |
+| **BetterBattles** | `better_battles` | **ON** | Gen1Better's 2D battle stage and backdrops. Requires WIDE + EXTENDED. |
+| **BetterBattle UI** | `better_battle_ui` | **ON** | BetterBattle's status, command, and move panels. Requires WIDE + EXTENDED. |
+| **BetterAnimations** | `better_animations` | **ON** | Enhanced move animations in the supported battle rendering path. |
+| **Marquee Text** | `marquee_text` | **ON** | Scrolls labels that do not fit. |
+| **Pokédex Indicator** | `pokedex_indicator` | **DEFAULT** (`default`) | BetterBattle's caught marker: OFF, DEFAULT (menu palette), or RED. |
 
-1. Open the Start Menu with **START**.
-2. Highlight the entry you want to pin.
-3. Press **SELECT**.
+These are defaults for the current option schema. Saved choices take precedence. Battle layout checks can turn both battle toggles off, so set WIDE + EXTENDED before enabling them.
 
-A heart appears beside a favorite entry, and favorite entries move to the top of the menu. Press **SELECT** again to unpin the highlighted entry.
+## Changes since 1.1.2
 
-Use the game's **SAVE** entry after changing favorites. The favorite list is part of the saved game data; unsaved changes can be lost when the game closes or the save is reloaded.
+The exposed settings grew from seven to sixteen. Review your settings after updating:
 
-The **ITEM** entry has its own favorite list:
+- **Modern PC UI** is now labeled **BetterPC**; its saved key remains `modern_pc_ui` and its default changed from OFF to ON.
+- **Modern Bag UI** is now labeled **BetterBag**; its saved key remains `modern_bag_ui`.
+- The **Modern Battle UI** ON/OFF/MOD selector (`modern_battle_ui`) was replaced by **BetterBattles** and **BetterBattle UI**, each an ON/OFF toggle. MOD is no longer a selectable setting. Review both new toggles after upgrading; do not rely on the old selector to configure them.
+- **BetterFrames**, **BetterParty**, **BetterPokedex**, **BetterTrainerCard**, **BetterModManager**, **BetterOptions**, **Menu Scale**, and **BetterAnimations** are additional settings.
+- **MENU PALETTE**, **Inverse**, **Marquee Text**, and **Pokédex Indicator** retain their saved keys. The menu palette now has 52 choices, including ten FireRed frame palettes.
 
-1. Open **START > ITEM**.
-2. Highlight an item.
-3. Press **START** to favorite or unfavorite it.
+## Favorites
 
-Favorite items move to the top and are marked with a heart. **SELECT** continues to provide the bag's item-sorting action.
+Highlight a Start Menu entry and press **SELECT** to pin or unpin it. Favorites show a heart and move to the top. In BetterBag, **START** toggles an item's favorite status and **SELECT** invokes sorting.
 
-## Choose the game palette
+Favorites are saved with your game. Use **SAVE** to retain changes when reloading.
 
-The engine's palette choice and Gen1Better's menu palette are separate settings.
+## Choose the game's palette
 
-To choose the game's palette:
+Open **OPTION → GRAPHICS → COLORS** to preview the game's palette over the overworld. Browse with the directional controls, press **A** or **START** to keep the preview, and press **B** to cancel.
 
-1. Open **OPTION**.
-2. Open **GRAPHICS**.
-3. Open **COLORS**.
-4. Choose the palette category and color you want while viewing the overworld. If Groovy Palette & Frames is installed, first choose **DEFAULT** or **GROOVY**.
+When Groovy Palette & Frames is installed, this game-palette browser offers **DEFAULT** and **GROOVY** categories. Gen1Better's menu themes are built in; they do not require that companion mod.
 
-The upstream screen provides **FULL COLOR**, **SINGLE COLOR**, **GREYSCALE**, **MONOCHROME**, and **OG** categories. The **OG** category contains the familiar Game Boy, Red, Blue, Yellow, SGB, and related original-style modes supplied by Gen1Recomp.
+## Choose a Gen1Better menu palette
 
-That setting controls the game's normal palette selection. It is separate from the Gen1Better menu-palette choice below.
+**MENU PALETTE** controls menus separately from the game's overworld palette. Its 52 choices are:
 
-## Choose a BetterMenus menu palette
+- **GAME BOY**, **BLACK AND WHITE**, **OG RED**, **ADVANCED**, **SGB**, **SOULSILVER**, **HEARTGOLD**, **FIRERED**, **FR 1–FR 10**, **LEAFGREEN**, **CRYSTAL**, and **EMERALD**.
+- **AMIGA WB**, **AMIGA DP**, **C64**, **SPECTRUM**, **CGA**, **APPLE2**, **POCKET**, **GB LIGHT**, **VIRTUAL BOY**, **AMBER**, **PHOSPHOR**, **PLASMA**, **RAINBOW**, **ACID**, **FUSCHIA**, **SUNSET**, **OCEAN**, **FOREST**, **LAVA**, **ICE**, **CANDY**, **VAPOR**, **NEON**, **TOXIC**, **SEPIA**, **NOIR**, **CHERRY**, **MIDNIGHT**, **GOLD**, **MINT**, and **GRAPE**.
 
-1. Open **START > OPTION > EXTRAS > Gen1Better**.
-2. Select **MENU PALETTE** and choose a palette. The choices include `SOULSILVER`, `HEARTGOLD`, `FIRERED`, `LEAFGREEN`, `CRYSTAL`, `EMERALD`, Game Boy themes, numbered FireRed frame palettes, and Groovy entries.
+Names above match the displayed choices, including **FUSCHIA**. The **Inverse** toggle reverses an unlocked menu palette.
 
-Choose **BetterFrames** in the same list to change the menu frame.
+### CLASSIC palette lock
 
-The menu palette applies to the widescreen menu border, dialogue frames, BetterPC, BetterParty, BetterBag, and BetterBattle's menu overlays.
+When the game uses its classic/OG palette without a custom palette or ramp, the menu palette row displays **CLASSIC**. Menus follow the game's colors, Inverse is ignored, and BetterFrames offers only its OG category.
 
-### Keep the original game palette on the menus
+Selecting MENU PALETTE asks whether to switch the game's palette to **ADVANCED**. **YES** changes the game palette and opens the menu palette picker; **NO** keeps CLASSIC. There is no separate UNLOCK setting.
 
-If you want the classic Game Boy, Red, Blue, or Yellow palette to remain in control of the menus, leave Gen1Better's existing menu-palette override/unlock gate **disabled**. Gen1Better will then leave those menu colors to the upstream palette selected under **OPTIONS > GRAPHICS > COLORS**.
+## Choose BetterFrames
 
-When the gate is enabled, selecting a BetterMenus or Groovy entry allows that menu palette to color Gen1Better-owned menus and panels. The gate may be shown as **UNLOCK MENU PALETTE** in the mod options.
+The supplied frame catalog contains 26 choices across three categories:
 
-The **Inverse** switch reverses the selected four-color menu ramp. It changes the light and dark order without changing the menu layout.
+| Category | Choices | Colors |
+| --- | --- | --- |
+| OG | DEFAULT and OG 1–OG 6 | Game Boy frame artwork; DEFAULT keeps the game's current frame. |
+| HYBRID | HYBRID 1–HYBRID 9 | Follows the menu palette while retaining the Poké Ball colors in the Poké Ball design. |
+| FR | FR 1–FR 10 | FireRed artwork and frame colors. |
 
-## Choose BetterPC, BetterParty, BetterBag, BetterBattles, and BetterBattle UI
+The displayed numbers enumerate available designs; they are not the source asset's box number. Dialogue and location popups use matching artwork. CLASSIC restricts the picker to OG.
 
-Gen1Better itself supplies the widescreen menu layer. The BetterPC, BetterParty, BetterBag, BetterBattles, and BetterBattle UI options select their respective interfaces. Turn off the Better option for any screen where you want Gen1Better's Game Boy-style widescreen presentation:
+## Choose BetterBattles and BetterBattle UI
 
-| Setting | OFF keeps |
-| --- | --- |
-| **BetterPC** | Gen1Better's widescreen classic Bill's PC interface |
-| **BetterParty** | Gen1Better's widescreen classic Party menu |
-| **BetterBag** | Gen1Better's widescreen classic bag/list interface, including its larger visible item list |
-| **BetterBattles** | Classic battle background without 320×180 pixel-art backdrops, sprite shadow engine, or scene transitions |
-| **BetterBattle UI** | The upstream WIDE battle presentation (or installed custom battle UI mod) with Gen1Better palette coverage |
+Set **BATTLE LAYOUT → WIDE** and **BATTLE HUD → EXTENDED** first. Then choose the two Gen1Better toggles independently:
 
-With Gen1Better enabled and these options set to **OFF**, you get the Game Boy-style Gen1Better widescreen presentation with BetterPC, BetterParty, BetterBag, BetterBattles, and BetterBattle UI disabled.
+| BetterBattles | BetterBattle UI | Result |
+| --- | --- | --- |
+| ON | ON | Gen1Better's 2D stage and BetterBattle panels. |
+| ON | OFF | Gen1Better's 2D stage with the game's battle interface. |
+| OFF | ON | BetterBattle panels over the available battle scene. |
+| OFF | OFF | The game's battle presentation. |
 
-The BetterMenus options also include:
+An active external battle scene provider takes priority over the 2D stage. Providers can separately allow or suppress BetterBattle's panels. Installing an inactive provider does not by itself suppress the stage.
 
-- **Menu Scale**: scales supported stock menus. BetterPC, BetterParty, BetterBag, and Gen1Better's own responsive screens keep their responsive size.
-- **Marquee Text**: enables or disables scrolling for labels that do not fit in a menu row.
-- **Pokédex Indicator**: chooses **OFF**, **DEFAULT**, or **RED** for the caught-Pokémon marker used by BetterBattle.
+Both toggles require WIDE + EXTENDED. Incompatible layout changes turn both OFF. Turn **both** OFF before selecting the Standard HUD. An external provider's effective MOD mode is automatic; it is not a picker choice.
+
+Quality of Life's separate XP bar and caught indicator settings are written OFF when BetterBattle UI is enabled or the game uses WIDE + EXTENDED. Turning those conditions off does not automatically restore the companion settings; re-enable them manually if wanted.
+
+Use battle sprites with a correct transparency mask: the background must be transparent, while the Pokémon, including white body areas, remains opaque.
+
+## Menu Scale and animations
+
+**Menu Scale** offers 100%, 90%, 80%, and 70%. Eligible compact menus and dialogue use this setting. BetterPC, BetterParty, BetterPokedex, BetterTrainerCard, BetterBag, BetterModManager, and BetterOptions retain their responsive sizing.
+
+**BetterAnimations** chooses enhanced move animation rendering in the supported field renderer. Turning it off selects the original animation path.
+
+**Marquee Text** scrolls labels that do not fit. **Pokédex Indicator** selects OFF, DEFAULT, or RED for BetterBattle's caught marker.
+
+See [Provider and Mod Compatibility](https://github.com/syybott/Gen1Better/wiki/Compatibility) for integration rules and [Mod Options Screen Compatibility](https://github.com/syybott/Gen1Better/wiki/Mod-Options-Screen-Compatibility) for custom settings screens.

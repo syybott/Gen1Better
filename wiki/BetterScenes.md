@@ -1,450 +1,316 @@
-# BetterScenes: Cinematic Story Cutscenes & Narrative Staging
+# BetterScenes: Cinematic Cutscenes
 
-BetterScenes provides a dedicated 16:9 widescreen story stage (320×180 native integer-scaled pixels) decoupled from combat states in Gen1Recomp. It allows modders and story authors to create narrative cutscenes, character staging, comic dialogue bubbles, camera effects, atmospheric weather, and seamless transitions into battle.
+BetterScenes is Gen1Better's 320×180 story stage outside combat. It provides backdrops, actors, shadows, dialogue, sequences, effects, and a callback-based battle handoff. The consuming mod supplies its assets, trigger, update controller, input forwarding, and encounter logic.
 
----
+## 1. Authoring and display
 
-## 1. The 320×180 Restomod Hard Wall
+Author story backdrops at **320×180**. The stage fits the viewport with `min(viewportWidth / 320, viewportHeight / 180)`. At full 16:9 sizes, 720p, 1080p, 1440p, and 2160p correspond to 4×, 6×, 8×, and 12×. Other window sizes can produce fractional scales.
 
-All BetterScenes backdrops, actor positions, and atmospheric effects operate within an exact **320×180 canvas coordinate space** before integer-scaling to modern widescreen displays:
+Nearest filtering and pixel snapping preserve hard edges where possible. They do not guarantee uniform integer-sized pixels at every window size. Actors can have arbitrary source-image dimensions; their placement uses the 320×180 stage.
 
-- **720p**: $180 \times 4 = 720$ ($4\times$ integer scale)
-- **1080p**: $180 \times 6 = 1080$ ($6\times$ integer scale)
-- **1440p**: $180 \times 8 = 1440$ ($8\times$ integer scale)
-- **4K (2160p)**: $180 \times 12 = 2160$ ($12\times$ integer scale)
+Use `mod.assets:image("assets/scene.png")` or `mod.assets:path("assets/scene.png")` for assets belonging to your mod. `registerScene(..., mod)` uses the mod for ownership and collision checks; it does **not** resolve a bare path relative to that mod. The same rule applies to actor paths and variant paths.
 
-Because every visual element is calculated in native 320×180 units with nearest-neighbor integer sampling, artwork retains crisp pixel edges without subpixel blurring, scaling distortion, or mismatched resolutions.
+## 2. Quickstart: your first cutscene
 
----
+Create a standalone mod with your own 320×180 backdrop and actor image:
 
-## 2. Quickstart: Your First Cutscene
+```text
+my-story/
+├── manifest.json
+├── main.lua
+└── assets/
+    ├── morning_320.png
+    └── guide.png
+```
 
-A complete working narrative cutscene in Lua:
+```json
+{
+  "id": "my-story",
+  "name": "My Story",
+  "version": "1.0.0",
+  "api": 2,
+  "entry": "main.lua",
+  "dependencies": ["gen1-better-menus"]
+}
+```
+
+This entry script registers assets after `game.ready` and exports a trigger for your mod to call with its live game. It owns the stage exclusively for the duration of this demo.
 
 ```lua
 local mod = ...
-local betterScenes = mod.find("gen1-better-menus").exports.betterScenes
 
--- Register custom 320x180 story backdrop:
-betterScenes.registerScene("pallet_morning", {
-  path = "assets/pallet_morning_320.png",
-  underlay = "paper",
-}, mod)
+mod.events:on("game.ready", function()
+  local handle = mod.find("gen1-better-menus")
+  local scenes = handle and handle.exports and handle.exports.betterScenes
+  if not scenes then return end
 
--- Choreograph a story sequence:
-betterScenes.playSequence({
-  -- Fade in the morning scene:
-  { action = "show", scene = "pallet_morning", transition = "crossfade", duration = 0.5, wait = true },
+  local backdrop = mod.assets:image("assets/morning_320.png")
+  local guide = mod.assets:image("assets/guide.png")
+  local registered, reason = scenes.registerScene("my_story_morning", {
+    image = backdrop,
+    underlay = "black",
+  }, mod)
+  if not registered then error("Story scene registration: " .. tostring(reason)) end
 
-  -- Slide Professor Oak onto the stage from the left:
-  { action = "actor", slot = "left", path = "assets/oak.png", transition = "slide", duration = 0.4, wait = true },
+  mod.exports.playIntro = function(game)
+    if scenes.isActive() then return false, "stage-busy" end
+    local controller = { game = game }
+    local finished = false
 
-  -- Oak speaks using an anchored comic bubble:
-  { action = "bubble", speaker = "left", text = "Hello there! Glad you could make it." },
-  { action = "waitInput" },
-  { action = "hideBubble" },
+    local function finish()
+      finished = true
+      scenes.clearActors({ transition = "cut" })
+      scenes.hideBubble({ transition = "cut" })
+      scenes.clearSubtitle({ transition = "cut" })
+      scenes.clearEmote()
+      scenes.hide({ transition = "cut" })
+      if game.stack:top() == controller then game.stack:pop() end
+    end
 
-  -- Surprise emote puff over Oak's head:
-  { action = "emote", target = "left", type = "exclamation", duration = 1.0, wait = true },
+    function controller:update(dt)
+      if finished then
+        if game.stack:top() == self then game.stack:pop() end
+        return
+      end
+      local sequence = scenes.getSequence()
+      if game.input:wasPressed("b") then
+        scenes.skipSequence()
+      elseif sequence and sequence.waitingInput and game.input:wasPressed("a") then
+        scenes.advanceSequence()
+      end
+      scenes.update(dt)
+    end
 
-  -- Cinematic letterbox narration at the bottom:
-  { action = "subtitle", text = "A mysterious Pokémon cried out in the tall grass..." },
-  { action = "waitInput" },
-  { action = "clearSubtitle" },
+    -- Gen1Better draws the active story stage; do not draw it a second time.
+    function controller:draw() end
 
-  -- Smoothly clear stage and return screen to player:
-  { action = "hide", transition = "crossfade", duration = 0.4, wait = true },
-}, {
-  skippable = true,
-  cleanup = true,
+    game.stack:push(controller)
+    local ok, result = scenes.playSequence({
+      { action = "show", scene = "my_story_morning",
+        opts = { transition = "crossfade", duration = 0.4 }, wait = true },
+      { action = "actor", slot = "left",
+        config = { image = guide, shadow = true },
+        opts = { transition = "slide", duration = 0.4 }, wait = true },
+      { action = "bubble", speaker = "left", text = "A new journey begins." },
+      { action = "waitInput" },
+    }, { cleanup = true, onComplete = finish, onAbort = finish })
+    if not ok then finish() end
+    return ok, result
+  end
+end)
+```
+
+After `game.ready`, invoke your exported `playIntro(game)` from your mod's chosen interaction or event. This example does not automatically run on startup.
+
+Gen1Better supplies drawing when `isActive()` is true. It does not automatically call `update(dt)` or map buttons to advance/skip. Timeline waits, handoff timing, weather, and effects require updates. Some scene and actor transitions also use elapsed wall-clock time during drawing; this does not replace the update controller.
+
+Only forward A to `advanceSequence()` when `waitingInput` is true if A should acknowledge dialogue. That method can also clear a timed wait and advance its step.
+
+## 3. Scene presentation and underlays
+
+```lua
+local ok, id = scenes.show("my_story_morning", {
+  transition = "crossfade",
+  duration = 0.5,
 })
+scenes.show(false, { underlay = "black" })
+scenes.hide({ transition = "crossfade", duration = 0.35 })
 ```
 
----
+`show` and `hide` accept **cut**, **crossfade**, or **flash**. Their default transition is cut; a non-cut transition defaults to 0.35 seconds. `fade` is an actor/dialogue transition, not a scene transition.
 
-## 3. The 6 Choreography Systems
+Underlays are **black**, **paper**, or **transparent**. `current()` returns a scene ID, false for an active underlay, or nil without a current background.
 
-### 1. Scene Presentation & Underlays
+`hide()` clears the background and underlay presentation. It does not clear actors, bubbles, subtitles, emotes, effects, or sequences. Those resources can keep the stage active.
 
-Display full-color 320×180 pixel-art story backdrops or pure solid underlays:
+Loaded images with measurable dimensions are checked at registration. Path-based checking depends on the path being readable; registration success alone does not prove that a file exists or will draw correctly. Handle returns and validate assets before distribution.
+
+## 4. Theatrical actor staging
+
+Built-in slots use these feet positions:
+
+| Slot | X | Y | Default mirror |
+| --- | --- | --- | --- |
+| left | 70 | 155 | false |
+| center | 160 | 155 | false |
+| right | 250 | 155 | true |
+
+Custom slots require both `x` and `y`. Actor coordinates use the feet/bottom-center origin. Anchors are offsets from this origin, scaled and mirrored with the actor. Default anchors are **top (0, −48)**, **head (0, −36)**, and **mouth (0, −26)**.
 
 ```lua
--- Present an authored image with a crossfade or flash transition:
-betterScenes.show("pallet_morning", { transition = "crossfade", duration = 0.5 })
-
--- Present an active underlay without an image (blackout, psychic void, or palette paper):
-betterScenes.show(false, { underlay = "black" })
-
--- Cleanly exit and return screen ownership to the game:
-betterScenes.hide({ transition = "fade", duration = 0.35 })
-```
-
-Supported underlays:
-- `"black"`: Solid black backing (night, deep caves, space, blackouts).
-- `"paper"`: Reactive to the user's selected menu palette paper tone.
-- `"transparent"`: Clear outer pass letting underlying world layers remain visible.
-
-Supported transitions:
-- `"cut"`: Immediate instant switch.
-- `"crossfade"`: Smooth alpha dissolve between scenes or underlays.
-- `"flash"`: Momentary high-impact combat whiteout pulse.
-
----
-
-### 2. Theatrical Actor Staging
-
-Actors are positioned in 320×180 stage space using a bottom-center / feet origin:
-- **Feet-based origin $(x, y)$**: Staging an actor at $(80, 150)$ means their feet touch $y = 150$, keeping sprites grounded naturally regardless of height.
-- **Preset slots**: Predefined positions for rapid choreography:
-  - `"left"`: $(64, 150)$, faces right by default.
-  - `"center"`: $(160, 150)$, faces right by default.
-  - `"right"`: $(256, 150)$, automatically mirrored to face left.
-- **Custom slots**: Define any custom position: `{ x = 120, y = 140, mirror = false, scale = 1.0 }`.
-- **Relative anchors**: Define `mouth`, `head`, and `top` relative to the sprite bounds. Anchors automatically mirror and scale with the actor.
-- **Transitions**: Enter and exit with `"cut"`, `"fade"`, or directional `"slide"`.
-
-```lua
--- Stage a trainer on the left and a legendary Pokémon on the right:
-betterScenes.setActor("left", {
-  path = "assets/red.png",
-  mirror = false,
-  anchors = { mouth = { x = 16, y = 14 }, head = { x = 16, y = 4 } },
-}, { transition = "fade", duration = 0.3 })
-
-betterScenes.setActor("right", {
-  path = "assets/mewtwo.png",
-  mirror = true,
-  scale = 1.0,
-}, { transition = "slide", duration = 0.5 })
-
--- Clear an actor from stage:
-betterScenes.clearActor("left", { transition = "fade", duration = 0.25 })
-```
-
-#### Actor Shadows & Floor Contact
-
-BetterScenes uses the general-purpose Actor Shadow Engine (`schemaVersion = 2`, `profileVersion = 1`) to render floor-contact shadows beneath staged actors. An actor can use an arbitrary image and per-instance shadow configuration without having a species identity. The built-in 151 Pokémon profiles are optional presets.
-
-BetterScenes and BetterBattle share footprint measurement, anchor selection,
-profile resolution, authored and detected shape evaluation, dynamic callbacks,
-source-space conversion, mirroring, scaling, and shadow rendering. BetterScenes
-retains control of actor placement, the effective pose or size variant, transitions,
-stage scaling, and draw order.
-
-- **Optional Species Profiles**: Specify `species = "POKEMON_NAME"` (e.g. `"CHARIZARD"` or `"PIKACHU"`) to select shared species-level preset values. Species-level tuning is shared with BetterBattle, while `player`, `enemy`, and `scene` overrides remain presentation-context-specific and never cross-inherit.
-- **Explicit Disabling**: Pass `shadow = false` to suppress ground shadows (e.g. for ghosts, levitating psychics, or airborne entities).
-- **Custom Shadow Schema**: Pass a configuration table in `shadow = { ... }` to customize shadow dimensions, tint, opacity, or feathering:
-
-For a species-backed actor, each value resolves in this order:
-
-```text
-actor instance override
--> species scene override
--> species-level value
--> global default
-```
-
-The `scene` table is optional and normally omitted. Use it only when a species
-requires cutscene-specific calibration. A BetterScenes actor never inherits
-`player` or `enemy` overrides.
-
-| Property | Type | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `enabled` | boolean | Enable or suppress floor shadow. | `true` (if `shadow` specified) |
-| `baseWidth` | number | Baseline ellipse width in virtual pixels. | Measured or species baseline |
-| `baseHeight` | number | Baseline ellipse height in virtual pixels. | Measured or species baseline |
-| `widthScale` | number | Multiplier applied to base width. | `1.0` |
-| `heightScale` | number | Multiplier applied to base height. | `1.0` |
-| `offsetX` | number | Horizontal offset from actor feet. | `0` |
-| `offsetY` | number | Vertical offset from actor feet contact. | `0` |
-| `rotationDegrees` | number | Stance tilt angle in degrees. | `0` |
-| `opacity` / `alpha` | number | Base shadow opacity (0.0 to 1.0). | `0.45` |
-| `color` | table | Normalized RGB `{ r, g, b }` for environment tinting. | Black (`nil`) |
-| `grounding` | string | Stance behavior: `"grounded"`, `"hovering"`, `"floating"`, `"flying"`. | `"grounded"` |
-| `sourceSpace` | table | Optional coordinate space `{ width, height, originX, originY }` for source-authored instance data. | Effective image dimensions |
-| `shapeSpace` | string | `"origin"` for actor-relative instance shapes or `"source"` for source-image coordinates. | `"origin"` for instance shapes |
-| `wingShadows` | table | Array of wing regions `{ region = { left, right, top, bottom }, opacity = 0.05 }`. | `nil` |
-| `shadowShapes` | table | Explicit custom shapes (`{ width, height, offsetX, offsetY, alpha, color, ... }`). | `nil` |
-| `innerRing` | table | Core dark contact ring `{ scaleX, scaleY, offsetX, offsetY, alpha }`. | Automatic |
-| `middleRing` | table | Mid-feathering ring `{ scaleX, scaleY, offsetX, offsetY, alpha }`. | Automatic |
-| `soft` | boolean | Enables cosine multi-ring soft edge feathering. | `true` |
-
-#### Staging Coordination & Physics
-- **Floor Contact**: Shadows are anchored directly to the actor's feet coordinates `(x, y)` in 320×180 stage space.
-- **Mirror Tracking**: When an actor is mirrored (`mirror = true`), the shadow's horizontal offsets and tilt angles invert automatically.
-- **Scale Tracking**: When an actor scales (`scale = 1.5`), all shadow dimensions, inner rings, and limb offsets scale in exact proportion.
-- **Alpha Dissolves**: During actor enter/exit fades (`transition = "fade"`), the shadow smoothly dissolves in unison with the sprite's opacity (`currentAlpha`).
-- **Camera Trauma**: Stage camera shake (`shakeScreen`) moves the shadow in perfect lockstep with the character and stage floor.
-- **Pre-Actor Render Pass**: Contact shadows are drawn immediately before actors in stage composition, guaranteeing that the character's feet naturally occlude the ground shadow.
-
-```lua
--- Stage a grounded Pokémon inheriting calibrated species shadow:
-betterScenes.setActor("left", {
-  path = "assets/charizard.png",
-  species = "CHARIZARD",
-  shadow = true,
+scenes.setActor("guide", {
+  image = mod.assets:image("assets/guide.png"),
+  x = 70, y = 155,
+  scale = 1,
+  anchors = { mouth = { x = 0, y = -26 } },
+  shadow = { baseWidth = 12, baseHeight = 3.75, opacityScale = 0.8 },
 }, { transition = "slide", duration = 0.4 })
-
--- Stage a human trainer with custom-authored shadow:
-betterScenes.setActor("center", {
-  path = "assets/red.png",
-  shadow = {
-    baseWidth = 24,
-    baseHeight = 6,
-    offsetY = 1,
-    opacity = 0.4,
-  },
-})
-
--- Stage an ethereal ghost with shadows suppressed:
-betterScenes.setActor("right", {
-  path = "assets/gengar.png",
-  shadow = false,
-}, { transition = "fade", duration = 0.5 })
+scenes.updateActor("guide", { scale = 0.8 })
+scenes.clearActor("guide", { transition = "fade", duration = 0.25 })
 ```
 
-#### Sprite Scaling, LOD Variants & Motion Stability
+Actors accept **cut**, **fade**, or **slide** transitions. `updateActor` merges changes with an existing actor and delegates to `setActor`. Use its third argument for transition options.
 
-Arbitrary fractional downscaling of retro pixel art with nearest-neighbor filtering causes pixel lines to drop out, line weights to warp, and sprites to crawl/shimmer in motion. BetterScenes provides a robust, multi-path scaling subsystem giving artists complete control over visual fidelity:
+`getActorAnchor(slot, name)` resolves configured actor positions, not interpolated enter/exit positions. Plan dialogue after movement has settled.
 
-##### The Two Rendering Paths
-1. **Recommended Pixel-Art Path**:
-   `Variant LOD > Clean Canvas > Nearest`
-   - **Variant LOD (`scaleMode = "variant"` or `"auto"`)**: Hand-authored smaller sprites (e.g. 28×28 for 56×56 originals). Real pixel art hand-drawn for target resolutions will always beat algorithmic downscaling.
-   - **Clean Canvas (`scaleMode = "clean"`)**: Pre-renders the sprite down to an integer target canvas once with nearest-neighbor sampling. Eliminates per-frame resampling jitter and pixel crawling during motion while preserving hard retro outlines.
-   - **Nearest (`scaleMode = "nearest"`)**: Raw GPU nearest-neighbor transform. Best for 1:1 scale or integer upscaling.
-2. **Optional Smoothing Path**:
-   `Variant LOD > Area Canvas > Nearest`
-   - **Area Canvas (`scaleMode = "area"`)**: Downsamples into an integer canvas using linear texture sampling. Yields smoother texel averaging for significant shrinking, but may soften retro pixel outlines. Area mode is an explicit opt-in and is never selected automatically.
+### Actor shadows and floor contact
 
-##### Escape Hatch: Custom Draw Hook
-- **Custom (`scaleMode = "custom"`)**: Invokes `actor.customDraw` or `actor.scaleFn` callback.
-- **Strict Gating**: Custom callbacks are strictly called *only* when `effectiveScaleMode == "custom"`. Attaching a callback to an actor will never alter rendering in `"auto"` or other modes.
-- If the callback returns `true`, BetterScenes assumes the hook drew the actor. If it returns `false` or `nil`, it falls back to `actor.fallbackScaleMode` (default `"nearest"`).
+Use `shadow = true` for the shared shadow engine, `shadow = false` to suppress it, or a configuration table for custom dimensions, tint, gain, offsets, shapes, and detector settings. `species = "CHARIZARD"` selects an optional Pokémon preset; human and arbitrary-image actors need no species.
 
-##### Supported `scaleMode` Values
-| Mode | Behavior | Best Use Case |
-| :--- | :--- | :--- |
-| `"auto"` | Checks matching variant LOD $\to$ clean canvas $\to$ nearest fallback | Recommended default for smart actors |
-| `"variant"` | Strictly resolves hand-authored LOD assets; falls back to clean/nearest if none match | Staging key characters with mini sprites |
-| `"clean"` | Cached integer canvas downscale with nearest filtering (downscale only) | Quick shrink without per-frame shimmer |
-| `"area"` | Cached integer canvas downscale with linear filtering (downscale only) | Optional smoother shrink with softened outlines |
-| `"nearest"` | Direct GPU transform with nearest-neighbor sampling | Default retro behavior / 1:1 scale |
-| `"custom"` | Invokes `actor.customDraw` / `actor.scaleFn` callback | Engine / modder escape hatch |
+For species-backed actors, a value resolves through **actor override → species scene context → species value → default**. The player, enemy, and scene contexts do not cross-inherit.
 
-##### Actor Definition with LOD Bands
-Define `variants` as threshold bands (`maxScale` ascending). When downscaling, BetterScenes chooses the best matching variant:
+The shared defaults include `baseWidth = 12`, `baseHeight = 3.75`, width/height/opacity scales of 1, zero offsets, `grounding = "grounded"`, and `anchorMode = "contact"`. Automatic measurement can adjust the displayed footprint. `anchorMode` supports **contact** and **body**; explicit `manualAnchorX` and `manualContactY` provide source-space calibration. Only **flying** selects special flight behavior; hovering/floating are not distinct implemented modes.
+
+Soft shadows use three ellipse layers, not a cosine falloff. Configure `innerRing` and `middleRing` with **widthScale**, **heightScale**, **offsetX**, and **offsetY**. Ring alpha is fixed by the renderer. Prefer `opacityScale` for gain; `opacity`/`alpha` are optional gain aliases, not a default 0.45 opacity.
+
+Actor-instance source coordinates use the effective image unless `sourceSpace` is specified. Instance shapes default to `shapeSpace = "origin"`; shared species profiles use canonical 56×56 source coordinates. See the [complete shadow schema](https://github.com/syybott/Gen1Better/wiki/Compatibility#unified-shadow-configuration-schema) for shapes, detection sizing, automatic-body policy, and context overrides.
+
+### Sprite scaling and variants
+
+The default scale mode is **nearest** and default pixel snapping is **true**.
+
+| Mode | Behavior |
+| --- | --- |
+| nearest | Direct nearest-neighbor transform. |
+| auto | Select an eligible variant, otherwise clean downscale, otherwise nearest. |
+| variant | Try authored variants, then clean/nearest fallback. |
+| clean | Cache a nearest-filtered canvas at integer target dimensions when shrinking. |
+| area | Cache a linearly sampled canvas when shrinking; can soften pixel edges. This is not a true area-average filter. |
+| custom | Call `customDraw` or `scaleFn`; a truthy result claims drawing. Otherwise use `fallbackScaleMode`, default nearest. |
 
 ```lua
-betterScenes.setActor("oak", {
-  path = "assets/oak.png",      -- Base 56×56 sprite
-  scale = 1.0,
-  scaleMode = "auto",            -- Smart path: variant -> clean -> nearest
-  pixelSnap = true,              -- Integer-snapped drawing prevents edge shimmer
-  fallbackScaleMode = "nearest", -- Fallback if customDraw returns nil in custom mode
-
-  -- Defined as LOD threshold bands:
+scenes.setActor("oak", {
+  image = mod.assets:image("assets/oak.png"),
+  x = 70, y = 155,
+  scale = 0.5, scaleMode = "auto", pixelSnap = true,
   variants = {
-    { maxScale = 0.55, path = "assets/oak_mini.png",   nativeScale = 0.5 },  -- 28×28 asset
-    { maxScale = 0.85, path = "assets/oak_medium.png", nativeScale = 0.75 }, -- 42×42 asset
+    { maxScale = 0.55, image = mod.assets:image("assets/oak_mini.png"), nativeScale = 0.5 },
+    { maxScale = 0.85, image = mod.assets:image("assets/oak_medium.png"), nativeScale = 0.75 },
   },
 })
 ```
 
-##### In-Place Actor Updates & Sequence Actions
-Actors can be updated in-place without re-specifying paths or images:
+Use ascending `maxScale` bands with the correct `nativeScale` for each asset. Clean canvases and pixel snapping reduce repeated fractional resampling; they do not guarantee that every animation is free of pixel changes.
+
+The scale cache defaults to 128 entries with FIFO eviction. `clearScaleCache()` returns true; `setScaleCacheLimit(n)` accepts a positive numeric limit, floors it, and returns `true, limit`. Invalid limits return `false, "invalid-limit"`.
+
+## 5. Dialogue, subtitles, and emotes
 
 ```lua
--- In Lua scripts:
-betterScenes.updateActor("oak", { scale = 0.5 })                        -- Uses mini variant via auto
-betterScenes.updateActor("oak", { scale = 0.65, scaleMode = "clean" })  -- Forces clean canvas
-
--- In declarative cutscene sequences:
-{ action = "actor", slot = "oak", scale = 0.5 },
-{ action = "updateActor", slot = "oak", scale = 0.65, scaleMode = "clean" },
+scenes.showBubble("left", "Welcome!", { style = "speech" })
+scenes.showBubble("right", "Where are we?", { style = "thought" })
+scenes.showBubble("left", "STOP!", { style = "shout" })
+scenes.showBubble("narrator", "Later that evening...")
+scenes.setSubtitle("The journey continues.", { position = "bottom", bar = true })
+scenes.showEmote("left", "exclamation", { duration = 1.5 })
 ```
 
-##### Position Snapping & Shadow Synchronization
-- **`pixelSnap = true`** (default `true`): Snaps final screen coordinates to whole pixels (`math.floor(screenX + 0.5)`). Prevents subpixel edge shimmering as actors move or walk across the stage.
-- **Displayed Dimension Shadows**: Shadow sizing uses displayed dimensions (`resolved.image:getWidth() * math.abs(resolved.sx)`), ensuring shadow contact remains identical across variant, canvas, and nearest renders.
-- **Downscale-Only Rule**: Canvas allocation only occurs when shrinking (`requestedScale < 1.0` and `tw <= iw and th <= ih and (tw < iw or th < ih)`). Never allocates upscaled canvases.
-- **Cache Management**: The internal canvas cache is capped at 128 entries with automatic FIFO eviction. Use `betterScenes.clearScaleCache()` or `betterScenes.setScaleCacheLimit(max)` for manual control.
+Bubbles can target actor anchors or explicit coordinates. Their tails are refreshed by `getBubble()` using the actor's configured position; drawing does not itself refresh the tail against the actor's interpolated movement. Re-show or reposition a bubble after actor movement when needed.
 
----
+Subtitle positions are top, bottom, or center. Subtitles accept bar and align, but no color option. For bubbles/subtitles, duration controls how long they remain visible; fade/pop timing is fixed at 0.2 seconds for bubbles and 0.25 seconds for subtitles. Subtitles accept bar and align, but no color option. For bubbles/subtitles, duration controls how long they remain visible; fade/pop timing is fixed at 0.2 seconds for bubbles and 0.25 seconds for subtitles. Bubbles support cut, fade, and pop; subtitles support cut and fade. Emotes include **exclamation**, **question**, **heart**, **anger**, **sweat**, **dots**, and **music**. A sequence emote step does not block on `wait = true`; add an explicit wait to hold the reaction.
 
-### 3. Comic Dialogue Bubbles, Subtitles & Emotes
+## 6. Declarative sequences
 
-#### Anchored Comic Bubbles
-Dynamic dialogue balloons (`speech`, `thought`, `shout`) track the speaker's mouth anchor in real-time. The bubble body is clamped safely inside stage margins ($[4, 4, 316, 176]$) while the tail points accurately to the character's mouth:
+A step uses `action` (or its first array entry). Prefer a nested `config` for actor data and `opts` for method options:
 
 ```lua
--- Speech bubble tracking Oak's mouth:
-betterScenes.showBubble("left", "It's dangerous to go alone!", { style = "speech" })
-
--- Thought cloud above a Pokémon:
-betterScenes.showBubble("right", "...Where did they go?", { style = "thought" })
-
--- High-impact jagged shout balloon:
-betterScenes.showBubble("left", "STOP RIGHT THERE!", { style = "shout" })
-
--- Narrator box centered without a tail:
-betterScenes.showBubble("narrator", "Meanwhile, deep in the Viridian Forest...")
-```
-
-#### Cinematic Subtitles
-Widescreen letterbox subtitles for narration and ambiance:
-
-```lua
--- Bottom letterbox subtitle with backdrop bar:
-betterScenes.setSubtitle("Deep inside the ruins, a strange energy pulses.", {
-  position = "bottom",
-  bar = true,
-  color = { 1, 1, 1, 1 },
-})
-
--- Clear subtitle:
-betterScenes.clearSubtitle({ transition = "fade", duration = 0.3 })
-```
-
-#### Floating Reaction Emotes
-Animated floating puffs that bounce dynamically above an actor or coordinate:
-
-```lua
--- Surprise exclamation over Oak:
-betterScenes.showEmote("left", "exclamation", { duration = 1.5 })
-
--- Confused question over player:
-betterScenes.showEmote("center", "question")
-
--- Emote types: "exclamation", "question", "heart", "anger", "sweat", "dots", "music"
-```
-
----
-
-### 4. Declarative Story Sequence Runner
-
-Choreograph complex cutscenes using an ordered array of timeline steps:
-
-```lua
-betterScenes.playSequence({
-  { action = "show", scene = "gym_scene", transition = "crossfade", duration = 0.5, wait = true },
-  { action = "actor", slot = "left", path = "assets/leader.png", transition = "fade", wait = true },
-  { action = "bubble", speaker = "left", text = "So, you've finally arrived." },
+local steps = {
+  { action = "actor", slot = "left",
+    config = { image = mod.assets:image("assets/guide.png") },
+    opts = { transition = "slide", duration = 0.4 }, wait = true },
+  { action = "bubble", speaker = "left", text = "Look over there." },
   { action = "waitInput" },
-  { action = "hideBubble" },
-  { action = "emote", target = "left", type = "anger", duration = 1.0, wait = true },
-  { action = "shake", intensity = 4, duration = 0.4, wait = true },
-  { action = "bubble", speaker = "left", text = "Show me what you've learned!", style = "shout" },
-  { action = "waitInput" },
-  { action = "hideBubble" },
-}, {
-  skippable = true,
-  cleanup = true,
-  onComplete = function(api)
-    -- Cutscene finished cleanly
-  end,
-})
+  { action = "emote", target = "left", type = "exclamation", duration = 1 },
+  { action = "wait", duration = 1 },
+  { action = "clearActors", opts = { transition = "fade", duration = 0.3 }, wait = true },
+  { action = "hide", opts = { transition = "crossfade", duration = 0.35 }, wait = true },
+}
 ```
 
-#### Sequence Action Summary
-| Action | Description | Blocking Option |
-| :--- | :--- | :--- |
-| `show` / `hide` | Present or clear story backdrops and underlays | `wait = true` |
-| `actor` / `clearActor` | Stage or remove cast characters | `wait = true` |
-| `bubble` / `hideBubble` | Display or hide anchored dialogue balloons | Instant |
-| `subtitle` / `clearSubtitle` | Display or clear widescreen letterbox narration | Instant |
-| `emote` / `clearEmote` | Display or clear animated reaction puffs | `wait = true` |
-| `shake` / `stopShake` | Trigger or stop deterministic camera trauma | `wait = true` |
-| `flash` / `stopFlash` | Momentary combat strobe pulse | `wait = true` |
-| `tint` / `clearTint` | Apply or clear ambient color grading | `wait = true` |
-| `vignette` / `clearVignette` | Apply or clear framing masks | `wait = true` |
-| `weather` / `clearWeather` | Atmospheric retro particle simulation | Instant |
-| `battle` | Transition into combat and halt sequence until battle ends | Blocking |
-| `wait` | Timed pause `{ action = "wait", duration = 0.75 }` | Blocking |
-| `waitInput` | Player button barrier (`A` / `Space`) `{ action = "waitInput" }` | Blocking |
-| `call` | Execute custom callback `{ action = "call", fn = function(api, seq) ... end }` | Instant |
+| Actions | Purpose |
+| --- | --- |
+| show, hide | Background presentation. |
+| actor, setActor, updateActor, clearActor, clearActors | Actor staging. Actor transition options must be in `step.opts`. |
+| bubble, showBubble, hideBubble | Dialogue. |
+| subtitle, setSubtitle, clearSubtitle | Narration. |
+| emote, showEmote, clearEmote | Reactions; show steps do not wait automatically. |
+| shake, shakeScreen, stopShake | Camera shake. |
+| tint, setTint, clearTint | Stage tint. |
+| flash, flashScreen | Flash pulses. |
+| vignette, setVignette, clearVignette | Vignette. |
+| weather, setWeather, clearWeather | Weather. |
+| battle | Prepare a handoff and block until `resumeFromBattle`. |
+| wait, waitInput | Timed or input barrier. |
+| call, fn | Call `fn(api, sequence)` or `callback(api, sequence)`. |
 
----
+`stopFlash` is a callable API method, not a sequence action. Use `{ action = "call", fn = function(api) api.stopFlash() end }` when a sequence must stop it.
 
-### 5. Stage FX & Camera Dynamics
+`playSequence` defaults to skippable **true** and cleanup **false**. Starting a new sequence stops the previous one. `cleanup = true` restores tracked resources on abort/stop; it does not automatically clean up on normal completion or skip. Include final cleanup steps or an `onComplete` callback. `onAbort` receives the API; a throwing call step can also report `"callback-error"` as its second argument.
 
-Effects run in 320×180 space before scaling, preserving the crisp pixel-art restomod aesthetic:
+`skipSequence` executes remaining non-wait, non-input, non-battle actions, then calls `onComplete`. Those actions can have side effects. It is not a universal “cancel without consequences” operation. `stopSequence(opts)` uses the cleanup flag established by `playSequence`; its own opts argument does not change cleanup policy.
+
+## 7. Stage effects
 
 ```lua
--- Deterministic screen shake (UI decoupled so dialogue remains rock-solid):
-betterScenes.shakeScreen({ intensity = 5, duration = 0.5, direction = "both", pixelSnap = true })
-
--- Full-stage ambient color tint (smooth fade):
-betterScenes.setTint("sunset", { duration = 0.6 })
--- Presets: "sunset", "night", "cave", "underwater", "poison", "sepia", or custom { r, g, b, a }
-
--- Momentary combat strobe pulse:
-betterScenes.flashScreen({ 1, 1, 1, 1 }, { duration = 0.3, mode = "out", scope = "stage" })
-
--- Cinematic framing vignette:
-betterScenes.setVignette("letterbox", { height = 20, duration = 0.4 })
--- Styles: "letterbox", "spotlight" (focuses on coordinate/slot), "dither" (Bayer pattern border fade)
-
--- Atmospheric retro weather particles:
-betterScenes.setWeather("rain", { count = 30, speed = 1.2 })
--- Types: "rain", "snow", "leaves", "cherry_blossom", "embers", "dust"
+scenes.show(false, { underlay = "transparent" })
+scenes.shakeScreen({ intensity = 2, duration = 0.4 })
+scenes.setTint("sunset", { duration = 0.5 })
+scenes.flashScreen("white", { duration = 0.3 })
+scenes.setVignette("letterbox", { duration = 0.4 })
+scenes.setWeather("rain", { count = 40, speed = 1 })
 ```
 
----
+Tint presets include sunset, night, cave, underwater, poison, and sepia. Vignettes include letterbox, spotlight, and dither. Weather supports rain, snow, leaves, cherry_blossom, embers, and dust. See the [API reference](https://github.com/syybott/Gen1Better/wiki/Compatibility#7-betterscenes-story-stage-exports) for getters and clear/stop functions.
 
-### 6. Decoupled Battle Handoff & Resumption
+FX or a handoff alone do not make `isActive()` true. Keep a background or plain underlay active, as above, for an effects-only presentation. `diagnostics().active` also considers FX and handoff state, so it can differ from `isActive()`.
 
-Transition seamlessly from a narrative cutscene directly into combat (`BetterBattle`), preserving scene atmosphere into the arena, and unblocking the cutscene when battle concludes:
+## 8. Battle handoff and resumption
 
-```lua
-betterScenes.prepareBattleHandoff({
-  battleType = "trainer",
-  trainerId = "giovanni",
-  storySceneId = "cutscene_gym_interior",
-  battleBackdropId = "boss_giovanni_gym",
-  transition = "swirl",
-  duration = 0.8,
-  onHandoff = function(token)
-    -- BetterBattle starts combat with the token's parameters
-  end,
-  onWin = function(api, result)
-    -- Play victory dialogue after winning:
-    api.showBubble("left", "Impressive. You have earned my respect.")
-  end,
-  onLose = function(api, result)
-    -- Handle defeat dialogue or story branch:
-    api.showBubble("left", "Return when you are truly ready.")
-  end,
-})
+`prepareBattleHandoff` supplies a transition, token, and callbacks. It does not start an encounter or apply atmosphere/music to a battle. Your consuming mod provides that bridge.
 
--- When battle ends, BetterBattle calls resumeFromBattle:
-betterScenes.resumeFromBattle({
-  handoffId = "bh_1",
-  outcome = "win", -- "win", "lose", "flee", "draw"
-})
-```
+Battle types are **trainer**, **wild**, and **boss**. Transitions are **cut**, **flash**, **blinds**, **mosaic**, and **swirl**; the default is swirl with a duration of 0.8 seconds (cut is immediate). `storySceneId` is captured from the current stage; a same-named option does not override it. `battleBackdropId` (or `backdropId`) selects the token's battle backdrop data.
 
-Transitions supported: `"cut"`, `"flash"`, `"blinds"`, `"mosaic"`, `"swirl"`.
-
----
-
-## 4. Diagnostics & Inspection
-
-Inspect live stage state during development:
+In this adapter example, `startCombat(token, done)` is a function implemented by your mod. It starts the intended encounter through public game APIs and calls `done(outcome)` once the result is known. It is not a Gen1Better export or an assumed engine event.
 
 ```lua
-local diag = betterScenes.diagnostics()
-print("Stage active:", diag.active)
-print("Active scene:", diag.sceneId)
-print("Actors count:", diag.actorCount)
-print("Sequence step:", diag.sequence and diag.sequence.stepIndex)
-
--- Query actor shadow telemetry:
-local actor = betterScenes.getActor("left")
-if actor and actor.shadowState then
-  print("Shadow mode:", actor.shadowState.mode)           -- "speciesProfile", "speciesAuto", "customShapes", etc.
-  print("Profile ID:", actor.shadowState.profileId)       -- e.g. "CHARIZARD"
-  print("Profile Version:", actor.shadowState.profileVersion)
-  print("Active shapes:", #actor.shadowState.shapes)
+local function handoffToCombat(scenes, startCombat)
+  return scenes.prepareBattleHandoff({
+    battleType = "wild", species = "MEW", level = 30,
+    battleBackdropId = "custom_space",
+    transition = "swirl", duration = 0.8,
+    onHandoff = function(token)
+      -- The adapter also applies token.music / token.atmosphere if wanted.
+      startCombat(token, function(outcome)
+        local ok, reason = scenes.resumeFromBattle({
+          handoffId = token.id,
+          outcome = outcome,
+        })
+        if not ok then error("Battle return: " .. tostring(reason)) end
+      end)
+    end,
+    onWin = function(api, result) api.setSubtitle("Victory!") end,
+    onLose = function(api, result) api.setSubtitle("A setback...") end,
+    onFlee = function(api, result) api.setSubtitle("You escaped.") end,
+  })
 end
 ```
+
+Keep calling `update(dt)` until the handoff callback fires for timed transitions. Your battle controller must take responsibility for battle updates and input. Resume with the actual token ID and **win**, **lose**, **flee**, or **draw**. The matching outcome callback and `onReturn(api, result)` run; draw has no dedicated outcome callback. A sequence waiting on battle then continues.
+
+`cancelBattleHandoff` returns `false, "handoff-locked"` once handed off. Tokens contain transferable atmosphere data; that data has no automatic rendering or music effect in combat.
+
+## 9. Diagnostics and inspection
+
+```lua
+local diag = scenes.diagnostics()
+local actorCount = 0
+for _ in pairs(diag.actors or {}) do actorCount = actorCount + 1 end
+print("Current scene:", scenes.current())
+print("Actor count:", actorCount)
+local sequence = scenes.getSequence()
+print("Sequence step:", sequence and sequence.stepIndex)
+```
+
+`diagnostics().actors` is a table keyed by slot, with no `actorCount` field. `getBubble()` reports its text, style, position, size, and tail, not a lines array. `getSequence()` reports stepIndex, totalSteps, waitingInput, waitingBattle, lastBattleOutcome, waitRemaining, currentAction, skippable, aborted, and lastError, plus active/id.
+
+For all 54 methods, their return contracts, and default/cache controls, see [Provider and Mod Compatibility](https://github.com/syybott/Gen1Better/wiki/Compatibility#7-betterscenes-story-stage-exports).

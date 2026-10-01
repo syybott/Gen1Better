@@ -11,9 +11,9 @@ You only need three safe doors:
 
 ## 1. The Hard Wall: Strictly 320×180 PNGs
 
-All BetterBattle 2D backdrops **must be strictly 320×180 pixels**.
+All BetterBattle 2D backdrops must be fully opaque **320×180 PNGs**.
 
-This is not a matter of style or taste; it is a mathematical hard wall. In 16:9 widescreen, 180 is an exact integer factor of every standard modern display height:
+At full 16:9 viewport sizes, the 180-pixel height scales by these integer factors:
 
 - **720p**: $180 \times 4 = 720$ ($320 \times 4 = 1280$) $\to$ **$4\times$ exact integer scale**
 - **1080p**: $180 \times 6 = 1080$ ($320 \times 6 = 1920$) $\to$ **$6\times$ exact integer scale**
@@ -22,7 +22,7 @@ This is not a matter of style or taste; it is a mathematical hard wall. In 16:9 
 
 Because BetterBattle renders with nearest-neighbor texture sampling, every single pixel of your artwork scales into an exact, uniform $6\times 6$ square of screen pixels at 1080p and an exact $12\times 12$ square at 4K.
 
-If your image is not $320 \times 180$, it cannot integer scale cleanly—it will shimmer, blur, distort pixel aspect ratios, or fail to load.
+Other viewport sizes can produce fractional display scales. Images of other dimensions do not meet the backdrop API contract.
 
 ---
 
@@ -34,11 +34,9 @@ Before packaging your art, test it using the built-in validator script:
 python tools/verify_backdrop.py assets/my_scene_320.png
 ```
 
-The validator confirms:
-- Dimensions are exactly $320 \times 180$.
-- Aspect ratio is strictly 16:9 ($1.\bar{7}$).
-- Upscaling to 1080p ($6\times$) and 4K ($12\times$) creates uniform, sharp texel blocks without edge interpolation artifacts.
-- Flags any accidental transparency holes that would let the black clear canvas show through.
+The validator reports exact dimensions, aspect ratio, opacity, palette size, flat-neighbor ratios, and possible interpolated color ramps. It grades images **PERFECT**, **PASS**, **WARN**, or **FAIL**. Incorrect dimensions, a non-PNG format, or any alpha below 255 fail the contract.
+
+Install its dependencies with `python -m pip install Pillow NumPy`. By default only FAIL produces a nonzero exit status; `--strict` also fails WARN. An optional `--counterpart-dir` compares matching native/high-resolution images, including nearest-neighbor 4K differences and eligible texel-block uniformity checks. A native-image-only run does not test actual in-game rendering at 1080p or 4K.
 
 ---
 
@@ -49,19 +47,21 @@ Place your mod folder inside Gen1Recomp's `mods/` directory:
 ```text
 mods/
 └── my-artist-pack/
-    ├── mod.json
+    ├── manifest.json
     ├── main.lua
     └── assets/
         └── sunset_route_320.png
 ```
 
-### `mod.json`
+### `manifest.json`
 ```json
 {
   "id": "my-artist-pack",
   "name": "My Sunset Route Backdrops",
   "version": "1.0.0",
-  "author": "Your Name",
+  "api": 2,
+  "entry": "main.lua",
+  "dependencies": ["gen1-better-menus"],
   "description": "Custom sunset battle backdrops for Route 1."
 }
 ```
@@ -70,47 +70,49 @@ mods/
 
 ## 4. The Clean Artist Story (`main.lua`)
 
-Copy and paste this into your `main.lua`:
+Copy this into `main.lua`. Register the hook immediately; acquire the export and register the image after `game.ready` so the API is available. Prefix scene IDs to avoid collisions.
 
 ```lua
 local mod = ...
+local sceneReady = false
 
--- Resolve BetterBattle safely
-local menus = mod.find("gen1-better-menus")
-local bb = menus and menus.exports and menus.exports.betterBattle
-if not bb then return end
-
--- Door 1 & 3: Register your image and optional shadow style
-local ok, id = bb.backdrop.registerArtistScene("sunset_route", {
-  image = "assets/sunset_route_320.png",
-  shadows = {
-    color = { 0.45, 0.32, 0.18 }, -- warm sunset earth tint
-    opacityScale = 0.85,          -- subtle transparency
-    offsetY = 0,
-  },
-}, mod)
-
--- Door 2: Decide when it appears
 mod.hooks:wrap("bettermenus.battle_backdrop", function(next, ctx)
-  if ctx.mapId == "ROUTE_1" then
-    return "sunset_route"
-  end
+  if sceneReady and ctx.mapId == "ROUTE_1" then return "my_artist_sunset_route" end
   return next(ctx)
 end)
+
+mod.events:on("game.ready", function()
+  local handle = mod.find("gen1-better-menus")
+  local bb = handle and handle.exports and handle.exports.betterBattle
+  if not bb or not bb.backdrop then return end
+
+  local ok, result = bb.backdrop.registerArtistScene("my_artist_sunset_route", {
+    image = "assets/sunset_route_320.png",
+    shadows = {
+      color = { 0.45, 0.32, 0.18 },
+      opacityScale = 0.85,
+      offsetY = 0,
+    },
+  }, mod)
+  if not ok then error("Backdrop registration: " .. tostring(result)) end
+  sceneReady = true
+end)
 ```
+
+Pass your own `mod` as the third argument: battle backdrop paths are then resolved through your pack's assets and registration ownership belongs to your pack. Omitting it uses Gen1Better as owner.
 
 > [!IMPORTANT]
 > **Registration vs Display**: `registerArtistScene` only *registers* your art and shadow settings with the engine; it does *not* display it. The `bettermenus.battle_backdrop` hook owns when the scene appears.
 >
-> This separation is intentional: `bettermenus.battle_backdrop` runs once when the battle is constructed, is cached for that battle, and never re-runs during drawing.
+> This separation is intentional: `bettermenus.battle_backdrop` runs when the battle is constructed and its result is cached. Ordinary drawing does not re-run it; an explicit `backdrop.refresh` does.
 
 ---
 
 ## 5. Scene ID Rules & Collision Protection
 
 BetterBattle provides robust safeguards to keep multiple artist packs from stomping each other:
-- **Return Contract**: `registerArtistScene` returns `true, id` on success, or `false, err` for expected registration and validation rejections:
-  - `"reserved"`: ID matches an engine built-in scene.
+- **Return contract**: `registerArtistScene` returns `true, id` on success and `false, err` for the handled registration/shadow validation rejections below. Invalid IDs/configuration types and incorrect dimensions on loaded Images can raise assertions or Lua errors:
+  - `"reserved"`: ID matches a Gen1Better built-in scene.
   - `"collision"`: ID is already registered by another mod.
   - `"shadow_subsystem_unavailable"`: Shadow configuration or ground offsets were requested, but the shadow subsystem is uninitialized or unavailable.
   - `"invalid_shadows"`: The `shadows` property was provided but is not a table.
@@ -122,13 +124,15 @@ BetterBattle provides robust safeguards to keep multiple artist packs from stomp
 - **Permissive Representation, Strict Meaning**: For all artist-facing numeric shadow fields (`opacityScale`, `offsetY`, `playerOffsetY`, `enemyOffsetY`, and color components), valid numeric strings (e.g. `"0.85"`, `"-4"`) are automatically coerced to real numbers. However, invalid meanings (`NaN`, `math.huge`, `-math.huge`, negative opacity, out-of-range colors) are rejected upfront. `enabled` strictly requires boolean `true` or `false`.
 - **Custom Key Preservation**: Any custom extension metadata attached to your `shadows` table is preserved untouched for third-party hook compatibility.
 - **Built-in IDs are reserved**: Attempting to register over built-in scenes (e.g. `"env_route_grass"`, `"boss_giovanni_gym"`) is rejected. If you want to replace what appears on Route 1, return your own custom scene ID from the `bettermenus.battle_backdrop` hook.
-- **Stable Mod Ownership**: BetterBattle checks your mod's stable identifier (`mod.id`, `mod.name`, or `mod.path`), ensuring that hot-reloading your mod will cleanly update your art without triggering a false collision error.
+- **Mod ownership**: Registration compares the source mod identity. Re-registration by the same owner can update its scene; a different owner is rejected. Pass the same mod handle consistently.
 - **Quiet Logging**: Collision and reservation warnings are logged exactly once per `{id, mod}` pair to keep console output clean.
 - **Best Practice**: Prefix your scene IDs with your mod name or initials (e.g. `mypack_route_1`, `mypack_sunset`).
 
 ---
 
 ## 6. Encounter Trigger Recipes
+
+These are hook-body recipes. Register the scene first and only return its ID once registration succeeds, as in the quickstart.
 
 The `bettermenus.battle_backdrop` hook passes a context table (`ctx`) with details about the encounter. Return your scene ID to display your art, or call `next(ctx)` to keep the default background:
 
@@ -235,7 +239,7 @@ bb.backdrop.registerArtistScene("gym_misty_pool", {
 > - `playerOffsetY` / `enemyOffsetY`: Shifts the Pokémon battler sprite, its attached HUD status box, and its ground shadow together in lockstep.
 > - `offsetY` inside `shadows`: Minor shadow-only contact anchor adjustment (for tuning the shadow contact point against complex feet art).
 >
-> The Pokémon stays perfectly grounded on top of your elevated ledge without floating or sinking into its shadow.
+> These offsets are included by the built-in BetterBattle UI geometry. If a custom geometry provider owns positioning, it must incorporate `bb.backdrop.effectiveGroundOffsets(battle)` into its ground lines/shifts.
 
 ---
 
@@ -251,7 +255,7 @@ bb.backdrop.setScene(battle, "boss_phase2_ruins", {
   geometry = "lerp",        -- "immediate" (default), "lerp", or "after"
 })
 
--- Or re-evaluate the battle_backdrop hook if battle conditions changed:
+-- Or re-run the hook using captured encounter context (inspect ctx.battle for live state):
 bb.backdrop.refresh(battle, { transition = "flash" })
 ```
 
@@ -264,10 +268,9 @@ bb.backdrop.refresh(battle, { transition = "flash" })
 
 ## 10. Advanced Integration & Next Steps
  
-When you need deeper engine control:
-- See [BetterBattle pixel-art backdrops](Battle-Backdrops.md) for the 63 built-in scene IDs and automatic matching rules.
-- See [Provider and mod compatibility](Compatibility.md) for dynamic per-frame shadow hooks (`bettermenus.battle_shadow`), Fakemon registration, and renderer ownership.
+For additional public integration options:
+- See [BetterBattle pixel-art backdrops](https://github.com/syybott/Gen1Better/wiki/Battle-Backdrops) for the 63 built-in scene IDs and automatic matching rules.
+- See [Provider and mod compatibility](https://github.com/syybott/Gen1Better/wiki/Compatibility) for dynamic per-frame shadow hooks (`bettermenus.battle_shadow`), Fakemon registration, and renderer ownership.
 
 > [!NOTE]
-> **API Stability Guarantee**:
-> `registerArtistScene`, `registerScene`, `bettermenus.battle_backdrop`, and scene shadow config are public compatibility surfaces that maintain backward compatibility across updates.
+> **Public integration**: Use the documented registration helpers, hooks, and shadow configuration when building an artist pack. Check availability and handle each method's documented return.

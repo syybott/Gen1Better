@@ -1,6 +1,6 @@
 # Gen1Better — Mod Options Screen Compatibility
 
-This page is part of the [Gen1Better compatibility reference](Compatibility.md).
+This page is part of the [Gen1Better compatibility reference](https://github.com/syybott/Gen1Better/wiki/Compatibility).
 
 Gen1Better supports third-party mod options and settings screens through a simple opt-in marker:
 
@@ -221,7 +221,9 @@ Options
 Settings
 ```
 
-The explicit marker is preferred because it is predictable, self-documenting, and does not depend on naming conventions.
+The explicit marker is preferred because it is predictable and does not depend on naming conventions.
+
+It also automatically opts the screen into the user's **Menu Scale** in Gen1Better's eligible overworld/menu path, before the general mod-owned-screen exclusion. `BetterMenusScaleEligible = true` is an alternative scaling marker. The `bettermenus.ui_scale` hook can return false to keep native scale. The hook is dispatched even at 100%, requires an overworld below the menu, and does not scale battle or title-screen menus.
 
 ## If your screen still has an issue
 
