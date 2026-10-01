@@ -1,149 +1,50 @@
 # Gen1Better
 
-Widescreen presentation, customizable menu colors, 2D battle backdrops, cinematic story staging, and the BetterPC, BetterParty, BetterBag, BetterBattle, and BetterScenes suites for Gen1Recomp.
+Gen1Better brings widescreen interfaces, customizable menu colors and frames, richer battles, and storytelling tools to Gen1Recomp
 
-Choose each interface independently. Turning off a Better interface option keeps the corresponding classic interface with Gen1Better's widescreen and palette support.
+Disable any Better screen option to use an old school Game Boy inspired widescreen menu for that interface
 
-## Choose your interfaces
+## Features
 
-### BetterPC
+- **BetterPC:** Pokémon storage with your party, box contents, and selected Pokémon's details together
+- **BetterParty:** a party screen with Pokémon details, moves, and the game's familiar party actions
+- **BetterBag:** item descriptions, pockets, sorting, favorites, and expanded inventory
+- **BetterPokedex and BetterTrainerCard:** responsive Pokédex and trainer-card screens
+- **BetterModManager and BetterOptions:** a responsive mod manager and tabbed game settings
+- **BetterBattles:** colorful pixel-art battle backdrops and floor shadows that bring encounters to life
+- **BetterFrames:** DS inspired frames
+- **Menu themes:** customizable colors for menus and panels
+- **Favorites and scrolling labels:** pin Start Menu entries and favorite items; long labels can scroll so you can read them
 
-A responsive Pokémon storage screen with your party, box contents, and selected Pokémon's details. Move Pokémon between slots and boxes, transfer them between your party and storage, or release them through the action menu.
+## BetterBattle UI
 
-- **A:** open actions, or place a Pokémon you are moving.
-- **START:** cycle the detail pages.
-- **SELECT:** open the box selector. While moving a Pokémon, toggle the party/detail pane instead.
-- **B:** cancel a move or leave the screen.
+A richer battle interface that puts useful information alongside the action
 
-BetterPC is **ON** by default and opens at Bill's PC.
+- **Pokémon panels:** names, levels, HP bars, status conditions, and your Pokémon's current and maximum HP
+- **XP bar:** see your Pokémon's progress toward its next level
+- **Command and move panels:** dedicated battle commands and move selection with current and maximum PP
+- **Trainer portraits and party indicators:** see the trainers and their teams alongside the battle
+- **Caught marker:** see whether you have already caught the opposing species
+- **Shiny indicator:** a sparkle marks a shiny opposing Pokémon
+- **Gender indicators:** with Gender Mod enabled, Pokémon gender symbols appear beside their levels, while the symbols below the enemy HP bar show which genders of that species you already have in your PC boxes
+- **[RARE encounters](https://github.com/syybott/Gen1Better/wiki/RARE-Encounters):** a RARE label highlights an uncommon species and level combination in the current encounter table
 
-### BetterParty
+## Choose your options
 
-A responsive party screen showing Pokémon details and moves alongside the party list. It retains the game's party actions and selection behavior, including choosing a Pokémon for an item or battle action.
+Open **START → OPTION → EXTRAS → Gen1Better** to choose your interfaces, menu palette, frames, inverse colors, battle presentation, move animations, scrolling text, and Pokédex indicator. **Menu Scale** adjusts compact menus and dialogue.
 
-Use **A** to select, **START** for details, and **B** to return. Follow the screen's directional prompts to browse the party and moves.
+Choose the game's palette under **START → OPTION → GRAPHICS → COLORS**
 
-BetterParty is **ON** by default.
+See [Settings and Customization](https://github.com/syybott/Gen1Better/wiki/Extra-Features) for the full guide
 
-### BetterBag
+## For artists and modders
 
-A responsive bag with item descriptions and pockets for **All Items**, **Items**, **Medicine**, **Poké Balls**, **TMs/HMs**, and **Key Items**. Use **LEFT/RIGHT** to change pockets, **UP/DOWN** to browse, **A** to select, and **B** to return.
+Want to add your own artwork, tell a story with your characters, or create a more elaborate encounter? Start with the [Artist & Creator Launch Pad](https://github.com/syybott/Gen1Better/wiki/Artists).
 
-- Press **START** on an item to favorite or unfavorite it. Favorites are marked with a heart and move to the top.
-- Press **SELECT** for the bag's sorting action.
-- Expanded inventory supports **255 item slots** and stacks of **999**, with compatibility exceptions for mods that manage their own inventory. Larger existing limits are retained; Kanto Reforged keeps its own bag capacity and pocket behavior.
-
-BetterBag is **ON** by default. Switching its interface off does not remove the expanded inventory limits.
-
-### BetterBattle
-
-A WIDE Extended battle interface with compact Pokémon status panels, command and move panels, HP and XP bars, a caught indicator, trainer portraits, and party indicators.
-
-To enable it:
-
-1. Set the game's **BATTLE LAYOUT** to **WIDE**.
-2. Set **BATTLE HUD** to **EXTENDED**.
-3. Open **START → OPTION → EXTRAS → Gen1Better** and set **BetterBattle** to **ON**.
-4. Use **Crystal sprites with correct transparency**, supplied through your preferred sprite provider.
-
-BetterBattle requires WIDE + EXTENDED. An incompatible layout can turn it off; set the layout first, then enable BetterBattle. Disable BetterBattle before switching to the Standard HUD.
-
-| BetterBattle | Behavior |
-| --- | --- |
-| **ON** | Use BetterBattle's layout when the battle settings and active provider support it. |
-| **OFF** | Use the game's battle interface with BetterMenus palette coverage. |
-| **MOD** | Allow a detected custom battle interface to provide the layout while BetterMenus supplies menu palette coverage. |
-
-#### Automatic pixel-art backdrops
-
-BetterBattle includes **63 full-color, 320×180 pixel-art scenes**. Backgrounds are selected automatically from the encounter's location and circumstances, including caves, routes, water, buildings, supported gyms, Giovanni encounters, and the Elite Four.
-
-Fishing and surfing can select different scenes. Some alternate and custom scenes are reserved for custom-spawn mods. Gym encounters without completed artwork retain a plain background.
-
-The artwork keeps its full colors while the battle interface uses its menu palette. It fits the viewport height, crops horizontally on narrower screens, and extends its edge columns on wider screens. The nickname prompt returns to the game's blank background.
-
-There is no separate backdrop switch. Art appears when BetterBattle is active and no external battle renderer owns the scene. An active 3D provider takes priority; merely installing an inactive provider does not hide the art.
-
-See [Battle Backdrops](wiki/Battle-Backdrops.md) for the scene list and location mappings.
-
-## Sprites
-
-BetterBattle requires battle sprites with a correctly defined transparency mask: the background must be transparent while the Pokémon itself, including white areas, remains opaque. Crystal Animated Sprites provides compatible assets; any sprite pack meeting this requirement can be used.
-
-### BetterScenes
-
-A dedicated 16:9 story stage and cinematic presentation subsystem for narrative cutscenes outside of combat. Built with the same 320×180 integer-scaled pixel-art discipline, BetterScenes gives modders and story authors complete theatrical choreography:
-
-- **Backdrops & Transitions**: Full-color 320×180 pixel-art story backdrops with seamless `cut`, `crossfade`, and whiteout `flash` transitions.
-- **Underlays**: Support for solid `black` (blackouts, space, psychic voids), `paper` (palette-reactive parchment), and `transparent` overlays.
-- **Actor Staging Layer**: Theatrical character positioning with feet-based coordinates, predefined presets (`left`, `center`, `right`) or custom slots, relative mouth/head anchors with automatic mirroring and scaling, enter/exit animations (`cut`, `fade`, `slide`), and soft ground contact shadows (calibrated species profiles or custom schema).
-- **Dialogue Bubbles & Subtitles**: Anchored speech, thought, and shout bubbles dynamically tracking character mouth anchors, widescreen cinematic letterbox subtitles, and animated floating emote puffs (`!`, `?`, heart, anger, sweat, dots, music).
-- **Declarative Sequence Runner**: Choreograph multi-step cutscenes, dialogues, blocking camera transitions, and player choices using clean timeline steps instead of timer spaghetti. Supports player input barriers (`A`/`Space`), skipping (`B`/`Esc`), and scoped resource cleanup.
-- **Stage FX & Camera Dynamics**: Native 320×180 integer-snapped screen shake (with UI decoupling so dialogue remains rock-solid), ambient color tints (`sunset`, `night`, `cave`, `underwater`, `poison`, `sepia`), combat flash pulses, restomod dither/spotlight/letterbox vignettes, and deterministic retro weather particles (`rain`, `snow`, `leaves`, `embers`, `dust`).
-- **Decoupled Battle Handoff**: Seamless transitions from story cutscenes directly into combat (`BetterBattle`), preserving scene backdrops, music, and ambient atmosphere into the arena, with clean resumption and outcome branching (`win`, `lose`, `flee`) once the battle concludes.
-
-See [Provider and Mod Compatibility](wiki/Compatibility.md#6-betterscenes-story-stage-exports) for the full API and integration guide.
-
-## 🎨 For Artists & Creators: Launch Pad
-
-Want to add your own artwork, cutscenes, or custom battles to Gen1Better? Choose what you want to do:
-
-- **[Make a Custom Battle Backdrop Pack](wiki/Artist-Backdrop-Packs.md)**: Zero engine coding required. Learn the 3 Safe Doors, grab copy-paste `main.lua` templates, and drop your 320×180 PNGs into a standalone mod folder.
-- **[Make a Cinematic Story Cutscene (BetterScenes)](wiki/BetterScenes.md)**: Direct narrative scenes outside of battle with dialogue bubbles, character staging, camera shakes, and weather.
-- **[Style & Customize Floor Shadows (BetterShadows)](wiki/Battle-Backdrops.md#shadow-system-and-scene-interaction)**: Tune feathered contact shadows for water, caves, space, or custom Pokémon species.
-- **[Trigger Custom Battles & Dynamic Arena Transitions](wiki/Battle-Backdrops.md#custom-spawn-hook)**: Script custom wild/boss encounter arenas or lerp elevations mid-battle.
-- **[Full Developer & API Contract](wiki/Compatibility.md)**: Complete Lua exports, provider hooks, and screen markers.
-
-👉 **Browse the full [Artist & Creator Launch Pad](wiki/Artists.md) on the Wiki.**
-
-## Colors and options
-
-Open **START → OPTION → GRAPHICS → COLORS** to choose the game's palette while viewing the overworld. When Groovy Palette & Frames is installed, choose **DEFAULT** or **GROOVY** first. Browse with the directional controls, press **A** or **START** to keep a preview, and press **B** to cancel it.
-
-The menu palette and frames are separate Gen1Better settings under **START → OPTION → EXTRAS → Gen1Better**. Choose a **MENU PALETTE** and **BetterFrames** there. The menu palette includes Game Boy, Black and White, OG Red, Advanced, SGB, SoulSilver, HeartGold, FireRed, LeafGreen, Crystal, Emerald, ten palettes numbered to match the FireRed frames, and Groovy choices. BetterFrames includes **OG**, **Hybrid**, and **FR** designs. OG **DEFAULT** keeps the current Game Boy frame. Hybrid follows the selected menu palette while preserving the Poké Ball colors in its Poké Ball design; FR uses the FireRed colors. Dialogue and location popups use matching artwork automatically.
-
-| Option | Default | What it changes |
-| --- | --- | --- |
-| **MENU PALETTE** | **SOULSILVER** | Colors used by BetterMenus menus and panels; selected in Gen1Better options. |
-| **BetterFrames** | **OG DEFAULT** | Chooses the frame artwork for menus, dialogue, location popups, and battle boxes. |
-| **Inverse** | **OFF** | Reverses the light-to-dark order of the menu palette. |
-| **BetterPC** | **ON** | Enables the responsive Pokémon storage interface. |
-| **BetterParty** | **ON** | Enables the responsive party interface. |
-| **BetterBag** | **ON** | Enables the pocket-based bag interface. |
-| **Menu Scale** | **100%** | Choose 100%, 90%, 80%, or 70% for supported in-game menus and dialogue. BetterPC, BetterBag, and BetterParty retain their responsive sizing. |
-| **BetterBattle** | **ON** | Select ON, OFF, or MOD. ON requires WIDE + EXTENDED. |
-| **Marquee Text** | **ON** | Scrolls menu labels that do not fit. |
-| **Pokédex Indicator** | **DEFAULT** | BetterBattle's caught marker: OFF hides it, DEFAULT follows the menu palette, and RED uses red. |
-
-These are new-install defaults; existing saved choices take precedence.
-
-## Start Menu favorites
-
-Highlight a Start Menu entry and press **SELECT** to pin or unpin it. Favorites display a heart and move to the top of the menu.
-
-Start Menu favorites and item favorites are saved with your game. Use **SAVE** after changing them if you want to keep the changes when reloading.
-
-## Using other mods
-
-- **3D and voxel battles:** an active external scene provider suppresses BetterBattle's 2D background. A compatible provider can allow BetterBattle's panels over its scene. Your BetterBattle setting still applies; providers do not force an OFF setting on.
-- **Custom battle interfaces:** use **MOD** for a detected provider's own interface. Installing a mod alone does not guarantee that it supports this integration.
-- **Quality of Life:** its separate XP bar and caught indicator are switched off while BetterBattle or WIDE Extended is active, preventing duplicate indicators.
-- **Crystal Animated Sprites with Shiny Visuals:** optional, with a dedicated compatibility integration. BetterBattle requires correctly transparent Crystal sprite assets, not this specific mod.
-- **Groovy Palette & Frames:** exposes additional palette choices when available.
-- **Separate Modern PC UI:** disable it before using this mod; the two are declared incompatible.
-
-Mod authors and artists can find the [Artist & Creator Launch Pad](wiki/Artists.md), provider hooks, custom battle scenes, and integration examples in [Provider and Mod Compatibility](wiki/Compatibility.md). Custom settings-screen support is covered in [Mod Options Screen Compatibility](wiki/Mod-Options-Screen-Compatibility.md).
-
-## Troubleshooting
-
-- **BetterBattle will not enable:** check WIDE + EXTENDED, then turn BetterBattle ON again.
-- **No pixel-art background:** check BetterBattle's mode, whether another provider is rendering the battle, and whether the encounter has completed artwork. Missing background assets also fall back to a plain field.
-- **Background visible through a Pokémon:** check that the required Crystal battle sprites are active. Other sprite packs may contain transparent body pixels that need correction by their author.
-- **Menu colors differ from the overworld:** these are separate palette choices. Change the menu theme under **OPTION → EXTRAS → Gen1Better**.
-- **Menu Scale does not resize BetterPC, BetterParty, or BetterBag:** these interfaces size themselves to the available screen area.
-
-When reporting a problem, include your Gen1Recomp and Gen1Better versions, game version, enabled mods, relevant options, and a screenshot showing the issue.
+- [Artist Backdrop Packs](https://github.com/syybott/Gen1Better/wiki/Artist-Backdrop-Packs): bring your artwork into a battle
+- [BetterScenes](https://github.com/syybott/Gen1Better/wiki/BetterScenes): stage characters, dialogue, reactions, and atmosphere
+- [API and Compatibility Reference](https://github.com/syybott/Gen1Better/wiki/Compatibility): the contract for modders and agents
 
 ## Licenses
 
-See the [code license](licenses/CODE_LICENSE.md), [art license](licenses/ART_LICENSE.md), and [third-party notices](licenses/THIRD_PARTY_NOTICES.md).
+See the [code license](licenses/CODE_LICENSE.md), [art license](licenses/ART_LICENSE.md), and [third-party notices](licenses/THIRD_PARTY_NOTICES.md)

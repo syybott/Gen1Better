@@ -428,7 +428,8 @@ function BetterBattleBackdrops.install(mod, api)
   local function drawConfiguredShadows(layer, side, species, metrics, ctx, drawn, battle, sceneId, sceneConfig)
     local state = layer.authoredShadow
     local transform = state and state.transform
-    if not transform or transform.scaleX == 0 or transform.scaleY == 0 then
+    if transform and (transform.scaleX == 0 or transform.scaleY == 0) then return end
+    if not transform then
       transform = {
         x = side == "player" and 0 or 136,
         y = 0,
@@ -439,8 +440,9 @@ function BetterBattleBackdrops.install(mod, api)
     local placement = layer.gen1BetterMenusPlacement
     local spritePixels = math.max(1, math.floor(
       metrics.Up * (tonumber(placement.scale) or 1) + 1e-6))
-    local ux = spritePixels / (metrics.dpiX or 1)
-    local uy = spritePixels / (metrics.dpiY or 1)
+    local nativeBlit = layer.nativeBlit or placement.nativeBlit
+    local ux = nativeBlit and metrics.Ux or spritePixels / (metrics.dpiX or 1)
+    local uy = nativeBlit and metrics.Uy or spritePixels / (metrics.dpiY or 1)
     local originX = metrics.uox
     local originY = metrics.uoy
     local isFieldSpace = placement and (placement.coordinateSpace == "field"
@@ -516,20 +518,17 @@ function BetterBattleBackdrops.install(mod, api)
             measuredWidth, measuredHeight = shadowSettings.measuredDimensions(
               species, side, shape, footprint)
           end
-          width = measuredWidth / math.abs(transform.scaleX)
-            * (shape.widthScale or 1)
-          height = measuredHeight / math.abs(transform.scaleY)
-            * (shape.heightScale or 1)
+          width = measuredWidth * (shape.widthScale or 1)
+          height = measuredHeight * (shape.heightScale or 1)
           if shape.minWidth then width = math.max(shape.minWidth, width) end
           if shape.minHeight then height = math.max(shape.minHeight, height) end
           if x == nil then
-            x = (measurement.anchor.centerX - transform.x) / transform.scaleX
-            local profileWidth = shadowSettings.profileSpace
-              and shadowSettings.profileSpace.width or 56
+            x = measurement.anchor.centerX
+            local profileWidth = transform.profileWidth or 56
             if side == "player" then x = profileWidth - x end
           end
           if y == nil then
-            y = (measurement.anchor.contactY - transform.y) / transform.scaleY
+            y = measurement.anchor.contactY
           end
         end
         local available = authored.source == "manual" or measurement
@@ -549,8 +548,7 @@ function BetterBattleBackdrops.install(mod, api)
           y = y + (shape.offsetY or 0) + spOffY
           width = width * spWScale
           height = height * spHScale
-          local profileWidth = shadowSettings.profileSpace
-            and shadowSettings.profileSpace.width or 56
+          local profileWidth = transform.profileWidth or 56
           local spriteX = side == "player" and profileWidth - x or x
           local layerX = transform.x + spriteX * transform.scaleX
           local layerY = transform.y + y * transform.scaleY
@@ -652,11 +650,13 @@ function BetterBattleBackdrops.install(mod, api)
     if not state then return end
     local placement = layer.gen1BetterMenusPlacement
     local transform = state.transform
-    if not placement or not transform then return end
+    if not placement or not transform
+        or transform.scaleX == 0 or transform.scaleY == 0 then return end
     local spritePixels = math.max(1, math.floor(
       metrics.Up * (tonumber(placement.scale) or 1) + 1e-6))
-    local ux = spritePixels / (metrics.dpiX or 1)
-    local uy = spritePixels / (metrics.dpiY or 1)
+    local nativeBlit = layer.nativeBlit or placement.nativeBlit
+    local ux = nativeBlit and metrics.Ux or spritePixels / (metrics.dpiX or 1)
+    local uy = nativeBlit and metrics.Uy or spritePixels / (metrics.dpiY or 1)
     local originX = metrics.uox
     local originY = metrics.uoy
     local isFieldSpace = placement and (placement.coordinateSpace == "field"
@@ -682,7 +682,7 @@ function BetterBattleBackdrops.install(mod, api)
     local bodyAnchor = layer.shadowAnchor or layer.shadowFootprint
     local groundY
     if type(manualContactY) == "number" then
-      groundY = transform.y + manualContactY * transform.scaleY
+      groundY = manualContactY
     elseif bodyAnchor then
       groundY = bodyAnchor.contactY
     end
@@ -693,16 +693,16 @@ function BetterBattleBackdrops.install(mod, api)
           species, side, wing, footprint)
         width = width * (wing.widthScale or 1)
         height = height * (wing.heightScale or 1)
-        local x = footprint.centerX
-          + (wing.offsetX or 0) * math.abs(transform.scaleX)
-        local y = (groundY or footprint.contactY)
-          + (wing.offsetY or 0) * math.abs(transform.scaleY)
+        local x = transform.x
+          + (footprint.centerX + (wing.offsetX or 0)) * transform.scaleX
+        local y = transform.y
+          + ((groundY or footprint.contactY) + (wing.offsetY or 0)) * transform.scaleY
         local screenX =
           (originX + x * ux - ctx.viewX) * ctx.dpiX
         local screenY =
           (originY + y * uy - ctx.viewY) * ctx.dpiY
-        local screenWidth = width * ux * ctx.dpiX
-        local screenHeight = height * uy * ctx.dpiY
+        local screenWidth = width * math.abs(transform.scaleX) * ux * ctx.dpiX
+        local screenHeight = height * math.abs(transform.scaleY) * uy * ctx.dpiY
         local alphaMultiplier = (wing.opacity and (wing.opacity / 0.075) or 1)
         local finalAlpha = alphaMultiplier * opacityScale
         local finalColor = sceneConfig and sceneConfig.color or nil
@@ -784,17 +784,20 @@ function BetterBattleBackdrops.install(mod, api)
         local layer = spriteLayer(renderer, side)
         local placement = layer and layer.gen1BetterMenusPlacement
         local footprint = layer and layer.shadowFootprint
+        local transform = layer and layer.shadowTransform
 
         if placement and layer.authoredShadow then
           drawConfiguredShadows(
             layer, side, battler.mon and battler.mon.species,
             metrics, ctx, drawn, battle, sceneId, sceneConfig)
         end
-        if placement and footprint and not layer.authoredShadow then
+        if placement and footprint and not layer.authoredShadow
+            and transform and transform.scaleX ~= 0 and transform.scaleY ~= 0 then
           local spritePixels = math.max(1, math.floor(
             metrics.Up * (tonumber(placement.scale) or 1) + 1e-6))
-          local ux = spritePixels / (metrics.dpiX or 1)
-          local uy = spritePixels / (metrics.dpiY or 1)
+          local nativeBlit = layer.nativeBlit or placement.nativeBlit
+          local ux = nativeBlit and metrics.Ux or spritePixels / (metrics.dpiX or 1)
+          local uy = nativeBlit and metrics.Uy or spritePixels / (metrics.dpiY or 1)
           local originX = metrics.uox
           local originY = metrics.uoy
           local isFieldSpace = placement and (placement.coordinateSpace == "field"
@@ -889,13 +892,12 @@ function BetterBattleBackdrops.install(mod, api)
             alphaScale = alphaScale * sceneConfig.opacityScale
           end
 
-          local x =
-            (originX + sourceX * ux - ctx.viewX)
-              * ctx.dpiX
-          local y =
-            (originY + sourceY * uy - ctx.viewY) * ctx.dpiY
-          local width = sourceWidth * ux * ctx.dpiX
-          local height = sourceHeight * uy * ctx.dpiY
+          local layerX = transform.x + sourceX * transform.scaleX
+          local layerY = transform.y + sourceY * transform.scaleY
+          local x = (originX + layerX * ux - ctx.viewX) * ctx.dpiX
+          local y = (originY + layerY * uy - ctx.viewY) * ctx.dpiY
+          local width = sourceWidth * math.abs(transform.scaleX) * ux * ctx.dpiX
+          local height = sourceHeight * math.abs(transform.scaleY) * uy * ctx.dpiY
 
           local finalAlpha = alphaScale
           local finalColor = sceneConfig and sceneConfig.color or nil
@@ -961,10 +963,10 @@ function BetterBattleBackdrops.install(mod, api)
               width = finalW,
               height = finalH,
               alphaScale = finalAlpha,
-              sourceX = sourceX,
-              sourceY = sourceY,
-              contactX = footprint.centerX,
-              contactY = footprint.contactY,
+              sourceX = layerX,
+              sourceY = layerY,
+              contactX = transform.x + footprint.centerX * transform.scaleX,
+              contactY = transform.y + footprint.contactY * transform.scaleY,
             }
           end
         end

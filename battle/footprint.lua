@@ -4,6 +4,51 @@ return function(deps)
   local M = {}
   local betterBattleApi = deps.betterBattleApi
 
+  -- Convert captured-layer measurements into the authored reference units.
+  -- Copy the result so the detector's measurement remains unchanged.
+  function M.inProfileSpace(footprint, transform)
+    if not footprint or not transform then return footprint end
+    local sx, sy = transform.scaleX, transform.scaleY
+    if sx == 0 or sy == 0 then return nil end
+    local result = {}
+    for key, value in pairs(footprint) do result[key] = value end
+    for _, key in ipairs({
+      "centerX", "contactCenterX", "bodyCenterX", "visibleLeft",
+      "visibleRight", "fullVisibleLeft", "fullVisibleRight",
+      "boundsCenterX", "opaqueCentroidX",
+    }) do
+      if type(result[key]) == "number" then
+        result[key] = (result[key] - transform.x) / sx
+      end
+    end
+    for _, key in ipairs({ "contactY", "fullVisibleTop", "fullVisibleBottom" }) do
+      if type(result[key]) == "number" then
+        result[key] = (result[key] - transform.y) / sy
+      end
+    end
+    for _, key in ipairs({ "contactWidth", "visibleWidth", "fullVisibleWidth" }) do
+      if type(result[key]) == "number" then
+        result[key] = result[key] / math.abs(sx)
+      end
+    end
+    for _, key in ipairs({ "visibleHeight", "fullVisibleHeight" }) do
+      if type(result[key]) == "number" then
+        result[key] = result[key] / math.abs(sy)
+      end
+    end
+    if sx < 0 then
+      result.visibleLeft, result.visibleRight =
+        result.visibleRight, result.visibleLeft
+      result.fullVisibleLeft, result.fullVisibleRight =
+        result.fullVisibleRight, result.fullVisibleLeft
+    end
+    if sy < 0 then
+      result.fullVisibleTop, result.fullVisibleBottom =
+        result.fullVisibleBottom, result.fullVisibleTop
+    end
+    return result
+  end
+
   -- Measure the completed detached sprite, not its nominal 64x64 slot.
   -- The contact band determines vertical grounding. A separate torso
   -- window determines the stable body-center X anchor.

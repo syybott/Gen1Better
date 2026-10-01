@@ -1,67 +1,88 @@
 # 🎨 Artist & Creator Launch Pad
 
-Welcome! Gen1Better turns Gen 1 widescreen into an open canvas for pixel artists, storytellers, and modders. You do not need to be a low-level engine programmer to put your art or narrative into the game.
+**The public API is currently untested.** I built these tools to help me create JRPG-style storytelling expansions, scenes, and complex battles, and chose to share them with anyone who wants to build similar projects. I plan to test the API. I'm sorry if you run into anything broken while using it.
 
-Choose what you want to build below:
+Welcome! Gen1Better gives your artwork a place in Gen1Recomp: a painted battle arena, a character with something to say, a storm rolling over a story scene, or a boss fight whose surroundings change as it unfolds.
 
----
+Bring your images and an idea of what should happen. BetterBattle, BetterScenes, and BetterShadows provide controls for placing, presenting, and connecting those ideas. You can use the templates yourself or work with an AI agent that follows the same public APIs.
 
-## 🧭 What do you want to do?
+## 🧭 What would you like to make?
 
-### 1. Make a Custom Battle Backdrop Pack
-> *"I have 320×180 pixel-art backgrounds and want them to appear behind Pokémon during battle."*
-- **No engine coding required**: Use the **3 Safe Doors** (*Here is my image*, *Here is when it appears*, *Here is how shadows look*).
-- Complete beginner quickstart, folder layout, copy-paste `main.lua` templates, and encounter recipes.
-- 👉 **[Go to the Artist Backdrop Pack Quickstart](Artist-Backdrop-Packs.md)**
+### Put my artwork behind a battle
 
----
+Start with a 320×180 background. Choose where it appears and how the shadows should look against it.
 
-### 2. Make a Cinematic Story Cutscene (BetterScenes)
-> *"I want to create narrative scenes outside of combat with character sprites, comic dialogue bubbles, emotes, camera shakes, and weather."*
-- Position actors with grounded feet coordinates, mirror sprites, and add animated speech/thought bubbles that track mouth anchors.
-- Multi-step declarative timeline runner (`playSequence`) with player input barriers and smooth transitions into combat.
-- 👉 **[Go to the BetterScenes Cutscene Guide](BetterScenes.md)**
+The backdrop guide has three safe doors: **here is my image**, **here is when it appears**, and **here is how shadows look**. Its complete template includes the mod setup and registration.
 
----
+👉 [Make an Artist Backdrop Pack](https://github.com/syybott/Gen1Better/wiki/Artist-Backdrop-Packs)
 
-### 3. Style & Customize Floor Shadows (BetterShadows)
-> *"I want to adjust ground shadows for my custom scenes (space, caves, water) or custom Pokémon / Fakemon."*
-- Unified Actor Shadow Engine (`schemaVersion = 2`, `profileVersion = 1`) with soft feathered multi-ring contact ovals.
-- Configure scene tinting, water reflections, zero-G space suppression, or register custom species footprint baselines.
-- 👉 **[Battle Scene Shadow Settings](Battle-Backdrops.md#shadow-system-and-scene-interaction)**
-- 👉 **[Story Actor Shadows & Floor Contact](BetterScenes.md#actor-shadows--floor-contact)**
+### Tell a story with my characters
 
----
+Set the scene, bring in a character or prop, give someone a speech bubble, and decide what happens next. Add a reaction, change the lighting, or let rain set the mood.
 
-### 4. Trigger Custom Battles & Arena Transitions
-> *"I want to script a custom boss encounter, spawn a special trainer with unique art, or shift the arena mid-battle."*
-- Hook into encounter selection (`bettermenus.battle_backdrop`) or smoothly crossfade arena art and ledge elevations mid-fight.
-- 👉 **[Custom Spawn & Encounter Hooks](Battle-Backdrops.md#custom-spawn-hook)**
-- 👉 **[Mid-Battle Scene Changes & Elevation Lerping](Battle-Backdrops.md#dynamic-scene-changes--transitions)**
+The cutscene guide starts with a small conversation you can adapt. Its template handles the updates, button input, and cleanup that make the scene run.
 
----
+👉 [Create a BetterScenes Cutscene](https://github.com/syybott/Gen1Better/wiki/BetterScenes)
 
-### 5. Detailed API & Developer Contract
-> *"I want complete technical documentation for Lua exports, provider ownership, render composition passes, and UI scaling."*
-- Comprehensive reference for `betterBattle`, `betterScenes`, hooks, and screen markers.
-- 👉 **[Provider & Mod Compatibility Reference](Compatibility.md)**
+### Help an actor feel grounded
 
----
+A shadow can make a Pokémon, trainer, tree, desk, or other object feel part of the scene. Make it smaller, softer, warmer, or remove it for a weightless moment.
 
-## 📐 The Golden Rule: Strictly 320×180 Pixels
+Shared Pokémon profiles are useful starting points. Your own images can use their own shadow settings, and your art direction can override a preset.
 
-All backdrops and cutscenes operate on an exact **320×180 Restomod Hard Wall**. 
-In 16:9 widescreen, 180 is an exact mathematical divisor of all standard display heights:
-- **720p**: $180 \times 4 = 720$ ($4\times$ exact integer scale)
-- **1080p**: $180 \times 6 = 1080$ ($6\times$ exact integer scale)
-- **1440p**: $180 \times 8 = 1440$ ($8\times$ exact integer scale)
-- **4K**: $180 \times 12 = 2160$ ($12\times$ exact integer scale)
+👉 [Style Battle Shadows](https://github.com/syybott/Gen1Better/wiki/Battle-Backdrops#shadow-system-and-scene-interaction)
 
-Because artwork uses nearest-neighbor integer scaling, every pixel of your art maps to a clean, razor-sharp block of screen pixels with zero blur, distortion, or shimmering.
+👉 [Style Story Actor Shadows](https://github.com/syybott/Gen1Better/wiki/BetterScenes#actor-shadows-and-floor-contact)
 
-### Automated Validator
-Before packaging your artwork, run the Python validator included in the mod repository:
+### Give a battle its own atmosphere
+
+Choose a special arena for an encounter, lift a battler onto a platform, or change the backdrop as a fight enters its next phase. A story scene can also hand control to your mod's encounter logic and continue after the result.
+
+👉 [Choose an Arena for a Custom Battle](https://github.com/syybott/Gen1Better/wiki/Battle-Backdrops#custom-spawn-hook)
+
+👉 [Change the Arena Mid-Battle](https://github.com/syybott/Gen1Better/wiki/Battle-Backdrops#dynamic-scene-changes--transitions)
+
+👉 [Connect a Story Scene to a Battle](https://github.com/syybott/Gen1Better/wiki/BetterScenes#8-battle-handoff-and-resumption)
+
+## Working with an AI agent
+
+Describe the result in your own words. For example:
+
+> Use my sunset painting on Route 1. Give the floor shadows a warm brown tint and soften them. Package it as a separate Gen1Recomp mod.
+
+Or:
+
+> Have my character enter from the left, speak, and react with an exclamation mark. Let me advance the conversation with A, then return to the game.
+
+Give the agent your artwork and point it to Gen1Better's `agents.md` entry point and `agents/Gen1Better-API-Consumer.md` guide. Those instructions help it turn your creative direction into the right scene settings, API calls, and complete mod setup.
+
+Your artwork, dialogue, mood, and staging remain your creative choices. The agent should explain what to change using the same terms as these guides.
+
+## A few shared ideas
+
+| Idea | What you control |
+| --- | --- |
+| Backdrop | Where the scene or battle takes place |
+| Actor | A character, Pokémon, prop, or other image you place on a story stage |
+| Shadow | How that image meets the ground |
+| Sequence | The order of entrances, dialogue, reactions, effects, and waits |
+| Transition | How one scene or moment leads into another |
+| Battle handoff | When your story asks the mod to start combat and how it continues after the result |
+
+## 📐 Preparing your artwork
+
+Author battle and story backdrops at **320×180**. Battle backdrops use fully opaque PNGs. Actor and prop images can have their own dimensions and transparent backgrounds.
+
+The stage is 16:9. At full 720p, 1080p, 1440p, and 4K viewport sizes, the artwork scales by 4×, 6×, 8×, and 12×. Check how your work looks at the window sizes you want to support.
+
+Before packaging a battle backdrop, run the supplied artwork checker:
+
 ```bash
 python tools/verify_backdrop.py assets/my_art_320.png
 ```
-It confirms exact dimensions, 16:9 aspect ratio, integer-scaling sharpness at 1080p/4K, and warns if any accidental transparent pixels exist.
+
+It can catch incorrect dimensions, transparency, and possible pixel-art issues. The [Backdrop Artwork Checker guide](https://github.com/syybott/Gen1Better/wiki/Backdrop-Artwork-Checker) explains the grades and measurements.
+
+## When you need the exact contract
+
+The artist guides help you choose and build. The [API and Compatibility Reference](https://github.com/syybott/Gen1Better/wiki/Compatibility) defines the exact fields, defaults, return values, ownership rules, and integration responsibilities for modders and agents.

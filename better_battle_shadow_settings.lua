@@ -65,7 +65,7 @@ local settings = {
     middleRing = false,
     rotationDegrees = 0,
   },
-  schemaVersion = 2,
+  schemaVersion = 1,
   profileVersion = 1,
   revision = 0,
   profileSpace = {

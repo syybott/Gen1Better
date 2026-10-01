@@ -1,25 +1,16 @@
 # BetterBattle pixel-art backdrops
  
-BetterBattle automatically selects a 320×180 scene when BetterBattles is ON,
-the battle layout is WIDE, the HUD is Extended, and no external renderer owns
-the battle. Crystal battle sprites are required for BetterBattles to display
-properly. (BetterBattles can run with or without BetterBattle UI enabled, allowing
-custom battle HUD mods to be used in conjunction with the 320×180 backdrops and
-sprite shadow engine). Other sprite providers can have the same transparency or matting
-problem, so their battle assets must also be checked before using these
-backgrounds. There is no hollow-sprite detector or white rectangle behind
-Pokémon.
+A battle backdrop gives each encounter a sense of place: a forest path, a gym arena, a ship's deck, or a scene you painted yourself
+
+Gen1Better includes 63 registered scenes and chooses them from the encounter's location and circumstances. To present the 2D stage, use **BetterBattles ON**, **WIDE** layout, and **EXTENDED** HUD. **BetterBattle UI** separately controls the panels; an active external scene renderer takes priority over the 2D backdrop.
+
+Want to bring your own art into a battle? Start with the [Artist Backdrop Pack guide](https://github.com/syybott/Gen1Better/wiki/Artist-Backdrop-Packs). This page provides the scene catalog, selection rules, and integration details to support your pack.
 
 ## Sprite compatibility requirement
 
-BetterBattle backgrounds expose any transparency that exists in the battle
-sprite itself. The current supported visual configuration therefore requires
-the Crystal battle-sprite provider, which supplies the corrected battle sprite
-assets. A different sprite mod can be used only after its front and back battle
-sprites have been inspected against a full-color backdrop. The same failure can
-occur with any provider whose extractor or animation pipeline leaves body pixels
-transparent: the backdrop will show through those pixels. BetterBattle does not
-repair those assets or add a paper-colored backing rectangle.
+Use battle sprites with a correctly defined transparency mask: the background must be transparent while the Pokémon itself, including white body areas, remains opaque. Crystal Animated Sprites supplies compatible assets; another pack meeting the same requirement can be used.
+
+Full-color backdrops expose holes in the sprite's body mask. Gen1Better does not repair those assets or add a paper-colored backing rectangle.
 
 The scene retains its original colors: it is rendered on an outer canvas with
 no palette shader, beneath the transparent actor canvas and the independently
@@ -34,8 +25,8 @@ and log one warning per path for the session.
 
 ## Custom-spawn hook
 
-The backdrop selector is one of the public BetterMenus compatibility hooks.
-See the [provider and mod compatibility reference](Compatibility.md) for the
+The backdrop selector is one of the public Gen1Better compatibility hooks.
+See the [provider and mod compatibility reference](https://github.com/syybott/Gen1Better/wiki/Compatibility) for the
 full hook contract, provider ownership rules, and exported BetterBattle API.
 
 Wrap `bettermenus.battle_backdrop` using `mod.hooks:wrap`. It runs synchronously
@@ -105,16 +96,16 @@ instead of falling through. Existing Pewter, Cerulean, and Viridian grunt scenes
 remain distinct from their leaders.
 
 - Elite Four/champion rooms, Oak's Lab, Power Plant, Pokémon Mansion/Tower,
-  Diglett's Cave, ship locations, the dock, and Celadon roofs use their named art.
-- Silph floors use the office; Rocket Hideout floors use the bunker.
+  Diglett's Cave, ship locations, the dock, and Celadon roofs use their named art
+- Silph floors use the office; Rocket Hideout floors use the bunker
 - Seafoam B4F always uses its chamber, including fishing and surfing. Other
   Seafoam land uses ice cave; Seafoam/Cerulean Cave water uses water cave.
-- Route 12 land and fishing use Silence Bridge; surfing uses ocean.
+- Route 12 land and fishing use Silence Bridge; surfing uses ocean
 - Route 24's five bridge trainers and Rocket recruiter use Nugget Bridge;
   the off-bridge trainer uses route dirt. Fishing/surfing use lake water.
 - Route 23 land uses mountain pass. Other numbered-route wild/trainer encounters
   use route grass/dirt; sea routes and inland waters use their respective scenes.
-- Named towns, Viridian Forest, and Safari outdoor areas use their assigned art.
+- Named towns, Viridian Forest, and Safari outdoor areas use their assigned art
 - Labs use general lab; clubs/Daycare use fan club; houses/gates use ship quarters.
   Unknown interiors use general lab; unknown outdoor locations use route grass.
 
@@ -139,8 +130,8 @@ variants are not loaded.
 ## Custom backdrop registration
 
 > [!TIP]
-> **Creating an artist backdrop pack?** See the [Artist Backdrop Pack Quickstart](Artist-Backdrop-Packs.md)
-> for a beginner-friendly 5-minute guide with one-stop registration, encounter recipes, and folder structure.
+> **Creating an artist backdrop pack?** See the [Artist Backdrop Pack Quickstart](https://github.com/syybott/Gen1Better/wiki/Artist-Backdrop-Packs)
+> for a beginner guide with one-stop registration, encounter recipes, and folder structure.
 
 In addition to the 63 built-in scenes, other mods can register their own custom
 320×180 battle backdrops using `betterBattle.backdrop.registerScene` or the unified
@@ -154,7 +145,7 @@ local function registerCustomBackdrops()
   if not backdropApi then return end
 
   -- One-stop registration (image + shadow styling together):
-  backdropApi.registerArtistScene("my_custom_arena", {
+  local ok, result = backdropApi.registerArtistScene("my_custom_arena", {
     image = "assets/arena_320.png",
     shadows = {
       color = { 0.45, 0.32, 0.18 }, -- warm sunset earth tint
@@ -162,13 +153,15 @@ local function registerCustomBackdrops()
     },
   }, mod)
 
+  if not ok then error("Backdrop registration: " .. tostring(result)) end
+
   -- Or direct registration:
   -- backdropApi.registerScene("my_custom_arena", "assets/arena_320.png", mod)
 end
 ```
 
 Once registered, your scene ID is recognized by `bettermenus.battle_backdrop`,
-`betterBattle.backdrop.sceneIds()`, and `betterBattle.shadowSettings.registerScene`.
+`betterBattle.backdrop.sceneIds()`, and `betterBattle.shadowSettings.registerScene`
 
 You can also return a dynamic table directly from `bettermenus.battle_backdrop`:
 
@@ -183,7 +176,7 @@ end)
 
 ## Verifying backdrops for 1080p and 4K (Python)
 
-All BetterBattle 2D backdrops must be **strictly 320×180 pixels**.
+All BetterBattle 2D backdrops must be **strictly 320×180 pixels**
 
 ### Why 320×180 scales cleanly
 
@@ -199,29 +192,28 @@ at 4K. There is zero sub-pixel distortion, fractional pixel shimmering, or inter
 
 ### Validation script
 
-BetterMenus includes `tools/verify_backdrop.py` to inspect and validate artwork before release.
-Run it against any image file or directory:
+Gen1Better includes `tools/verify_backdrop.py`. Install Pillow and NumPy, then inspect an image or directory:
 
 ```bash
+python -m pip install Pillow NumPy
 python tools/verify_backdrop.py path/to/my_backdrop_320.png
 ```
 
-The script verifies:
-1. **Dimensions**: Must be exactly $320 \times 180$.
-2. **Aspect Ratio**: Must be strictly 16:9 ($1.\bar{7}$).
-3. **Integer Multipliers**: Confirms $4\times$, $6\times$, $8\times$, and $12\times$ alignments.
-4. **Opacity**: Warns if the backdrop contains accidental semi-transparent pixels that would reveal the clear background.
-5. **Pixel Grid Integrity**: Verifies that nearest-neighbor upscaling to 1080p ($6\times$) and 4K ($12\times$) creates uniform, sharp texel blocks without edge interpolation artifacts.
+The validator checks backdrop export requirements and reports palette size, flat-neighbor ratios, and interpolated-ramp heuristics. Grades are PERFECT, PASS, WARN, or FAIL. An ordinary graded run fails only FAIL; `--strict` also fails WARN. Read the dedicated guide for the alpha inspection's current limits.
+
+With `--counterpart-dir` it can compare matching native/high-resolution images and measure nearest-neighbor 4K differences and eligible block uniformity. The [Backdrop Artwork Checker guide](https://github.com/syybott/Gen1Better/wiki/Backdrop-Artwork-Checker) explains counterpart filenames, every grade, the exact thresholds, strict mode, and JSON reports. A native-image-only run does not capture or verify in-game output at display resolutions.
+
+Other window sizes can use fractional scales; the integer examples above apply to those full 16:9 viewport sizes
 
 ## Shadow system and scene interaction
 
 BetterBattle renders soft, multi-layered feathered shadows beneath battlers when
-a 2D backdrop is active, powered by the shared Actor Shadow Engine (`schemaVersion = 2`, `profileVersion = 1`). Each species has baseline dimensions, grounding rules,
+a 2D backdrop is active, powered by the shared Actor Shadow Engine (`schemaVersion = 1`, `profileVersion = 1`). Each species has baseline dimensions, grounding rules,
 and optional manual limb shapes or dynamic wing-feathering detectors.
 
 Because shadow profiles are unified across the mod, species definitions registered
 via `betterBattle.shadowSettings.registerSpecies` are immediately available in both
-combat backdrops and [BetterScenes narrative cutscenes](BetterScenes.md#actor-shadows--floor-contact).
+combat backdrops and [BetterScenes narrative cutscenes](https://github.com/syybott/Gen1Better/wiki/BetterScenes#actor-shadows-and-floor-contact).
 Species-level tuning is shared; optional `player`, `enemy`, and `scene` overrides
 remain isolated presentation contexts and never cross-inherit.
 
@@ -253,16 +245,18 @@ local function setupSceneShadows()
 end
 ```
 
+Direct `shadowSettings.registerScene` does not validate input and returns the live merged configuration. For values from a tool or user input, call `validateSceneConfig` first and only register its successful normalized result.
+
 Available scene properties (validated by `shadowSettings.validateSceneConfig`):
 - `enabled`: Set to `false` to disable shadows in this scene entirely. Must be a strict boolean (`true` or `false`).
 - `color`: `{ r, g, b }` or `{ r = ..., g = ..., b = ... }` table for custom shadow tinting. Components must be finite numbers in `[0.0, 1.0]` (numeric strings accepted).
-- `opacityScale`: Non-negative multiplier applied to all shadow layers in this scene (finite number $\ge 0$, numeric strings accepted).
-- `offsetY`: **Shadow-only** vertical adjustment applied to the shadow contact anchor (does not move the Pokémon; numeric strings accepted).
-- `playerOffsetY`: Side ground-plane adjustment lifting or lowering the player Pokémon sprite, battler-attached status panel, and shadow together (e.g. `+4` for sunken shoreline; numeric strings accepted).
-- `enemyOffsetY`: Side ground-plane adjustment lifting or lowering the enemy Pokémon sprite, battler-attached status panel, and shadow together (e.g. `-12` for high cliff/podium; numeric strings accepted).
+- `opacityScale`: Non-negative multiplier applied to all shadow layers in this scene (finite number $\ge 0$, numeric strings accepted)
+- `offsetY`: **Shadow-only** vertical adjustment applied to the shadow contact anchor (does not move the Pokémon; numeric strings accepted)
+- `playerOffsetY`: Side ground-plane adjustment lifting or lowering the player Pokémon sprite, battler-attached status panel, and shadow together (e.g. `+4` for sunken shoreline; numeric strings accepted)
+- `enemyOffsetY`: Side ground-plane adjustment lifting or lowering the enemy Pokémon sprite, battler-attached status panel, and shadow together (e.g. `-12` for high cliff/podium; numeric strings accepted)
 
 > [!NOTE]
-> `shadowSettings.validateSceneConfig(config)` is available in the public v1 API to pre-validate and normalize custom scene configurations before registration.
+> `shadowSettings.validateSceneConfig(config)` can pre-validate and normalize custom scene configurations before registration
 
 ### Dynamic scene changes & transitions
 
@@ -277,40 +271,40 @@ local ok, sceneId = api.backdrop.setScene(battle, "boss_phase2_ruins", {
 })
 -- Returns: true, sceneId | false, "unknown-scene" | false, "no-record" | false, "invalid-battle"
 
--- Or re-evaluate the battle_backdrop hook if encounter state changed
+-- Re-run selection using captured encounter context; inspect ctx.battle for live state
 local ok, sceneId, status = api.backdrop.refresh(battle, { transition = "flash" })
 -- Returns: true, sceneId, "changed" | true, sceneId, "unchanged" | false, err
 ```
 
 > [!NOTE]
-> **Cached vs. Dynamic Selection**: Normal scene selection is cached. `refresh()` is an explicit API escape hatch that re-runs selection against the captured context. This preserves standard single-evaluation efficiency during ordinary play while giving scripted battles, weather controllers, and multi-phase encounters full dynamic control.
+> **Cached vs. Dynamic Selection**: Normal scene selection is cached. `refresh()` is an explicit API escape hatch that re-runs selection against the captured context. It does not recapture map or position fields. Hooks can inspect the live battle to choose a different scene.
 
 #### Scene identity vs. geometry presentation
 
 Scene identity switches immediately on `setScene()` (`diagnostics(battle).sceneId` resolves to the target scene right away for deterministic scripting). However, visible geometry timing can be configured via `opts.geometry`:
 
 - `geometry = "immediate"` *(default)*: Target scene offsets apply immediately on frame 0. Best when arena height does not change.
-- `geometry = "lerp"` *(recommended for elevation changes)*: Smoothly interpolates `playerOffsetY` and `enemyOffsetY` across the transition duration ($0.0 \to 1.0$), ensuring battlers and shadows glide into position with zero pops or floating in midair.
+- `geometry = "lerp"` *(recommended for elevation changes)*: Smoothly interpolates `playerOffsetY` and `enemyOffsetY` across the transition duration ($0.0 \to 1.0$), when their geometry path incorporates these offsets
 - `geometry = "after"` *(niche fallback)*: Holds the origin scene ground offsets until the visual transition reaches 100%, then snaps to target offsets. Avoid unless you specifically want an old ground hold followed by a snap.
 
 **Creator Guidance for Arena Transitions**:
 - **Hard scene jumps**: Use `transition = "cut"` or `"flash"`. Flash masks height snaps naturally behind full-screen intensity.
-- **Elevation changes** (cliffs, platforms, podiums, water trenches, elevators, psychic lifts, abduction beams): Use `transition = "crossfade"` with `geometry = "lerp"`.
-- **Same-height transitions**: Use default `geometry = "immediate"`.
+- **Elevation changes** (cliffs, platforms, podiums, water trenches, elevators, psychic lifts, abduction beams): Use `transition = "crossfade"` with `geometry = "lerp"`
+- **Same-height transitions**: Use default `geometry = "immediate"`
 
 #### Single source of truth: `effectiveGroundOffsets`
 
-To guarantee that battler sprites, battler-attached panels, and shadow footprints animate in perfect lockstep, both internal systems and external mods can query:
+The built-in BetterBattle UI geometry includes the scene offsets. External geometry providers must incorporate them into their own ground lines/shifts. Query the presentation-time values with:
 ```lua
 local playerOffsetY, enemyOffsetY = api.backdrop.effectiveGroundOffsets(battle)
 ```
-Diagnostics also reports `effectivePlayerOffsetY` and `effectiveEnemyOffsetY` alongside the raw target `playerOffsetY` and `enemyOffsetY`.
+Diagnostics also reports `effectivePlayerOffsetY` and `effectiveEnemyOffsetY` alongside the raw target `playerOffsetY` and `enemyOffsetY`
 
 ### Dynamic battle shadow hook
 
 For dynamic or conditional shadow behavior (e.g. reacting to battle state, weather,
 or Pokémon actions), use the `bettermenus.battle_shadow` hook. See the
-[Provider and Mod Compatibility guide](Compatibility.md#3-battle-shadows-and-custom-scenes)
+[Provider and Mod Compatibility guide](https://github.com/syybott/Gen1Better/wiki/Compatibility#3-battle-shadows-and-custom-scenes)
 for full hook specifications and examples.
 
 ## Diagnostics

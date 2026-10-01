@@ -1,6 +1,6 @@
 # Gen1Better — Mod Options Screen Compatibility
 
-This page is part of the [Gen1Better compatibility reference](Compatibility.md).
+This page is part of the [Gen1Better compatibility reference](https://github.com/syybott/Gen1Better/wiki/Compatibility)
 
 Gen1Better supports third-party mod options and settings screens through a simple opt-in marker:
 
@@ -8,7 +8,7 @@ Gen1Better supports third-party mod options and settings screens through a simpl
 isModOptions = true
 ```
 
-Adding this marker tells Gen1Better that the screen is an options-style interface, allowing it to apply the correct widescreen layout behavior without depending on your mod name or a specific `screenId`.
+Adding this marker tells Gen1Better that the screen is an options-style interface, allowing it to apply the correct widescreen layout behavior without depending on your mod name or a specific `screenId`
 
 ## Recommended usage
 
@@ -33,7 +33,7 @@ end
 return OptionsScreen
 ```
 
-That is the preferred approach when your screen is registered through Gen1Recomp's screen system.
+That is the preferred approach when your screen is registered through Gen1Recomp's screen system
 
 ## Manually-created screens
 
@@ -72,7 +72,7 @@ screenId:match("Options$")
 screenId:match("Settings$")
 ```
 
-That works, but it creates unnecessary coupling between unrelated mods.
+That works, but it creates unnecessary coupling between unrelated mods
 
 An explicit marker provides a much cleaner contract:
 
@@ -80,7 +80,7 @@ An explicit marker provides a much cleaner contract:
 isModOptions = true
 ```
 
-Your mod identifies the purpose of its own screen, and compatible UI mods can respond appropriately.
+Your mod identifies the purpose of its own screen, and compatible UI mods can respond appropriately
 
 This avoids:
 
@@ -96,7 +96,7 @@ This avoids:
 
 ## No Gen1Better dependency is required
 
-Your mod does not need to detect, require, or reference Gen1Better.
+Your mod does not need to detect, require, or reference Gen1Better
 
 Do not do this:
 
@@ -110,11 +110,11 @@ Simply mark your options screen:
 isModOptions = true
 ```
 
-If Gen1Better is installed, it can recognize the marker.
+If Gen1Better is installed, it can recognize the marker
 
-If Gen1Better is not installed, the extra Lua field has no effect.
+If Gen1Better is not installed, the extra Lua field has no effect
 
-This keeps compatibility optional and avoids creating a dependency between the two mods.
+This keeps compatibility optional and avoids creating a dependency between the two mods
 
 ## Updating an existing screen
 
@@ -143,7 +143,7 @@ local screen = {
 }
 ```
 
-That's all that is required for detection.
+That's all that is required for detection
 
 ## Screen module example
 
@@ -221,7 +221,9 @@ Options
 Settings
 ```
 
-The explicit marker is preferred because it is predictable, self-documenting, and does not depend on naming conventions.
+The explicit marker is preferred because it is predictable and does not depend on naming conventions
+
+It also automatically opts the screen into the user's **Menu Scale** in Gen1Better's eligible overworld/menu path, before the general mod-owned-screen exclusion. `BetterMenusScaleEligible = true` is an alternative scaling marker. The `bettermenus.ui_scale` hook can return false to keep native scale. The hook is dispatched even at 100%, requires an overworld below the menu, and does not scale battle or title-screen menus.
 
 ## If your screen still has an issue
 
@@ -239,7 +241,7 @@ and it still renders incorrectly with Gen1Better, please report the issue with e
 
 - A screenshot showing the layout problem
 
-At that point it is likely a genuine compatibility issue rather than a screen-detection issue.
+At that point it is likely a genuine compatibility issue rather than a screen-detection issue
 
 
 

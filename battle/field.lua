@@ -100,44 +100,49 @@ return function(deps)
         and settings.value(footprintState.species, side, "manualAnchorX")
       local manualContactY = settings
         and settings.value(footprintState.species, side, "manualContactY")
+      local sourceSpace = settings
+        and settings.value(footprintState.species, side, "sourceSpace")
+      if type(sourceSpace) ~= "table" then
+        sourceSpace = settings and settings.profileSpace or {}
+      end
       local manualOrigin
       local spriteTransform
+      local function measureFootprint(region)
+        return Footprint.inProfileSpace(
+          Footprint.measureShadowFootprint(layer.canvas, region),
+          spriteTransform)
+      end
       local previousDrawBattlerPic = rawget(battle, "drawBattlerPic")
       local originalDrawBattlerPic = battle.drawBattlerPic
       local manualWrapperInstalled = false
 
-      -- Manual coordinates are authored in the canonical 56x56 front
-      -- sprite. Use the actual draw origin and active transform so both
-      -- sides follow their sprite placement without measuring alpha bounds.
-      if
-        (
-          shadowProfile
-          or wingSettings
-          or (type(manualAnchorX) == "number" and type(manualContactY) == "number")
-        ) and type(originalDrawBattlerPic) == "function"
-      then
+      -- Keep shadow calculations in their authored reference units.
+      -- Capture every Pokémon's input size and actual drawing transform.
+      if type(originalDrawBattlerPic) == "function" then
         battle.drawBattlerPic = function(self, battler, x, y, scale, ...)
           if battler == self[side] and not spriteTransform then
             local image = battler.sprite and self:picImage(battler.sprite)
             if image and type(x) == "number" and type(y) == "number" then
               local spriteScale = tonumber(scale) or 1
+              local imageWidth, imageHeight = image:getWidth(), image:getHeight()
+              local profileWidth = tonumber(sourceSpace.width) or imageWidth
+              local profileHeight = tonumber(sourceSpace.height) or imageHeight
+              assert(profileWidth > 0 and profileWidth < math.huge
+                and profileHeight > 0 and profileHeight < math.huge,
+                "Shadow sourceSpace dimensions must be finite and positive")
               local px, py = g.transformPoint(x, y)
               local qx, qy = g.transformPoint(x + spriteScale, y + spriteScale)
               spriteTransform = {
                 x = px,
                 y = py,
-                scaleX = qx - px,
-                scaleY = qy - py,
+                scaleX = (qx - px) * imageWidth / profileWidth,
+                scaleY = (qy - py) * imageHeight / profileHeight,
+                profileWidth = profileWidth,
+                profileHeight = profileHeight,
               }
               if type(manualAnchorX) == "number" and type(manualContactY) == "number" then
-                local profileWidth = settings
-                    and settings.profileSpace
-                    and settings.profileSpace.width
-                  or 56
                 local spriteX = side == "player" and profileWidth - manualAnchorX or manualAnchorX
-                local ax, ay =
-                  g.transformPoint(x + spriteX * spriteScale, y + manualContactY * spriteScale)
-                manualOrigin = { centerX = ax, contactY = ay }
+                manualOrigin = { centerX = spriteX, contactY = manualContactY }
               end
             end
           end
@@ -168,6 +173,25 @@ return function(deps)
         marks[i] = nil
       end
       if not ok then error(result, 0) end
+
+      local previousTransform = layer.shadowTransform
+      local revision = settings and settings.revision
+      if spriteTransform and (
+        layer.shadowProfileRevision ~= revision
+        or (previousTransform and (
+          previousTransform.scaleX ~= spriteTransform.scaleX
+          or previousTransform.scaleY ~= spriteTransform.scaleY
+          or previousTransform.profileWidth ~= spriteTransform.profileWidth
+          or previousTransform.profileHeight ~= spriteTransform.profileHeight
+        ))
+      ) then
+        layer.detectedWingShadowState = nil
+        layer.authoredShadowState = nil
+        layer.shadowFootprints = nil
+        layer.shadowFootprint, layer.shadowAnchor = nil, nil
+      end
+      layer.shadowTransform = spriteTransform or previousTransform
+      layer.shadowProfileRevision = revision
 
       layer.detectedWingShadows = nil
       if wingSettings and spriteTransform then
@@ -212,7 +236,7 @@ return function(deps)
           if footprintState.settled and footprintState.sprite then
             local measured = entry.frames[footprintState.sprite]
             if measured == nil then
-              measured = Footprint.measureShadowFootprint(layer.canvas, region) or false
+              measured = measureFootprint(region) or false
               entry.frames[footprintState.sprite] = measured
             end
             if measured then entry.last = measured end
@@ -303,7 +327,7 @@ return function(deps)
             if footprintState.settled and footprintState.sprite and state.transform then
               local measured = entry.frames[footprintState.sprite]
               if measured == nil then
-                measured = Footprint.measureShadowFootprint(layer.canvas, region) or false
+                measured = measureFootprint(region) or false
                 entry.frames[footprintState.sprite] = measured
               end
               if measured then
@@ -399,7 +423,7 @@ return function(deps)
       elseif not hasManualAnchor and sprite and footprintState.settled then
         local footprint = layer.shadowFootprints[sprite]
         if not footprint then
-          footprint = Footprint.measureShadowFootprint(layer.canvas, region)
+          footprint = measureFootprint(region)
           layer.shadowFootprints[sprite] = footprint
         end
         if footprint then
