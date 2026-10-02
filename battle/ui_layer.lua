@@ -12,6 +12,55 @@ return function(deps)
   local PaletteFX = require("src.render.PaletteFX")
   local menuColors = deps.menuColors
 
+  function M.renderStatBox(state, draw)
+    local battle = state and state.gen1BetterBattleStatBoxOwner
+    if not battle or not Policy.uiSetting(battle)
+        or Layout.levelUpStatBox(battle) ~= state then return false end
+    local renderer = battle.game and battle.game.renderer
+    if not (renderer and renderer.setBattleUIAnchor) then return false end
+    local canvas = renderer.gen1BetterBattleStatBoxCanvas
+    if not canvas then
+      canvas = love.graphics.newCanvas(304, 144)
+      canvas:setFilter("nearest", "nearest")
+      renderer.gen1BetterBattleStatBoxCanvas = canvas
+    end
+    local previousCanvas = love.graphics.getCanvas()
+    local marks = PaletteFX.trueColorRects("ui")
+    local firstMark = #marks + 1
+    local frameMarks = PaletteFX.gen1BetterMenusFrameMarks
+    local frameUi = frameMarks and frameMarks.ui
+    local firstFrameMark = frameUi and #frameUi + 1
+    local zones = { PaletteFX.zone(menuColors(), 0, 0, 37, 17) }
+    love.graphics.push("all")
+    local ok, err = pcall(function()
+      love.graphics.setCanvas(canvas)
+      love.graphics.origin()
+      love.graphics.setScissor()
+      love.graphics.clear(0, 0, 0, 0)
+      draw(state)
+    end)
+    love.graphics.setCanvas(previousCanvas)
+    love.graphics.pop()
+    for i = firstMark, #marks do
+      if PaletteFX.honorsTrueColor() then zones[#zones + 1] = marks[i] end
+    end
+    for i = #marks, firstMark, -1 do marks[i] = nil end
+    if frameUi and frameUi ~= marks then
+      for i = #frameUi, firstFrameMark, -1 do frameUi[i] = nil end
+    end
+    if not ok then error(err, 0) end
+    renderer.gen1BetterBattleStatBoxZones = zones
+    local before = #(renderer.uiAnchors or {})
+    renderer:setBattleUIAnchor(72, 16, 88, 80, "topright",
+      Geometry.betterBattlePlacement("top-right", 4, 42))
+    local anchors = renderer.uiAnchors
+    if anchors and #anchors > before then
+      anchors[#anchors].canvas = canvas
+      anchors[#anchors].extract = false
+    end
+    return true
+  end
+
   local function renderBetterBattleBottom(battle, visible)
     if not visible then return nil end
     if battle.phase == "menu" then return Menus.drawBetterCommandMenu(battle) end
@@ -45,6 +94,7 @@ return function(deps)
 
   function M.renderBetterBattleLayer(battle, bottomVisible, nativeRow)
     if not Policy.setting(battle) or not Layout.battleIsTopState(battle) then return false end
+    if Layout.levelUpStatBox(battle) then bottomVisible = false end
     local renderer = battle.game.renderer
     local geometry = Geometry.resolveBattleGeometry(battle)
     local marks = PaletteFX.trueColorRects("ui")

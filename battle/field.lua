@@ -484,7 +484,7 @@ return function(deps)
     local originalPics, originalAnim = battle.drawPicsLayer, battle.drawAnimLayer
     local ownPics, ownAnim = rawget(battle, "drawPicsLayer"), rawget(battle, "drawAnimLayer")
     local function shifted(dy, callback)
-      if geometry and geometry.nativeBlit then return callback() end
+      if geometry and geometry.nativeBlit and dy == 0 then return callback() end
       local g = love.graphics
       local marks = PaletteFX.trueColorRects("ui")
       local first = #marks + 1
@@ -552,7 +552,6 @@ return function(deps)
       if
         enhanced
         and geometry
-        and geometry.coordinateSpace == "field"
         and effects.isScreenWide(self.animPlayer, step)
       then
         renderer.gen1BetterBattleScreenAnim = { battle = self, step = step }

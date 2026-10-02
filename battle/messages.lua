@@ -6,6 +6,7 @@ return function(deps)
   local Policy = assert(deps.policy)
   local BattleState = require("src.battle.BattleState")
   local Font = require("src.render.Font")
+  local Text = assert(deps.text)
 
   function M.playerPaneBelowHead(battle)
     return not battle.safari
@@ -243,91 +244,34 @@ return function(deps)
       local result = originalStartMessage(battle, item)
       battle._betterMessagePane = destination
       battle._betterMessageShown = active and battle.shown or nil
-      if not active then return result end
+      if not active and not Policy.stockWideExtended(battle) then return result end
 
       local pad = Layout.framePadding()
-      local maxWidth = destination == "player" and (PLAYER_MESSAGE_WIDTH - pad * 8)
-        or (WIDE_MESSAGE_WIDTH - pad * 8)
-
+      local maxWidth = active and destination == "player"
+        and (PLAYER_MESSAGE_WIDTH - pad * 8) or (WIDE_MESSAGE_WIDTH - pad * 8)
+      -- Use the same preparation and pagination as widened overworld dialogue.
+      local pages = Text.paginate(type(item) == "table" and item.text or "", maxWidth / 8)
       local lines, total = {}, 0
-      local groups, group = {}, nil
-
-      -- The engine has already split stock text at its original narrow
-      -- textbox width. Rejoin ordinary newline-separated chunks so the
-      -- widened BetterMenus message pane can wrap them again.
-      -- A line marked cont=true follows \v and must remain a separate
-      -- continuation/page segment.
-      local function appendSourceLine(line)
-        if line.cont then
-          if group then groups[#groups + 1] = group end
-          group = {
-            text = line.text or "",
-            cont = true,
-          }
-        elseif not group then
-          group = {
-            text = line.text or "",
-            cont = false,
-          }
-        elseif group.text == "" then
-          group.text = line.text or ""
-        elseif line.text and line.text ~= "" then
-          group.text = group.text .. " " .. line.text
+      for pageIndex, page in ipairs(pages) do
+        for lineIndex, text in ipairs(page) do
+          local continuation = pages.contBefore
+            and pages.contBefore[pageIndex][lineIndex] or false
+          if pageIndex > 1 and lineIndex == 1 then continuation = true end
+          -- Keep the existing battle wait only after both visible rows fill.
+          if continuation and (#lines % MESSAGE_VISIBLE_LINES) ~= 0 then
+            continuation = false
+          end
+          local codes = Font.encode(text)
+          lines[#lines + 1] = { text = text, codes = codes, cont = continuation }
+          total = total + #codes
         end
-      end
-
-      for _, line in ipairs(battle.lines or {}) do
-        appendSourceLine(line)
-      end
-      if group then groups[#groups + 1] = group end
-
-      for _, group in ipairs(groups) do
-        local text = group.text
-        local groupCodes = Font.encode(text)
-        local spans = Font.split(text)
-        local first = 1
-
-        repeat
-          local width, last, space = 0, first - 1, nil
-
-          for i = first, #spans do
-            local span = spans[i]
-            local advance = Font.advanceOf(span.code or Font.encode(" ")[1])
-            if width + advance > maxWidth then break end
-            width, last = width + advance, i
-            if text:sub(span.from, span.to) == " " then space = i end
-          end
-
-          if first <= #spans then last = math.max(first, last) end
-          if last < #spans and space and space > first then last = space end
-          local wrappedText = last >= first and text:sub(spans[first].from, spans[last].to) or ""
-          local wrappedCodes = {}
-          for i = first, last do
-            wrappedCodes[#wrappedCodes + 1] = groupCodes[i]
-          end
-
-          local continuation = first == 1 and group.cont or false
-
-          -- A stock \v marker should only pause after a full two-line
-          -- player pane. It must not pause after the first visual line
-          -- when the second line still fits in the same pane.
-          if continuation and (#lines % MESSAGE_VISIBLE_LINES) ~= 0 then continuation = false end
-
-          lines[#lines + 1] = {
-            text = wrappedText,
-            codes = wrappedCodes,
-            cont = continuation,
-          }
-          total = total + #wrappedCodes
-          first = last + 1
-        until first > #spans
       end
 
       battle.lines, battle.total = lines, total
       battle.shown, battle.lineIndex = {}, 0
       battle.scrollPx = nil
       battle:beginMsgLine()
-      battle._betterMessageShown = battle.shown
+      battle._betterMessageShown = active and battle.shown or nil
       return result
     end
   end

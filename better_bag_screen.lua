@@ -8,6 +8,7 @@
 return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     menuPaperPalette, rawPaletteCopy)
   compatibility = compatibility or {}
+  local tinyFont = assert(compatibility.tinyFont, "BetterBag requires the shared tiny font")
   local BagMenu = require("src.ui.BagMenu")
   local Bag = require("src.inventory.Bag")
   local Assets = require("src.render.Assets")
@@ -27,6 +28,10 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   local PORTRAIT_MAX_H = 400
   local ROWS = 6
   local ROW_H = 13
+  local TINY_LINE_H = 6
+  local LOCATION_GAP = TINY_LINE_H
+  local INFO_PANEL_PADDING = 3
+  local WALLET_ID = "__GEN1BETTER_WALLET"
 
   local WHITE = 1
   local LIGHT = 170 / 255
@@ -119,47 +124,509 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     PERSIM_BERRY = true, LUM_BERRY = true,
   }
 
-  local DESCRIPTIONS = {
-    POTION = Strings.source("Restores 20 HP to one POKéMON."),
-    SUPER_POTION = Strings.source("Restores 50 HP to one POKéMON."),
-    HYPER_POTION = Strings.source("Restores 200 HP to one POKéMON."),
-    MAX_POTION = Strings.source("Fully restores one POKéMON's HP."),
-    FULL_RESTORE = Strings.source("Fully restores HP and cures status."),
-    FRESH_WATER = Strings.source("A refreshing drink that restores 50 HP."),
-    SODA_POP = Strings.source("A fizzy drink that restores 60 HP."),
-    LEMONADE = Strings.source("A sweet drink that restores 80 HP."),
-    ANTIDOTE = Strings.source("Cures a poisoned POKéMON."),
-    BURN_HEAL = Strings.source("Cures a burned POKéMON."),
-    ICE_HEAL = Strings.source("Defrosts a frozen POKéMON."),
-    AWAKENING = Strings.source("Wakes a sleeping POKéMON."),
-    PARLYZ_HEAL = Strings.source("Cures a paralyzed POKéMON."),
-    FULL_HEAL = Strings.source("Cures all status conditions."),
-    REVIVE = Strings.source("Revives a fainted POKéMON with half HP."),
-    MAX_REVIVE = Strings.source("Revives a fainted POKéMON with full HP."),
-    RARE_CANDY = Strings.source("Raises one POKéMON by one level."),
-    PP_UP = Strings.source("Raises the maximum PP of one move."),
-    ETHER = Strings.source("Restores 10 PP to one move."),
-    MAX_ETHER = Strings.source("Fully restores the PP of one move."),
-    ELIXER = Strings.source("Restores 10 PP to every move."),
-    MAX_ELIXER = Strings.source("Fully restores the PP of every move."),
-    ESCAPE_ROPE = Strings.source("Returns you to the last POKéMON Center."),
-    REPEL = Strings.source("Keeps weak wild POKéMON away briefly."),
-    SUPER_REPEL = Strings.source("Keeps weak wild POKéMON away longer."),
-    MAX_REPEL = Strings.source("Keeps weak wild POKéMON away the longest."),
-    FIRE_STONE = Strings.source("A peculiar stone that evolves some POKéMON."),
-    WATER_STONE = Strings.source("A peculiar stone that evolves some POKéMON."),
-    THUNDER_STONE = Strings.source("A peculiar stone that evolves some POKéMON."),
-    LEAF_STONE = Strings.source("A peculiar stone that evolves some POKéMON."),
-    MOON_STONE = Strings.source("A peculiar stone that evolves some POKéMON."),
-    NUGGET = Strings.source("A solid gold nugget that sells for a high price."),
-    POKE_DOLL = Strings.source("A doll that can help you escape a wild battle."),
-    BICYCLE = Strings.source("A folding bicycle that is faster than walking."),
-    TOWN_MAP = Strings.source("A convenient map of the Kanto region."),
-    ITEMFINDER = Strings.source("Checks the area for hidden items."),
-    POKE_FLUTE = Strings.source("A flute with a melody that wakes sleepers."),
-    OLD_ROD = Strings.source("Use it by water to fish for POKéMON."),
-    GOOD_ROD = Strings.source("A good rod for fishing up POKéMON."),
-    SUPER_ROD = Strings.source("The best rod for fishing up POKéMON."),
+  -- Descriptions and acquisition locations from the supplied item list.
+  -- Display-only information; item prices and effects belong to the controller.
+  local ITEM_INFO = {
+    MASTER_BALL = {
+      description = Strings.source("The best BALL with the ultimate performance. It will catch any wild Pokémon without fail."),
+      location = Strings.source("Silph Co. (President)"),
+    },
+    ULTRA_BALL = {
+      description = Strings.source("A very high-grade BALL that offers a higher Pokémon catch rate than a GREAT BALL."),
+      location = Strings.source("Late-game Poké Marts; cave finds"),
+    },
+    GREAT_BALL = {
+      description = Strings.source("A good, quality BALL that offers a higher Pokémon catch rate than a standard POKé BALL."),
+      location = Strings.source("Poké Marts (Lavender onward); field finds"),
+    },
+    POKE_BALL = {
+      description = Strings.source("A BALL thrown to catch a wild Pokémon. It is designed in a capsule style."),
+      location = Strings.source("Most Poké Marts"),
+    },
+    SAFARI_BALL = {
+      description = Strings.source("A special BALL that is used only in the SAFARI ZONE. It is finished in a camouflage pattern."),
+      location = Strings.source("Safari Zone only"),
+    },
+    POTION = {
+      description = Strings.source("A spray-type wound medicine. It restores the HP of one Pokémon by 20 points."),
+      location = Strings.source("Early Poké Marts; field finds"),
+    },
+    ANTIDOTE = {
+      description = Strings.source("A spray-type medicine. It heals one Pokémon from a poisoning."),
+      location = Strings.source("Poké Marts; Viridian Forest"),
+    },
+    BURN_HEAL = {
+      description = Strings.source("A spray-type medicine. It heals one Pokémon of a burn."),
+      location = Strings.source("Poké Marts"),
+    },
+    ICE_HEAL = {
+      description = Strings.source("A spray-type medicine. It defrosts a frozen Pokémon."),
+      location = Strings.source("Poké Marts"),
+    },
+    AWAKENING = {
+      description = Strings.source("A spray-type medicine. It awakens a sleeping Pokémon."),
+      location = Strings.source("Poké Marts; Pokémon Tower"),
+    },
+    PARLYZ_HEAL = {
+      description = Strings.source("A spray-type medicine. It heals one Pokémon from paralysis."),
+      location = Strings.source("Poké Marts"),
+    },
+    FULL_RESTORE = {
+      description = Strings.source("A medicine that fully restores the HP and heals any status problems of one Pokémon."),
+      location = Strings.source("Indigo Plateau; dungeon finds"),
+    },
+    MAX_POTION = {
+      description = Strings.source("A spray-type wound medicine. It fully restores the HP of one Pokémon."),
+      location = Strings.source("Indigo Plateau; dungeon finds"),
+    },
+    HYPER_POTION = {
+      description = Strings.source("A spray-type wound medicine. It restores the HP of one Pokémon by 200 points."),
+      location = Strings.source("Late-game Poké Marts; field finds"),
+    },
+    SUPER_POTION = {
+      description = Strings.source("A spray-type wound medicine. It restores the HP of one Pokémon by 50 points."),
+      location = Strings.source("Poké Marts; field finds"),
+    },
+    FULL_HEAL = {
+      description = Strings.source("A spray-type medicine. It heals all the status problems of one Pokémon."),
+      location = Strings.source("Late-game Poké Marts; field finds"),
+    },
+    REVIVE = {
+      description = Strings.source("A medicine that revives a fainted Pokémon, restoring HP by half the maximum amount."),
+      location = Strings.source("Late-game Poké Marts; field finds"),
+    },
+    MAX_REVIVE = {
+      description = Strings.source("A medicine that revives a fainted Pokémon, restoring HP fully."),
+      location = Strings.source("Dungeon finds"),
+    },
+    FRESH_WATER = {
+      description = Strings.source("Water with a high mineral content. It restores the HP of one Pokémon by 50 points."),
+      location = Strings.source("Celadon Dept. Store roof"),
+    },
+    SODA_POP = {
+      description = Strings.source("A fizzy soda drink. It restores the HP of one Pokémon by 60 points."),
+      location = Strings.source("Celadon Dept. Store roof"),
+    },
+    LEMONADE = {
+      description = Strings.source("A very sweet drink. It restores the HP of one Pokémon by 80 points."),
+      location = Strings.source("Celadon Dept. Store roof"),
+    },
+    ETHER = {
+      description = Strings.source("Restores a selected move’s PP by 10 points for one Pokémon."),
+      location = Strings.source("Field finds"),
+    },
+    MAX_ETHER = {
+      description = Strings.source("Fully restores a selected move’s PP for one Pokémon."),
+      location = Strings.source("Field finds"),
+    },
+    ELIXER = {
+      description = Strings.source("Restores the PP of all moves for one Pokémon by 10 points each."),
+      location = Strings.source("Field finds"),
+    },
+    MAX_ELIXER = {
+      description = Strings.source("Fully restores the PP of all moves for one Pokémon."),
+      location = Strings.source("Field finds"),
+    },
+    HP_UP = {
+      description = Strings.source("A nutritious drink for Pokémon. It raises the base HP of one Pokémon."),
+      location = Strings.source("Celadon Dept. Store; field finds"),
+    },
+    PROTEIN = {
+      description = Strings.source("A nutritious drink for Pokémon. It raises the base ATTACK stat of one Pokémon."),
+      location = Strings.source("Celadon Dept. Store; field finds"),
+    },
+    IRON = {
+      description = Strings.source("A nutritious drink for Pokémon. It raises the base DEFENSE stat of one Pokémon."),
+      location = Strings.source("Celadon Dept. Store; field finds"),
+    },
+    CARBOS = {
+      description = Strings.source("A nutritious drink for Pokémon. It raises the base SPEED stat of one Pokémon."),
+      location = Strings.source("Celadon Dept. Store; field finds"),
+    },
+    CALCIUM = {
+      description = Strings.source("A nutritious drink for Pokémon. It raises the base SP. ATK stat of one Pokémon."),
+      location = Strings.source("Celadon Dept. Store; field finds"),
+    },
+    RARE_CANDY = {
+      description = Strings.source("A candy that is packed with energy. It raises the level of a Pokémon by one."),
+      location = Strings.source("Scattered across Kanto"),
+    },
+    PP_UP = {
+      description = Strings.source("Slightly raises the maximum PP of a selected move for one Pokémon."),
+      location = Strings.source("Field finds"),
+    },
+    GUARD_SPEC = {
+      description = Strings.source("An item that prevents stat reduction among party Pokémon for five turns after use."),
+      location = Strings.source("Celadon Dept. Store; Victory Road"),
+    },
+    DIRE_HIT = {
+      description = Strings.source("Raises the critical-hit ratio of Pokémon in battle. Wears off if the Pokémon is withdrawn."),
+      location = Strings.source("Celadon Dept. Store"),
+    },
+    X_ATTACK = {
+      description = Strings.source("Raises the ATTACK stat of Pokémon in battle. Wears off if the Pokémon is withdrawn."),
+      location = Strings.source("Celadon Dept. Store"),
+    },
+    X_DEFEND = {
+      description = Strings.source("Raises the DEFENSE stat of Pokémon in battle. Wears off if the Pokémon is withdrawn."),
+      location = Strings.source("Celadon Dept. Store"),
+    },
+    X_SPEED = {
+      description = Strings.source("Raises the SPEED stat of Pokémon in battle. Wears off if the Pokémon is withdrawn."),
+      location = Strings.source("Celadon Dept. Store"),
+    },
+    X_ACCURACY = {
+      description = Strings.source("Raises the accuracy stat of Pokémon in battle. Wears off if the Pokémon is withdrawn."),
+      location = Strings.source("Celadon Dept. Store; field finds"),
+    },
+    X_SPECIAL = {
+      description = Strings.source("Raises the SP. ATK stat of Pokémon in battle. Wears off if the Pokémon is withdrawn."),
+      location = Strings.source("Celadon Dept. Store; Underground Path"),
+    },
+    POKE_DOLL = {
+      description = Strings.source("An attractive doll. Use it to flee from any battle with a wild Pokémon."),
+      location = Strings.source("Celadon Dept. Store"),
+    },
+    SUPER_REPEL = {
+      description = Strings.source("Prevents weak wild Pokémon from appearing for 200 steps."),
+      location = Strings.source("Poké Marts; Celadon Dept. Store"),
+    },
+    MAX_REPEL = {
+      description = Strings.source("Prevents weak wild Pokémon from appearing for 250 steps."),
+      location = Strings.source("Late-game Poké Marts"),
+    },
+    ESCAPE_ROPE = {
+      description = Strings.source("A long, durable rope. Use it to escape instantly from a cave or a dungeon."),
+      location = Strings.source("Poké Marts; dungeon finds"),
+    },
+    REPEL = {
+      description = Strings.source("Prevents weak wild Pokémon from appearing for 100 steps."),
+      location = Strings.source("Poké Marts"),
+    },
+    MOON_STONE = {
+      description = Strings.source("A peculiar stone that makes certain species of Pokémon evolve. It is as black as the night sky."),
+      location = Strings.source("Mt. Moon; Team Rocket Hideout"),
+    },
+    FIRE_STONE = {
+      description = Strings.source("A peculiar stone that makes certain species of Pokémon evolve. It is colored orange."),
+      location = Strings.source("Celadon Dept. Store"),
+    },
+    THUNDER_STONE = {
+      description = Strings.source("A peculiar stone that makes certain species of Pokémon evolve. It has a thunderbolt pattern."),
+      location = Strings.source("Celadon Dept. Store"),
+    },
+    WATER_STONE = {
+      description = Strings.source("A peculiar stone that makes certain species of Pokémon evolve. It is a clear light blue."),
+      location = Strings.source("Celadon Dept. Store"),
+    },
+    LEAF_STONE = {
+      description = Strings.source("A peculiar stone that makes certain species of Pokémon evolve. It has a leaf pattern."),
+      location = Strings.source("Celadon Dept. Store"),
+    },
+    NUGGET = {
+      description = Strings.source("A nugget of pure gold that gives off a lustrous gleam. It can be sold at a high price."),
+      location = Strings.source("Scattered finds; Nugget Bridge"),
+    },
+    HELIX_FOSSIL = {
+      description = Strings.source("A fossil of an ancient, seafloor-dwelling Pokémon. It appears to be part of a seashell."),
+      location = Strings.source("Mt. Moon (choice)"),
+    },
+    DOME_FOSSIL = {
+      description = Strings.source("A fossil of an ancient, seafloor-dwelling Pokémon. It appears to be part of a shell."),
+      location = Strings.source("Mt. Moon (choice)"),
+    },
+    OLD_AMBER = {
+      description = Strings.source("A piece of amber that contains the genes of an ancient Pokémon. It is clear with a reddish tint."),
+      location = Strings.source("Pewter Museum"),
+    },
+    EXP_ALL = {
+      description = Strings.source("An item to be held by a Pokémon. The holder gets a share of EXP. points without having to battle."),
+      location = Strings.source("Route 15 gate (Oak's Aide)"),
+    },
+    TM_MEGA_PUNCH = {
+      description = Strings.source("The foe is slugged by a punch thrown with muscle-packed power."),
+      location = Strings.source("Mt. Moon"),
+    },
+    TM_RAZOR_WIND = {
+      description = Strings.source("Blades of wind hit the foe on the 2nd turn. It has a high critical-hit ratio."),
+      location = Strings.source("Team Rocket Hideout (B4F)"),
+    },
+    TM_SWORDS_DANCE = {
+      description = Strings.source("A frenetic dance of fighting. It sharply raises the ATTACK stat."),
+      location = Strings.source("Silph Co."),
+    },
+    TM_WHIRLWIND = {
+      description = Strings.source("The foe is made to switch out with an ally. In the wild, the battle ends."),
+      location = Strings.source("Route 4"),
+    },
+    TM_MEGA_KICK = {
+      description = Strings.source("The foe is attacked by a kick fired with muscle-packed power."),
+      location = Strings.source("Victory Road"),
+    },
+    TM_TOXIC = {
+      description = Strings.source("A move that badly poisons the foe. Its poison damage worsens every turn."),
+      location = Strings.source("Fuchsia City Gym"),
+    },
+    TM_HORN_DRILL = {
+      description = Strings.source("The horn is rotated like a drill to ram. The foe will faint if it hits."),
+      location = Strings.source("Team Rocket Hideout (B2F)"),
+    },
+    TM_BODY_SLAM = {
+      description = Strings.source("The user drops its full body on the foe. It may leave the foe paralyzed."),
+      location = Strings.source("S.S. Anne"),
+    },
+    TM_TAKE_DOWN = {
+      description = Strings.source("A reckless, full-body charge attack that also hurts the user a little."),
+      location = Strings.source("Saffron City"),
+    },
+    TM_DOUBLE_EDGE = {
+      description = Strings.source("A reckless, life-risking tackle that also hurts the user a little."),
+      location = Strings.source("Team Rocket Hideout (B3F)"),
+    },
+    TM_BUBBLEBEAM = {
+      description = Strings.source("A spray of bubbles strikes the foe. It may lower the foe’s SPEED stat."),
+      location = Strings.source("Cerulean City Gym"),
+    },
+    TM_WATER_GUN = {
+      description = Strings.source("The foe is struck with a lot of water expelled forcibly from the mouth."),
+      location = Strings.source("Mt. Moon"),
+    },
+    TM_ICE_BEAM = {
+      description = Strings.source("The foe is struck with an icy beam. It may freeze the foe solid."),
+      location = Strings.source("Celadon Dept. Store roof"),
+    },
+    TM_BLIZZARD = {
+      description = Strings.source("The foe is blasted with a blizzard. It may freeze the foe solid."),
+      location = Strings.source("Pokémon Mansion"),
+    },
+    TM_HYPER_BEAM = {
+      description = Strings.source("A severely damaging attack that makes the user rest on the next turn."),
+      location = Strings.source("Celadon Game Corner"),
+    },
+    TM_PAY_DAY = {
+      description = Strings.source("Numerous coins are hurled at the foe. Money is earned after battle."),
+      location = Strings.source("Route 12"),
+    },
+    TM_SUBMISSION = {
+      description = Strings.source("A reckless, full-body throw attack that also hurts the user a little."),
+      location = Strings.source("Victory Road"),
+    },
+    TM_COUNTER = {
+      description = Strings.source("A retaliation move that counters any physical hit with double the damage."),
+      location = Strings.source("Celadon Dept. Store (3F)"),
+    },
+    TM_SEISMIC_TOSS = {
+      description = Strings.source("A gravity-fed throw that causes damage matching the user’s level."),
+      location = Strings.source("Route 25"),
+    },
+    TM_RAGE = {
+      description = Strings.source("An attack that becomes stronger each time the user is hit in battle."),
+      location = Strings.source("Route 15"),
+    },
+    TM_MEGA_DRAIN = {
+      description = Strings.source("A tough attack that drains half the damage it inflicted to restore HP."),
+      location = Strings.source("Celadon City Gym"),
+    },
+    TM_SOLARBEAM = {
+      description = Strings.source("A 2-turn move that blasts the foe with absorbed energy in the 2nd turn."),
+      location = Strings.source("Pokémon Mansion"),
+    },
+    TM_DRAGON_RAGE = {
+      description = Strings.source("The foe is hit with a shock wave that always inflicts 40-HP damage."),
+      location = Strings.source("Celadon Game Corner"),
+    },
+    TM_THUNDERBOLT = {
+      description = Strings.source("A strong electrical attack that may also leave the foe paralyzed."),
+      location = Strings.source("Vermilion City Gym"),
+    },
+    TM_THUNDER = {
+      description = Strings.source("A brutal lightning attack that may also leave the foe paralyzed."),
+      location = Strings.source("Power Plant"),
+    },
+    TM_EARTHQUAKE = {
+      description = Strings.source("An earthquake that strikes all Pokémon in battle excluding the user."),
+      location = Strings.source("Silph Co."),
+    },
+    TM_FISSURE = {
+      description = Strings.source("The foe is dropped into a fissure. The foe faints if it hits."),
+      location = Strings.source("Viridian City Gym"),
+    },
+    TM_DIG = {
+      description = Strings.source("An attack that hits on the 2nd turn. Can also be used to exit dungeons."),
+      location = Strings.source("Cerulean City"),
+    },
+    TM_PSYCHIC_M = {
+      description = Strings.source("A strong telekinetic attack. It may also lower the foe’s SP. DEF stat."),
+      location = Strings.source("Saffron City"),
+    },
+    TM_TELEPORT = {
+      description = Strings.source("Use it to flee from any wild Pokémon. Also warps to the last POKé CENTER."),
+      location = Strings.source("Route 9"),
+    },
+    TM_MIMIC = {
+      description = Strings.source("The user copies the move last used by the foe for the rest of the battle."),
+      location = Strings.source("Saffron City"),
+    },
+    TM_DOUBLE_TEAM = {
+      description = Strings.source("The user creates illusory copies of itself to raise its evasiveness."),
+      location = Strings.source("Fuchsia City"),
+    },
+    TM_REFLECT = {
+      description = Strings.source("A wall of light cuts damage from physical attacks for five turns."),
+      location = Strings.source("Power Plant"),
+    },
+    TM_BIDE = {
+      description = Strings.source("The user endures attacks for two turns, then strikes back double."),
+      location = Strings.source("Pewter City Gym"),
+    },
+    TM_METRONOME = {
+      description = Strings.source("Waggles a finger and stimulates the brain into using any move at random."),
+      location = Strings.source("Cinnabar Island (Pokémon Lab)"),
+    },
+    TM_SELFDESTRUCT = {
+      description = Strings.source("The user blows up to inflict severe damage, even making itself faint."),
+      location = Strings.source("Silph Co."),
+    },
+    TM_EGG_BOMB = {
+      description = Strings.source("A large egg is hurled with great force at the foe to inflict damage."),
+      location = Strings.source("Fuchsia City"),
+    },
+    TM_FIRE_BLAST = {
+      description = Strings.source("The foe is hit with an intense flame. It may leave the target with a burn."),
+      location = Strings.source("Cinnabar Island Gym"),
+    },
+    TM_SWIFT = {
+      description = Strings.source("Star-shaped rays that never miss are fired at all foes in battle."),
+      location = Strings.source("Route 12"),
+    },
+    TM_SKULL_BASH = {
+      description = Strings.source("The user raises its DEFENSE in the 1st turn, then attacks in the 2nd turn."),
+      location = Strings.source("Safari Zone"),
+    },
+    TM_SOFTBOILED = {
+      description = Strings.source("Heals the user by up to half its full HP. It can be used to heal an ally."),
+      location = Strings.source("Celadon City"),
+    },
+    TM_DREAM_EATER = {
+      description = Strings.source("Absorbs half the damage it inflicted on a sleeping foe to restore HP."),
+      location = Strings.source("Viridian City"),
+    },
+    TM_SKY_ATTACK = {
+      description = Strings.source("A 2nd-turn attack move with a high critical-hit ratio. The foe may flinch."),
+      location = Strings.source("Victory Road"),
+    },
+    TM_REST = {
+      description = Strings.source("The user sleeps for two turns to fully restore HP and heal any status problem."),
+      location = Strings.source("S.S. Anne"),
+    },
+    TM_THUNDER_WAVE = {
+      description = Strings.source("A weak electric shock that is sure to cause paralysis if it hits."),
+      location = Strings.source("Route 24"),
+    },
+    TM_PSYWAVE = {
+      description = Strings.source("The foe is attacked with an odd, hot energy wave that varies in intensity."),
+      location = Strings.source("Saffron City Gym"),
+    },
+    TM_EXPLOSION = {
+      description = Strings.source("The user explodes to inflict terrible damage even while fainting itself."),
+      location = Strings.source("Victory Road"),
+    },
+    TM_ROCK_SLIDE = {
+      description = Strings.source("Large boulders are hurled at the foe. It may make the foe flinch."),
+      location = Strings.source("Celadon Dept. Store roof"),
+    },
+    TM_TRI_ATTACK = {
+      description = Strings.source("A simultaneous 3-beam attack that may paralyze, burn, or freeze the foe."),
+      location = Strings.source("Celadon Dept. Store roof"),
+    },
+    TM_SUBSTITUTE = {
+      description = Strings.source("The user creates a decoy using one-quarter of its full HP."),
+      location = Strings.source("Celadon Game Corner"),
+    },
+    HM_CUT = {
+      description = Strings.source("A basic attack. It can be used to cut down thin trees and grass."),
+      location = Strings.source("S.S. Anne"),
+    },
+    HM_FLY = {
+      description = Strings.source("A 2-turn move that hits on the 2nd turn. Use it to fly to any known town."),
+      location = Strings.source("Route 16"),
+    },
+    HM_SURF = {
+      description = Strings.source("A big wave crashes down on the foe. Can also be used for crossing water."),
+      location = Strings.source("Safari Zone"),
+    },
+    HM_STRENGTH = {
+      description = Strings.source("The foe is slugged at maximum power. Can also be used to move boulders."),
+      location = Strings.source("Fuchsia City"),
+    },
+    HM_FLASH = {
+      description = Strings.source("A blast of light that cuts the foe’s accuracy. It also illuminates caves."),
+      location = Strings.source("Route 2"),
+    },
+    TOWN_MAP = {
+      description = Strings.source("A very convenient map that can be viewed anytime. It even shows your present location."),
+      location = Strings.source("Pallet Town (Daisy)"),
+    },
+    COIN_CASE = {
+      description = Strings.source("A case for holding COINS obtained at the GAME CORNER. It holds up to 9,999 COINS."),
+      location = Strings.source("Celadon City (restaurant)"),
+    },
+    OLD_ROD = {
+      description = Strings.source("An old and beat-up fishing rod. Use it by any body of water to fish for wild Pokémon."),
+      location = Strings.source("Vermilion City (Fishing Guru)"),
+    },
+    GOOD_ROD = {
+      description = Strings.source("A new, good-quality fishing rod. Use it by any body of water to fish for wild Pokémon."),
+      location = Strings.source("Fuchsia City (Fishing Guru)"),
+    },
+    SUPER_ROD = {
+      description = Strings.source("An awesome, high-tech fishing rod. Use it by any body of water to fish for wild Pokémon."),
+      location = Strings.source("Route 12 (Fishing Guru)"),
+    },
+    BICYCLE = {
+      description = Strings.source("A folding bicycle that allows faster movement than the RUNNING SHOES."),
+      location = Strings.source("Cerulean Bike Shop"),
+    },
+    S_S_TICKET = {
+      description = Strings.source("The ticket required for sailing on the ferry S.S. ANNE. It has a drawing of a ship on it."),
+      location = Strings.source("Cerulean City (Bill)"),
+    },
+    SECRET_KEY = {
+      description = Strings.source("The key to CINNABAR ISLAND GYM’s front door. It is colored red and decorated."),
+      location = Strings.source("Pokémon Mansion (B1F)"),
+    },
+    ITEMFINDER = {
+      description = Strings.source("A device used for finding items. If there is a hidden item nearby when it is used, it emits a signal."),
+      location = Strings.source("Route 11 gate (Oak's Aide)"),
+    },
+    CARD_KEY = {
+      description = Strings.source("A card-type key that unlocks doors in SILPH CO.’s HEAD OFFICE in SAFFRON CITY."),
+      location = Strings.source("Silph Co. (5F)"),
+    },
+    OAKS_PARCEL = {
+      description = Strings.source("A parcel to be delivered to PROF. OAK from VIRIDIAN CITY’s Pokémon MART."),
+      location = Strings.source("Viridian City (Poké Mart)"),
+    },
+    POKE_FLUTE = {
+      description = Strings.source("A flute that is said to instantly awaken any Pokémon. It has a lovely tone."),
+      location = Strings.source("Lavender Town (Mr. Fuji)"),
+    },
+    BIKE_VOUCHER = {
+      description = Strings.source("Take this voucher to the BIKE SHOP in CERULEAN CITY and exchange it for a bicycle."),
+      location = Strings.source("Vermilion City (Fan Club)"),
+    },
+    GOLD_TEETH = {
+      description = Strings.source("A set of false teeth lost by the SAFARI ZONE’S WARDEN. It makes his smile sparkle."),
+      location = Strings.source("Safari Zone (Area 3)"),
+    },
+    LIFT_KEY = {
+      description = Strings.source("A key that operates the elevator in TEAM ROCKET’s HIDEOUT. It bears the TEAM ROCKET logo."),
+      location = Strings.source("Team Rocket Hideout"),
+    },
+    SILPH_SCOPE = {
+      description = Strings.source("A scope that makes unseeable Pokémon visible. It is made by SILPH CO."),
+      location = Strings.source("Team Rocket Hideout (Giovanni)"),
+    },
   }
 
   local inkShader -- false when shaders are unavailable
@@ -298,6 +765,53 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       lines[#lines + 1] = fitText(current, maxWidth)
     end
     return lines
+  end
+
+  local function tinyWrappedLines(text, maxWidth, maxLines)
+    local lines, current = {}, ""
+    local function append(line) lines[#lines + 1] = line end
+    for word in tinyFont.clean(text):gmatch("%S+") do
+      local candidate = current == "" and word or (current .. " " .. word)
+      if current ~= "" and tinyFont.width(candidate) > maxWidth then
+        append(current)
+        current = ""
+      end
+      while tinyFont.width(word) > maxWidth do
+        local part = tinyFont.fit(word, maxWidth)
+        if part == "" then break end
+        append(part)
+        word = word:sub(#part + 1)
+      end
+      if word ~= "" then
+        current = current == "" and word or (current .. " " .. word)
+      end
+    end
+    if current ~= "" then append(current) end
+    if maxLines and #lines > maxLines then
+      for index = #lines, maxLines + 1, -1 do lines[index] = nil end
+      if maxLines > 0 then
+        lines[maxLines] = tinyFont.fit(lines[maxLines], maxWidth - 11) .. "..."
+      end
+    end
+    return lines
+  end
+
+  local function tinyBlockHeight(lines)
+    return #lines > 0 and #lines * TINY_LINE_H - 1 or 0
+  end
+
+  local itemInfoHeightCache = {}
+  local function maximumItemInfoHeight(width)
+    if itemInfoHeightCache[width] then return itemInfoHeightCache[width] end
+    local height = 0
+    for _, info in pairs(ITEM_INFO) do
+      local description = tinyWrappedLines(Strings(info.description), width)
+      local location = tinyWrappedLines(Strings("LOCATION: %s", Strings(info.location)), width)
+      height = math.max(height,
+        tinyBlockHeight(description) + LOCATION_GAP + tinyBlockHeight(location))
+    end
+    itemInfoHeightCache[width] = height
+    return height
   end
 
   local function chamfer(mode, x, y, width, height, cut)
@@ -471,7 +985,10 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
     if classicSkin() then
       local headerH = stacked and 18 or 14
-      local detailH = stacked and 84 or 40
+      local config = menu and menu.betterBagListConfig
+      local captionH = config and config.direction and 10 or 0
+      local detailH = math.max(stacked and 84 or 40,
+        maximumItemInfoHeight(width - 20) + 20 + captionH)
       local detailY = height - detailH
       local topRail = stacked
       local railW = topRail and width
@@ -506,12 +1023,13 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     local tabsY = headerH
     local contentY = tabsY + TABS_H
     local expandedFooter = menu and menu.betterBagPrompt
+      and not (menu.betterBagToss and menu.betterBagToss.phase == "quantity")
     local footerH = stacked and 20 or (expandedFooter and 16 or FOOTER_H)
     local footerY = height - footerH
     local listY = contentY + (wide and 4 or 3)
 
     if stacked then
-      local detailMinH = 82
+      local detailMinH = math.max(82, maximumItemInfoHeight(width - 20) + 54)
       local rows = math.floor((footerY - listY - detailMinH - 12) / ROW_H)
       rows = math.max(4, math.min(10, rows))
       local listH = rows * ROW_H + 8
@@ -529,6 +1047,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     end
 
     local listColumnW = wide and math.floor(width * 0.54) or width - 8
+    if wide then listColumnW = math.min(listColumnW, width - 100) end
     listColumnW = math.max(96, listColumnW)
     local rows = math.max(4, math.floor((footerY - listY - 8) / ROW_H))
     return {
@@ -641,6 +1160,9 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
   local function makeRows(menu, pocketKey)
     local rows = {}
+    if pocketKey == "all" and not listConfig(menu) then
+      rows[1] = { value = WALLET_ID, label = Strings("WALLET") }
+    end
     local store = itemStore(menu)
     for _, id in ipairs(orderedIds(menu, store)) do
       if included(menu, id)
@@ -677,6 +1199,22 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       menu.scroll = menu.index - rows
     elseif menu.index - menu.scroll < 1 then
       menu.scroll = menu.index - 1
+    end
+  end
+
+  local function pinWallet(menu)
+    local selected = menu.items[menu.index]
+    for index, item in ipairs(menu.items) do
+      if item.value == WALLET_ID then
+        if index == 1 then return end
+        table.remove(menu.items, index)
+        table.insert(menu.items, 1, item)
+        for selectedIndex, row in ipairs(menu.items) do
+          if row == selected then menu.index = selectedIndex break end
+        end
+        clampList(menu)
+        return
+      end
     end
   end
 
@@ -780,7 +1318,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   end
 
   local function reorder(menu, item)
-    if not item then return end
+    if not item or item.value == WALLET_ID then return end
     if menu.betterBagSwapId then
       finishSwap(menu, item.value)
     else
@@ -840,21 +1378,28 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   end
 
   local CUSTOM_KEY_ICONS = {
+    [WALLET_ID] = true,
     TOWN_MAP = true, BICYCLE = true, S_S_TICKET = true,
     COIN_CASE = true, ITEMFINDER = true, POKE_FLUTE = true,
-    GOOD_ROD = true, SUPER_ROD = true,
+    OLD_ROD = true, GOOD_ROD = true, SUPER_ROD = true,
+    FIRE_STONE = true, FRESH_WATER = true, ESCAPE_ROPE = true,
   }
 
-  local function drawCustomKeyItemIcon(id, x, y, trueColorZones)
+  local function drawCustomKeyItemIcon(id, x, y, trueColorZones, size)
     if not CUSTOM_KEY_ICONS[id] then return false end
     x, y = math.floor(x), math.floor(y)
+    local scale = (size or 20) / 20
     local function rect(color, rx, ry, rw, rh)
+      local left, top = x + math.floor(rx * scale), y + math.floor(ry * scale)
+      rw = x + math.floor((rx + rw) * scale) - left
+      rh = y + math.floor((ry + rh) * scale) - top
+      if rw <= 0 or rh <= 0 then return end
       love.graphics.setColor(color[1] / 255, color[2] / 255,
         color[3] / 255, 1)
-      love.graphics.rectangle("fill", x + rx, y + ry, rw, rh)
+      love.graphics.rectangle("fill", left, top, rw, rh)
       if trueColorZones then
         trueColorZones[#trueColorZones + 1] = {
-          colors = false, x = x + rx, y = y + ry, w = rw, h = rh,
+          colors = false, x = left, y = top, w = rw, h = rh,
         }
       end
     end
@@ -866,10 +1411,27 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     local gold = { 248, 184, 48 }
     local orange = { 224, 112, 24 }
     local green = { 72, 200, 72 }
+    local darkGray = { 85, 85, 85 }
+    local function pixels(rows, colors)
+      for row, line in ipairs(rows) do
+        for column = 1, #line do
+          local color = colors[line:sub(column, column)]
+          if color then rect(color, column + 1, row + 1, 1, 1) end
+        end
+      end
+    end
 
-    if id == "TOWN_MAP" then
-      -- Three bright folded panels; no solid backing rectangle, so the map
-      -- keeps its silhouette against the dark details card.
+    if id == WALLET_ID then
+      rect(black, 3, 4, 14, 1); rect(black, 2, 5, 16, 11)
+      rect(black, 3, 16, 14, 1)
+      rect({ 160, 96, 48 }, 3, 5, 14, 11)
+      rect({ 216, 152, 80 }, 4, 6, 12, 2)
+      rect({ 112, 64, 32 }, 4, 14, 12, 1)
+      rect(black, 12, 9, 6, 4); rect(gold, 13, 10, 4, 2)
+      rect(white, 14, 10, 1, 1)
+    elseif id == "TOWN_MAP" then
+      -- One native pixel outlines the complete folded map.
+      rect(black, 1, 1, 18, 18)
       rect(white, 2, 3, 5, 14)
       rect(cyan, 7, 3, 6, 14)
       rect(white, 13, 3, 5, 14)
@@ -885,10 +1447,10 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(white, 2, 17, 5, 1); rect(cyan, 7, 17, 6, 1)
       rect(white, 13, 17, 5, 1)
     elseif id == "BICYCLE" then
-      rect(white, 1, 9, 2, 6); rect(white, 3, 7, 4, 2)
-      rect(white, 3, 15, 4, 2); rect(white, 7, 9, 2, 6)
-      rect(white, 11, 9, 2, 6); rect(white, 13, 7, 4, 2)
-      rect(white, 13, 15, 4, 2); rect(white, 17, 9, 2, 6)
+      rect(darkGray, 1, 9, 2, 6); rect(darkGray, 3, 7, 4, 2)
+      rect(darkGray, 3, 15, 4, 2); rect(darkGray, 7, 9, 2, 6)
+      rect(darkGray, 11, 9, 2, 6); rect(darkGray, 13, 7, 4, 2)
+      rect(darkGray, 13, 15, 4, 2); rect(darkGray, 17, 9, 2, 6)
       rect(blue, 6, 8, 7, 2); rect(blue, 7, 10, 5, 3)
       rect(blue, 9, 5, 2, 6); rect(black, 7, 4, 5, 2)
       rect(black, 12, 3, 2, 5); rect(silver, 13, 2, 4, 2)
@@ -908,6 +1470,11 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(orange, 7, 5, 7, 10); rect(orange, 5, 7, 2, 6)
       rect(white, 6, 5, 3, 2); rect(white, 5, 7, 2, 4)
     elseif id == "ITEMFINDER" then
+      rect(black, 3, 0, 8, 1); rect(black, 1, 2, 12, 1)
+      rect(black, 2, 1, 10, 1); rect(black, 0, 3, 1, 9)
+      rect(black, 13, 3, 1, 9); rect(black, 1, 12, 2, 1)
+      rect(black, 11, 12, 2, 1); rect(black, 3, 14, 8, 1)
+      rect(black, 2, 13, 10, 1)
       rect(white, 3, 1, 8, 2); rect(white, 1, 3, 12, 2)
       rect(white, 1, 5, 2, 7); rect(white, 11, 5, 2, 7)
       rect(white, 3, 12, 8, 2); rect(cyan, 3, 3, 8, 9)
@@ -919,18 +1486,52 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(orange, 12, 8, 2, 4); rect(black, 4, 9, 1, 2)
       rect(black, 8, 9, 1, 2); rect(black, 12, 9, 1, 2)
       rect(white, 17, 8, 1, 4)
-    elseif id == "GOOD_ROD" or id == "SUPER_ROD" then
-      local metal = id == "SUPER_ROD" and gold or silver
-      -- Angled rod at left, white fishing line at right, visible hook below.
+    elseif id == "OLD_ROD" or id == "GOOD_ROD" or id == "SUPER_ROD" then
+      local metal = id == "SUPER_ROD" and gold
+        or (id == "OLD_ROD" and { 160, 96, 48 } or silver)
+      -- Angled rod at left, light-blue line at right, visible hook below.
       rect(black, 1, 15, 5, 4); rect(orange, 2, 15, 4, 3)
       rect(black, 5, 12, 3, 5); rect(metal, 5, 12, 2, 4)
       rect(black, 7, 9, 3, 5); rect(metal, 7, 9, 2, 4)
       rect(black, 9, 6, 3, 5); rect(metal, 9, 6, 2, 4)
       rect(black, 11, 3, 3, 5); rect(metal, 11, 3, 2, 4)
       rect(black, 13, 1, 5, 3); rect(metal, 13, 1, 4, 2)
-      rect(white, 17, 3, 2, 11); rect(white, 15, 13, 4, 2)
-      rect(white, 14, 14, 2, 4); rect(white, 15, 17, 3, 2)
+      rect(cyan, 17, 3, 2, 11); rect(cyan, 15, 13, 4, 2)
+      rect(cyan, 14, 14, 2, 4); rect(cyan, 15, 17, 3, 2)
       rect(black, 16, 16, 3, 2)
+    elseif id == "FIRE_STONE" then
+      pixels({
+        "........KKKK....", "......KKHYYHK...",
+        ".....KHHYYOYHK..", "....KHHYOYYOYK..",
+        "...KHHYOYOYYODK.", "..KHHOYYYOOYODK.",
+        ".KHHHOYOOOYYDDK.", ".KHHOOYYOYYODDK.",
+        "KHHOOYYYOOYDDK..", "KHOOYYOOOYYDDK..",
+        "KHOYYOOYOYDDK...", "KHOYOYYYODDK....",
+        "KHOOYYODDDK.....", ".KYYODDDDK......",
+        ".KKDDDDKK.......", "...KKKK.........",
+      }, { K=black, H={255,250,208}, Y={255,213,57}, O=orange, D={184,144,32} })
+    elseif id == "FRESH_WATER" then
+      pixels({
+        "....KKKKKKKK....", "...KHHHHHHHHK...",
+        "...KSSHHSSBBK...", "....KBBBBBBK....",
+        "....KHHHHHHK....", "...KSHHHHSSSK...",
+        "..KSHHCCCSSSBK..", "..KHHCCCCSSBBK..",
+        "..KHCCCBBBBBBK..", "..KHCCCBBBBHBK..",
+        "..KHCCBBBBHHBK..", "..KHCCBBBHHBBK..",
+        "..KSCCBBBBBBBK..", "..KSCCBBBBBBSK..",
+        "...KSSCCCCSSK...", "....KKKKKKKK....",
+      }, { K=black, H=white, S=silver, C=cyan, B=blue })
+    elseif id == "ESCAPE_ROPE" then
+      pixels({
+        ".....KKKKKK.....", "...KKLYYLLYKK...",
+        "..KLYDYYDYLLYK..", ".KLYDKKKKKYDLYK.",
+        ".KLYK.....KYLYK.", "KLYDK......KYDYK",
+        "KLYYK......KLYYK", "KLDYK.....KYLDYK",
+        "KLYDYKKKKKYLYDYK", "KLYDLYYYDLYDLYYK",
+        ".KLYDLYDLYDLYYK.", ".KYKKKKKKKKKKK..",
+        "KLYK............", "KDYK............",
+        ".KLYYK..........", "..KKKK..........",
+      }, { K=black, L={248,224,136}, Y=gold, D={144,104,32} })
     end
     return true
   end
@@ -1110,21 +1711,42 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     end
   end
 
-  -- Fixed 16x16 header glyphs emit canonical four-shade source indices. The
-  -- centralized menu-palette pass owns their final colors.
-  local function drawHeaderPocketIcon(menu, pocket, x, y)
+  local HEADER_ICON_COLORS = {
+    all = { {250,250,250}, {248,64,72}, {184,176,144}, {18,18,18} },
+    items = { {232,184,255}, {200,120,248}, {144,64,208}, {35,24,65} },
+    medicine = { {250,250,250}, {232,228,204}, {56,152,232}, {224,32,24} },
+    balls = { {255,255,255}, {255,255,255}, {232,48,48}, {18,18,18} },
+    machines = { {250,250,250}, {248,200,40}, {188,180,148}, {35,24,65} },
+    key = { {250,250,250}, {248,200,40}, {248,184,48}, {18,18,18} },
+  }
+
+  -- Preserve only the painted icon pixels through the palette pass. The
+  -- surrounding button still belongs to the selected menu palette.
+  local function drawHeaderPocketIcon(menu, pocket, x, y, size, trueColorZones, itemColors)
     x, y = math.floor(x), math.floor(y)
-    local function shade(index)
-      gray(({ WHITE, LIGHT, DARK, BLACK })[index] or BLACK)
-    end
-    local function rect(index, rx, ry, rw, rh)
-      shade(index)
-      love.graphics.rectangle("fill", x + rx, y + ry, rw, rh)
-      local zones = menu.betterBagHeaderIconZones
+    local scale = (size or 16) / 16
+    local stockPalette = type(useStockOgMenuPalette) == "function"
+      and useStockOgMenuPalette()
+    local colors = not stockPalette and (itemColors or HEADER_ICON_COLORS[pocket.key])
+    local centerOffset = pocket.key == "medicine" and 0.5 or 0
+    local function rect(index, rx, ry, rw, rh, customColor)
+      rx = rx + centerOffset
+      local left, top = x + math.floor(rx * scale), y + math.floor(ry * scale)
+      rw = x + math.floor((rx + rw) * scale) - left
+      rh = y + math.floor((ry + rh) * scale) - top
+      if rw <= 0 or rh <= 0 then return end
+      local color = colors and (customColor or colors[index])
+      if color then
+        love.graphics.setColor(color[1] / 255, color[2] / 255, color[3] / 255, 1)
+      else
+        gray(({ WHITE, LIGHT, DARK, BLACK })[index] or BLACK)
+      end
+      love.graphics.rectangle("fill", left, top, rw, rh)
+      local zones = trueColorZones or menu.betterBagHeaderIconZones
       if zones then
-        zones[#zones + 1] = {
-          x = x + rx, y = y + ry, w = rw, h = rh,
-        }
+        local zone = { x = left, y = top, w = rw, h = rh }
+        if color then zone.colors = false end
+        zones[#zones + 1] = zone
       end
     end
     local key = pocket.key
@@ -1133,7 +1755,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(3, 1, 4, 14, 10)
       rect(2, 3, 3, 10, 10)
       rect(1, 4, 5, 8, 3)
-      rect(3, 4, 10, 8, 2)
+      rect(3, 4, 10, 8, 2, {192,40,40})
     elseif key == "items" then
       rect(4, 7, 1, 2, 1)
       rect(4, 6, 2, 4, 1)
@@ -1155,12 +1777,14 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(3, 7, 10, 2, 1)
     elseif key == "medicine" then
       rect(3, 5, 1, 6, 2)
+      rect(2, 3, 3, 1, 12)
       rect(2, 4, 3, 8, 12)
-      rect(2, 5, 5, 6, 8)
+      rect(2, 12, 3, 1, 12)
+      rect(2, 5, 5, 6, 8, {250,250,250})
       rect(4, 7, 6, 2, 6)
       rect(4, 5, 8, 6, 2)
     elseif key == "balls" then
-      -- The header Poké Ball participates in the active menu palette.
+      -- Reuse the existing silhouette with a red top and white bottom.
       drawClassicPokeBall16(x, y, nil, function(index, rx, ry, rw, rh)
         rect(index, rx, ry, rw, rh)
       end)
@@ -1189,7 +1813,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       rect(3, 6, 5, 4, 1)
       rect(3, 5, 6, 6, 4)
       rect(3, 6, 10, 4, 1)
-      rect(2, 7, 7, 2, 2)
+      rect(2, 7, 7, 2, 2, {250,250,250})
     else -- MISC / key items
       drawKeyIconMask(x - 1, y + 3, function(px, py)
         rect(4, px - x, py - y, 1, 1)
@@ -1197,6 +1821,34 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         rect(3, px - x, py - y, 1, 1)
       end)
     end
+  end
+
+  local BALL_ITEM_COLORS = {
+    POKE_BALL = { 222, 90, 57 }, GREAT_BALL = { 49, 82, 213 },
+    ULTRA_BALL = { 255, 213, 57 }, MASTER_BALL = { 180, 57, 246 },
+    SAFARI_BALL = { 156, 180, 82 },
+  }
+
+  local function drawDetailItemIcon(menu, id, category, x, y, size)
+    local zones = menu.betterBagIconZones
+    if id and drawCustomKeyItemIcon(id, x, y, zones, size) then return end
+    if category == "berries" then
+      drawPocketSymbol(category, x, y, size, zones)
+      return
+    end
+    local colors = BALL_ITEM_COLORS[id]
+    if colors then
+      colors = { {255,255,255}, {255,255,255}, colors, {18,18,18} }
+    end
+    if category == "key" then
+      -- The key's 18-pixel silhouette must fit the same 20-pixel authoring
+      -- cell as the other key items, rather than overflowing a 16px cell.
+      local keySize = size * 16 / 20
+      x, y = x + math.floor((size - keySize) / 2),
+        y + math.floor((size - keySize) / 2)
+      size = keySize
+    end
+    drawHeaderPocketIcon(menu, { key = category }, x, y, size, zones, colors)
   end
 
   local function drawBackdrop(layout)
@@ -1312,6 +1964,22 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     love.graphics.rectangle("fill", 0, layout.contentY, layout.width, 1)
   end
 
+  local function isFavorite(menu, id)
+    local favorites = menu.game.save.gen1BetterMenusFavoriteItems
+    return id ~= WALLET_ID and menu.gen1BetterMenusBagFavorites
+      and favorites and favorites[id] == true
+  end
+
+  local function drawFavoriteHeart(x, y, shade)
+    gray(shade)
+    love.graphics.rectangle("fill", x + 1, y + 1, 2, 1)
+    love.graphics.rectangle("fill", x + 4, y + 1, 2, 1)
+    love.graphics.rectangle("fill", x, y + 2, 7, 2)
+    love.graphics.rectangle("fill", x + 1, y + 4, 5, 1)
+    love.graphics.rectangle("fill", x + 2, y + 5, 3, 1)
+    love.graphics.rectangle("fill", x + 3, y + 6, 1, 1)
+  end
+
   local function drawList(menu, layout)
     gray(DARK)
     pixelRoundFill(layout.listX, layout.listY,
@@ -1360,13 +2028,15 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       local quantity = item.right or ""
       local qWidth = Font.width(quantity)
       drawText(item.label, layout.listX + 17, y + 1,
-        layout.listW - qWidth - 30, shade)
+        layout.listW - qWidth - 40, shade)
       drawTextRight(quantity, layout.listX + layout.listW - 8, y + 1,
         qWidth + 8, shade)
       if selected then
         drawCode(Theme.cursor, layout.listX + 7, y + 1, shade)
       elseif item.value == swapId(menu) then
         drawCode(Theme.cursorHollow, layout.listX + 7, y + 1, BLACK)
+      elseif isFavorite(menu, item.value) then
+        drawFavoriteHeart(layout.listX + 7, y + 1, shade)
       end
     end
 
@@ -1404,12 +2074,14 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
   local function itemDescription(menu, id)
     if not id then return Strings("Return to the previous screen") end
+    if id == WALLET_ID then
+      return Strings("BALANCE: ₽%d", menu.game.save.money or 0)
+    end
+    if ITEM_INFO[id] then return Strings(ITEM_INFO[id].description) end
     local def = menu.game.data.items[id] or {}
     local description
     if type(def.description) == "string" and def.description ~= "" then
       description = Strings(def.description)
-    elseif DESCRIPTIONS[id] then
-      description = Strings(DESCRIPTIONS[id])
     elseif def.machine then
       local move = menu.game.data.moves and menu.game.data.moves[def.machine.move]
       local moveName = move and move.name or def.machine.move
@@ -1433,9 +2105,105 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     return withoutSingleSentencePeriod(description)
   end
 
+  local function drawItemInfo(menu, id, description, x, y, width, bottom, shade, boxed, fixedPanel)
+    local panelX, panelW = x, width
+    local padding = boxed and INFO_PANEL_PADDING or 0
+    x, width = x + padding, width - padding * 2
+    local gap = listConfig(menu) and 2 or LOCATION_GAP
+    local info = id and ITEM_INFO[id]
+    local location = info and Strings("LOCATION: %s", Strings(info.location))
+    local locationLines = location and tinyWrappedLines(location, width) or {}
+    local available = math.max(0, bottom - y - padding * 2)
+    local locationLimit = math.max(0, math.floor((available + 1) / TINY_LINE_H))
+    if #locationLines > locationLimit then
+      locationLines = tinyWrappedLines(location, width, locationLimit)
+    end
+    local reserved = #locationLines > 0
+      and (tinyBlockHeight(locationLines) + gap) or 0
+    local descriptionLimit = math.max(0,
+      math.floor((available - reserved + 1) / TINY_LINE_H))
+    local descriptionLines = tinyWrappedLines(description, width, descriptionLimit)
+    if boxed then
+      local panelH = tinyBlockHeight(descriptionLines) + reserved + padding * 2
+      local panelY = bottom - panelH
+      if fixedPanel then panelY, panelH = y, bottom - y end
+      gray(BLACK)
+      pixelRoundFill(panelX, panelY, panelW, panelH)
+      gray(WHITE)
+      pixelRoundFill(panelX + 1, panelY + 1, panelW - 2, panelH - 2)
+      y = panelY + padding
+    end
+    for index, line in ipairs(descriptionLines) do
+      tinyFont.draw(line, x, y + (index - 1) * TINY_LINE_H, shade)
+    end
+    local locationY = y + tinyBlockHeight(descriptionLines) + gap
+    if #locationLines > 0 and not listConfig(menu) then
+      gray(LIGHT)
+      love.graphics.rectangle("fill", x,
+        y + tinyBlockHeight(descriptionLines) + math.floor(gap / 2), width, 1)
+    end
+    for index, line in ipairs(locationLines) do
+      tinyFont.draw(line, x, locationY + (index - 1) * TINY_LINE_H, shade)
+    end
+  end
+
+  local function bagDetailMetrics(menu, layout)
+    local textW = layout.detailW - 12
+    local nameW = Font.width(Strings("WALLET"))
+    for id in pairs(ITEM_INFO) do
+      local def = menu.game.data.items[id]
+      if def then nameW = math.max(nameW, Font.width(def.name or id)) end
+    end
+    local nameRows = nameW <= textW and 1 or 2
+    local nameH = nameRows * 9 - 1
+    local panelMinH = maximumItemInfoHeight(textW) + INFO_PANEL_PADDING * 2
+    local iconSize = math.min(32, layout.detailH - panelMinH - nameH - 13)
+    if iconSize < 16 then
+      -- The narrow profile has fixed side-by-side header measurements. It
+      -- leaves the same complete information area available for every item.
+      return { iconSize=20, iconX=6, iconY=4,
+        nameX=32, nameW=layout.detailW-38, nameY=5, nameH=17, nameRows=2,
+        infoY=27, sideBySide=true }
+    end
+    return { iconSize=iconSize, iconX=math.floor((layout.detailW-iconSize)/2), iconY=4,
+      nameX=6, nameW=textW, nameY=iconSize+7, nameH=nameH, nameRows=nameRows,
+      infoY=iconSize+nameH+9 }
+  end
+
+  local function drawBagDetails(menu, layout, pocket)
+    gray(DARK)
+    pixelRoundFill(layout.detailX, layout.detailY, layout.detailW, layout.detailH)
+    gray(WHITE)
+    pixelRoundFill(layout.detailX + 2, layout.detailY + 2,
+      layout.detailW - 4, layout.detailH - 4)
+    local item = menu.items[menu.index]
+    local id = item and item.value
+    local description = item and itemDescription(menu, id) or Strings(pocket.blurb)
+    local metrics = bagDetailMetrics(menu, layout)
+    local bottom = layout.detailY + layout.detailH - 4
+    local panelY = layout.detailY + metrics.infoY
+    drawDetailItemIcon(menu, id, item and categoryFor(menu.game, id) or pocket.key,
+      layout.detailX + metrics.iconX, layout.detailY + metrics.iconY, metrics.iconSize)
+    local nameLines = wrappedLines(item and item.label or pocket.label,
+      metrics.nameW, metrics.nameRows)
+    local nameY = layout.detailY + metrics.nameY
+      + math.floor((metrics.nameH - (#nameLines * 9 - 1)) / 2)
+    for index, line in ipairs(nameLines) do
+      local nameX = layout.detailX + metrics.nameX
+        + math.floor((metrics.nameW - Font.width(line)) / 2)
+      drawText(line, nameX, nameY + (index - 1) * 9, metrics.nameW, BLACK)
+    end
+    drawItemInfo(menu, id, description, layout.detailX + 3, panelY,
+      layout.detailW - 6, bottom, BLACK, true, true)
+  end
+
   local function drawDetails(menu, layout)
     if not layout.showDetails then return end
     local pocket = pocketFor(menu)
+    if not listConfig(menu) then
+      drawBagDetails(menu, layout, pocket)
+      return
+    end
 
     if layout.stacked then
       gray(WHITE)
@@ -1454,12 +2222,13 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       end
       local status = config and type(config.detailStatus) == "function"
         and config.detailStatus(menu)
-        or ("¥%d"):format(menu.game.save.money or 0)
-      drawTextRight(status, layout.detailX + layout.detailW - 6,
-        layout.detailY + 5, math.floor(layout.detailW * 0.42), DARK)
+      if status then
+        drawTextRight(status, layout.detailX + layout.detailW - 6,
+          layout.detailY + 5, math.floor(layout.detailW * 0.42), DARK)
+      end
 
       local category = item and categoryFor(menu.game, item.value) or pocket.key
-      local iconSize = math.min(28, math.max(20, layout.detailH - 56))
+      local iconSize = 20
       local iconX, iconY = layout.detailX + 8, layout.detailY + 20
       if not (item and drawCustomKeyItemIcon(item.value,
           iconX + math.floor((iconSize - 20) / 2),
@@ -1473,21 +2242,19 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       local name = item and item.label
         or (config and config.emptyName) or pocket.label
       local nameLines = wrappedLines(name, textW, 2)
+      local nameY = iconY + math.floor((iconSize - (#nameLines * 9 - 1)) / 2)
       for index, line in ipairs(nameLines) do
-        drawText(line, textX, layout.detailY + 24 + (index - 1) * 9,
+        drawText(line, textX, nameY + (index - 1) * 9,
           textW, BLACK)
       end
       local description = item and itemDescription(menu, item.value)
         or Strings(config and config.blurb or pocket.blurb)
       local descriptionY = layout.detailY + 20 + iconSize + 4
-      local descriptionW = layout.detailW - 12
-      local maxLines = math.max(2, math.floor(
-        (layout.detailY + layout.detailH - 4 - descriptionY) / 9))
-      for index, line in ipairs(wrappedLines(
-          description, descriptionW, maxLines)) do
-        drawText(line, layout.detailX + 6,
-          descriptionY + (index - 1) * 9, descriptionW, DARK)
-      end
+      local inset = config and 6 or 3
+      local descriptionW = layout.detailW - inset * 2
+      drawItemInfo(menu, item and item.value, description,
+        layout.detailX + inset, descriptionY, descriptionW,
+        layout.detailY + layout.detailH - 4, DARK, not config)
       return
     end
 
@@ -1508,65 +2275,35 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
     if item then
       local category = categoryFor(menu.game, item.value)
-      local iconSize = 24
-      local customIcon = CUSTOM_KEY_ICONS[item.value]
-      local iconX, iconY
-      if customIcon then
-        -- Custom art owns a 20x20 painted box centered directly in the
-        -- details column's upper icon region. This uses the art bounds—not a
-        -- larger generic 24px wrapper—and leaves a full 15px before the name.
-        iconX = layout.detailX + math.floor((layout.detailW - 20) / 2)
-        iconY = layout.detailY + 10
-        drawCustomKeyItemIcon(item.value, iconX, iconY,
-          menu.betterBagIconZones)
-      else
-        iconX = layout.detailX + math.floor((layout.detailW - iconSize) / 2)
-        iconY = layout.detailY + 17
+      local captionH = caption and 10 or 0
+      local iconSize = 20
+      local iconX, iconY = layout.detailX + 6, layout.detailY + 3 + captionH
+      if not drawCustomKeyItemIcon(item.value, iconX, iconY,
+          menu.betterBagIconZones) then
         drawPocketSymbol(category, iconX, iconY, iconSize,
           menu.betterBagIconZones)
       end
-      local nameLines = wrappedLines(item.label, layout.detailW - 12, 2)
+      local nameX = iconX + iconSize + 6
+      local nameW = layout.detailX + layout.detailW - 6 - nameX
+      local nameLines = wrappedLines(item.label, nameW, 2)
+      local nameY = iconY + math.floor((iconSize - (#nameLines * 9 - 1)) / 2)
       for index, line in ipairs(nameLines) do
-        drawText(line,
-          layout.detailX + (layout.detailW - Font.width(line)) / 2,
-          layout.detailY + 45 + (index - 1) * 9,
-          layout.detailW - 12, BLACK)
+        drawText(line, nameX,
+          nameY + (index - 1) * 9, nameW, BLACK)
       end
-      local descriptionY = layout.detailY + 58
-        + math.max(0, #nameLines - 1) * 9
-      local descriptionLines
-      if config then
-        descriptionLines = math.max(1, math.floor(
-          (layout.detailY + layout.detailH - 2 - descriptionY - 8) / 9) + 1)
-      else
-        descriptionLines = math.max(1, math.floor(
-          (layout.detailY + layout.detailH - 14 - descriptionY) / 9))
-      end
-      local lines = wrappedLines(itemDescription(menu, item.value),
-        layout.detailW - 12, descriptionLines)
-      for index, line in ipairs(lines) do
-        drawText(line, layout.detailX + 6,
-          descriptionY + (index - 1) * 9,
-          layout.detailW - 12, BLACK)
-      end
+      local descriptionY = layout.detailY + 25 + captionH
+      local inset = config and 6 or 3
+      drawItemInfo(menu, item.value, itemDescription(menu, item.value),
+        layout.detailX + inset, descriptionY, layout.detailW - inset * 2,
+        layout.detailY + layout.detailH - 4, BLACK, not config)
     else
       drawPocketSymbol(pocket.key,
         layout.detailX + math.floor((layout.detailW - 28) / 2),
         layout.detailY + 20, 28, menu.betterBagIconZones)
-      local lines = wrappedLines(
-        Strings(config and config.blurb or pocket.blurb),
-        layout.detailW - 12, 3)
-      for index, line in ipairs(lines) do
-        drawText(line, layout.detailX + 6,
-          layout.detailY + 58 + (index - 1) * 9,
-          layout.detailW - 12, BLACK)
-      end
-    end
-
-    if not config then
-      local status = ("¥%d"):format(menu.game.save.money or 0)
-      drawTextRight(status, layout.detailX + layout.detailW - 6,
-        layout.detailY + layout.detailH - 11, layout.detailW - 12, BLACK)
+      local inset = config and 6 or 3
+      drawItemInfo(menu, nil, Strings(config and config.blurb or pocket.blurb),
+        layout.detailX + inset, layout.detailY + 58, layout.detailW - inset * 2,
+        layout.detailY + layout.detailH - 4, BLACK, not config)
     end
   end
 
@@ -1585,6 +2322,18 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       math.max(layout.footerH,
         (layout.canvasHeight or layout.height) - layout.footerY + 1))
     local config = listConfig(menu)
+    if menu.betterBagToss and menu.betterBagToss.phase == "quantity" then
+      local label = Strings("HOW MANY?")
+      local gap, arrowW = 4, 8
+      local x = math.floor((layout.width - Font.width(label) - gap - arrowW) / 2)
+      local y = layout.footerY + math.floor((layout.footerH - 8) / 2)
+      drawText(label, x, y, Font.width(label), WHITE)
+      x = x + Font.width(label) + gap
+      gray(WHITE)
+      love.graphics.polygon("fill", x + 4, y, x + 1, y + 3, x + 7, y + 3)
+      love.graphics.polygon("fill", x + 1, y + 5, x + 7, y + 5, x + 4, y + 8)
+      return
+    end
     if config or menu.betterBagPrompt then
       local lines
       local status = config and menu.footer or menu.betterBagPrompt
@@ -1948,9 +2697,11 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         drawCode(Theme.cursor, layout.listX + 8, y, DARK)
       elseif item.value == swapId(menu) then
         drawCode(Theme.cursorHollow, layout.listX + 8, y, BLACK)
+      elseif isFavorite(menu, item.value) then
+        drawFavoriteHeart(layout.listX + 8, y, BLACK)
       end
       drawText(item.label, layout.listX + 20, y,
-        layout.listW - qWidth - 28, BLACK)
+        layout.listW - qWidth - 38, BLACK)
       drawTextRight(quantity, layout.width - 4, y, qWidth + 4, BLACK)
     end
 
@@ -1977,6 +2728,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
     local config = listConfig(menu)
     local status = config and menu.footer or menu.betterBagPrompt
+    local item = menu.items[menu.index]
     local text
     if status then
       text = Strings(status):gsub("\n", " ")
@@ -1986,7 +2738,6 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       text = Strings("Choose a new position for %s.",
         def.name or swapping)
     else
-      local item = menu.items[menu.index]
       text = item and itemDescription(menu, item.value)
         or Strings(config and config.blurb or pocketFor(menu).blurb)
     end
@@ -1999,6 +2750,11 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         textX, textY, textW, BLACK)
       textY = textY + 10
       maxLines = math.max(1, maxLines - 1)
+    end
+    if not status and not swapId(menu) then
+      drawItemInfo(menu, item and item.value, text, textX, textY, textW,
+        layout.detailY + layout.detailH - 8, BLACK)
+      return
     end
     for index, line in ipairs(wrappedLines(text, textW, maxLines)) do
       drawText(line, textX, textY + (index - 1) * 9, textW, BLACK)
@@ -2132,11 +2888,13 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       end
     end
     for _, iconZone in ipairs(menu.betterBagHeaderIconZones or {}) do
-      zones[#zones + 1] = {
+      local zone = {
         colors = base,
         x = iconZone.x, y = iconZone.y,
         w = iconZone.w, h = iconZone.h,
       }
+      if iconZone.colors == false then zone.colors = false end
+      zones[#zones + 1] = zone
     end
     for _, borderZone in ipairs(menu.betterBagHeaderBorderZones or {}) do
       zones[#zones + 1] = {
@@ -2222,7 +2980,10 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     -- ListMenu closes an empty list on A as a legacy convenience. Pocket
     -- tabs remain open instead, so the player can continue browsing them.
     if #menu.items == 0 and input:wasPressed("a") then return end
-    return menu.betterBagBaseUpdate(menu, dt)
+    if selectedId(menu) == WALLET_ID and input:wasPressed("start") then return end
+    local result = menu.betterBagBaseUpdate(menu, dt)
+    pinWallet(menu)
+    return result
   end
 
   local function copyParentPaletteZones(owner, game)
@@ -2236,22 +2997,46 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     return zones
   end
 
-  local function addOverlayPaletteZone(zones, game, x, y, width, height)
-    local colors = selectedMenuPalette(game)
+  local function addOverlayPaletteZone(zones, game, x, y, width, height, styled)
+    local colors = styled and lockedDataPaper(game) or selectedMenuPalette(game)
     if colors and width and height and width > 0 and height > 0 then
-      zones[#zones + 1] = {
-        colors = colors, x = x, y = y, w = width, h = height,
-      }
+      if styled then
+        roundedPaletteZones(zones, colors, x, y, width, height)
+      else
+        zones[#zones + 1] = {
+          colors = colors, x = x, y = y, w = width, h = height,
+        }
+      end
     end
     return zones
   end
 
-  local function drawPaletteMappedOverlay(_, drawOverlay)
+  local function coverBagPanel(x, y, width, height)
+    local marks = PaletteFX.gen1BetterMenusFrameMarks
+    if marks and type(marks.cover) == "function" then
+      -- The renderer replays frame marks after palette zones. Retire only the
+      -- pixels covered by this rounded popup, keeping its outside corners.
+      marks.cover(x + 2, y, width - 4, height)
+      marks.cover(x + 1, y + 1, width - 2, height - 2)
+      marks.cover(x, y + 2, width, height - 4)
+    end
+  end
+
+  local function drawPaletteMappedOverlay(active, drawOverlay)
     local originalDrawBox = Font.drawBox
     Font.drawBox = function(tx, ty, tw, th)
-      -- Child boxes stay in the normal four-shade pipeline. The white source
-      -- shade maps to the selected BetterMenus menu background, exactly like
-      -- the parent header, footer, and wallpaper.
+      if active.__betterBagStyledOverlay then
+        -- Keep the native text/controller and replace only its frame. The
+        -- parent details and children share a one-pixel rounded paper panel.
+        local x, y, w, h = tx * 8, ty * 8, tw * 8, th * 8
+        coverBagPanel(x, y, w, h)
+        gray(BLACK)
+        pixelRoundFill(x, y, w, h)
+        gray(WHITE)
+        pixelRoundFill(x + 1, y + 1, w - 2, h - 2)
+        gray(BLACK)
+        return
+      end
       return originalDrawBox(tx, ty, tw, th, { 255, 255, 255 })
     end
     local ok, err = pcall(drawOverlay)
@@ -2259,10 +3044,221 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
     if not ok then error(err, 0) end
   end
 
-  -- One bridge owns every BetterBag child. The parent palette map is copied
-  -- first on every frame; each child then appends only its own selected-menu
-  -- palette rectangle. No child inherits, replaces, shifts, or true-color
-  -- masks the parent map.
+  local function withoutFramePadding(drawPanel)
+    local frames = mod.gen1BetterMenusFrames
+    if frames and type(frames.withoutPadding) == "function" then
+      return frames.withoutPadding(drawPanel)
+    end
+    if frames and type(frames.active) == "function" then
+      -- Older BetterFrames versions have no padding bypass. Its font wrappers
+      -- already honor active(), so suspend them just for this authored content.
+      local active = frames.active
+      frames.active = function() return false end
+      local ok, result = pcall(drawPanel)
+      frames.active = active
+      if not ok then error(result, 0) end
+      return result
+    end
+    return drawPanel()
+  end
+
+  local function drawBagPanel(rect)
+    coverBagPanel(rect.x, rect.y, rect.w, rect.h)
+    gray(BLACK)
+    pixelRoundFill(rect.x, rect.y, rect.w, rect.h)
+    gray(WHITE)
+    pixelRoundFill(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2)
+  end
+
+  -- The normal tile font paints seven columns; its eighth is blank.
+  -- The cursor paints columns 1..5, so x+2 leaves two pixels inside the border.
+  local function compactLabelWidth(label)
+    return math.max(0, Font.width(label) - 1)
+  end
+
+  local function actionPanelRect(owner, action)
+    local width, height = owner:uiSize()
+    local labelW = 0
+    for _, row in ipairs(action.items) do
+      labelW = math.max(labelW, compactLabelWidth(row.label))
+    end
+    local w, h = 10 + labelW + 3, 13 + (#action.items - 1) * 11
+    local rect = {x = math.floor((width - w) / 2),
+      y = math.floor((height - h) / 2), w = w, h = h}
+    action.tx, action.ty, action.tw, action.th =
+      rect.x / 8, rect.y / 8, w / 8, h / 8
+    return rect
+  end
+
+  local function tossPanelsHidden(owner)
+    local toss = owner.betterBagToss
+    return toss and (toss.phase == "confirm" or toss.phase == "result")
+  end
+
+  local function compactBagPalettes(owner, game)
+    local zones = copyParentPaletteZones(owner, game)
+    -- Include every visible child in drawing order. Copying only the top
+    -- popup lets the parent's icon opt-outs leak white through lower panels.
+    for _, child in ipairs(game.stack.states or {}) do
+      if child.__betterBagPanelOwner == owner and child.__betterBagPanelRect then
+        local rect = child:__betterBagPanelRect()
+        if rect then
+          addOverlayPaletteZone(zones, game, rect.x, rect.y, rect.w, rect.h, true)
+        end
+      end
+    end
+    return zones
+  end
+
+  local function tagCompactPanel(state, owner)
+    state.__betterBagPanelOwner = owner
+    state.__betterBagResponsiveOverlay = true
+    state.__betterBagStyledOverlay = true
+    state.holdsUIAnchors = true
+    state.uiSize = function() return owner:uiSize() end
+    state.sgbPalettes = function(_, activeGame)
+      return compactBagPalettes(owner, activeGame)
+    end
+  end
+
+  local function styleBagActions(state, owner)
+    tagCompactPanel(state, owner)
+    state.__betterBagPanelRect = function()
+      if tossPanelsHidden(owner) then return nil end
+      return actionPanelRect(owner, state)
+    end
+    state.draw = function(active)
+      local rect = active:__betterBagPanelRect()
+      if not rect then return end
+      drawBagPanel(rect)
+      local toss = owner.betterBagToss
+      if toss and toss.phase == "quantity" then return end
+      withoutFramePadding(function()
+        for index, row in ipairs(active.items) do
+          drawText(row.label, rect.x + 10, rect.y + 3 + (index - 1) * 11,
+            Font.width(row.label), BLACK)
+        end
+        drawCode(active.hollowIndex == active.index
+          and Theme.cursorHollow or Theme.cursor, rect.x + 2,
+          rect.y + 2 + (active.index - 1) * 11, BLACK)
+      end)
+    end
+  end
+
+  local function styleTossQuantity(state, owner, toss)
+    tagCompactPanel(state, owner)
+    local function label() return ("x%02d"):format(state.qty) end
+    state.__betterBagPanelRect = function()
+      if toss.phase ~= "quantity" then return nil end
+      local action = actionPanelRect(owner, toss.action)
+      -- Reserve the maximum digit count, so incrementing past 99 never moves it.
+      local w = compactLabelWidth(("x%02d"):format(state.max)) + 6
+      local h = 13
+      local rect = {x = action.x + math.floor((action.w - w) / 2),
+        y = action.y + math.floor((action.h - h) / 2), w = w, h = h}
+      state.__betterBagAnchorKind = "action"
+      state.__betterBagAnchorX, state.__betterBagAnchorY = rect.x, rect.y
+      state.__betterBagAnchorW, state.__betterBagAnchorH = w, h
+      return rect
+    end
+    state.draw = function(active)
+      local rect = active:__betterBagPanelRect()
+      if not rect then return end
+      drawBagPanel(rect)
+      withoutFramePadding(function()
+        drawText(label(), rect.x + 3, rect.y + 3, Font.width(label()), BLACK)
+      end)
+    end
+  end
+
+  local function tossConfirmationLayout(owner, toss)
+    local layout = owner:betterBagLayoutInfo()
+    local labels = toss.choice and toss.choice.labels or {"YES", "NO"}
+    local choiceW = 10 + math.max(compactLabelWidth(Strings(labels[1])),
+      compactLabelWidth(Strings(labels[2])))
+    local x, w = 8, layout.width - 16
+    local gap, pad = 6, 3
+    local available = w - pad * 2 - gap - choiceW
+    -- Font spans preserve accented names, and wrapping never truncates the
+    -- question or locked quantity, even on portrait surfaces.
+    local lines, line = {}, ""
+    for word in toss.question:gmatch("%S+") do
+      local nextLine = line == "" and word or (line .. " " .. word)
+      if line ~= "" and Font.width(nextLine) > available then
+        lines[#lines + 1] = line
+        line = ""
+      end
+      line = line == "" and word or (line .. " " .. word)
+      -- A single long translated name may exceed a whole line. Split only at
+      -- font span boundaries; never discard its final characters.
+      while Font.width(line) > available do
+        local spans = Font.split(line)
+        local count = math.max(1, Font.spansFitting(spans, available))
+        local lastByte = spans[count].to
+        lines[#lines + 1] = line:sub(1, lastByte)
+        line = line:sub(lastByte + 1)
+      end
+    end
+    if line ~= "" then lines[#lines + 1] = line end
+    local textH = (#lines - 1) * 11 + 7
+    local h = math.max(40, textH + 11 + pad * 2 + 2)
+    local y = layout.footerY - h - 1
+    local textX, textY = x + pad + 1, y + pad + 1
+    local last = lines[#lines] or ""
+    return {x = x, y = y, w = w, h = h, lines = lines,
+      textX = textX, textY = textY,
+      choiceX = textX + Font.width(last) + gap,
+      choiceY = textY + (#lines - 1) * 11}
+  end
+
+  local function styleTossConfirmation(state, owner, toss)
+    tagCompactPanel(state, owner)
+    toss.confirmation = state
+    state.__betterBagPanelRect = function()
+      return tossConfirmationLayout(owner, toss)
+    end
+    -- The native stay/onShown callback still opens YES/NO and owns all pops.
+    -- Display the complete question immediately, rather than two scrolling lines.
+    state.pages = require("src.render.TextBox").paginate(toss.question, state.maxCols)
+    state.pageIndex, state.lineIndex = #state.pages, #state.pages[#state.pages]
+    state.shown, state.codes = {}, {}
+    state.charIndex, state.done, state.waiting = 0, true, false
+    state.draw = function(active)
+      local rect = active:__betterBagPanelRect()
+      drawBagPanel(rect)
+      withoutFramePadding(function()
+        for index, line in ipairs(rect.lines) do
+          drawText(line, rect.textX, rect.textY + (index - 1) * 11,
+            Font.width(line), BLACK)
+        end
+      end)
+    end
+  end
+
+  local function styleTossChoice(state, owner, toss)
+    tagCompactPanel(state, owner)
+    toss.choice = state
+    state.anchor = nil
+    state.draw = function(active)
+      local rect = tossConfirmationLayout(owner, toss)
+      withoutFramePadding(function()
+        for index, label in ipairs(active.labels) do
+          drawText(Strings(label), rect.choiceX + 10,
+            rect.choiceY + (index - 1) * 11, Font.width(Strings(label)), BLACK)
+        end
+        drawCode(Theme.cursor, rect.choiceX + 2,
+          rect.choiceY - 1 + (active.index - 1) * 11, BLACK)
+      end)
+    end
+    local confirm = state.onChoose
+    state.onChoose = function(yes)
+      toss.phase = "result"
+      owner.betterBagPrompt = nil
+      return confirm(yes)
+    end
+  end
+
+  -- One bridge owns BetterBag children; the native input controllers remain.
   local function installOverlayBridge(game)
     local stack = game and game.stack
     if not stack or stack.__betterBagOverlayBridge then return end
@@ -2280,8 +3276,34 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       end
 
       local Menu = require("src.ui.Menu")
+      local styled = owner and not listConfig(owner) and not classicSkin()
+        and not (type(useStockOgMenuPalette) == "function"
+          and useStockOgMenuPalette())
+      local toss = owner and owner.betterBagToss
+      if styled and state then
+        local stateType = getmetatable(state)
+        if stateType == Menu and #state.items == 2
+            and tostring(state.items[1].label):upper() == "USE"
+            and tostring(state.items[2].label):upper() == "TOSS" then
+          styleBagActions(state, owner)
+          return originalPush(self, state, ...)
+        elseif toss and stateType == require("src.ui.QuantityBox")
+            and toss.phase == "quantity" then
+          styleTossQuantity(state, owner, toss)
+          return originalPush(self, state, ...)
+        elseif toss and stateType == require("src.render.TextBox")
+            and toss.phase == "confirm" and not toss.confirmation then
+          styleTossConfirmation(state, owner, toss)
+          return originalPush(self, state, ...)
+        elseif toss and stateType == require("src.ui.ChoiceBox")
+            and self:top() == toss.confirmation then
+          styleTossChoice(state, owner, toss)
+          return originalPush(self, state, ...)
+        end
+      end
       if owner and state and getmetatable(state) == Menu then
         state.__betterBagResponsiveOverlay = true
+        state.__betterBagStyledOverlay = styled
         local layout = type(owner.betterBagLayoutInfo) == "function"
           and owner:betterBagLayoutInfo() or nil
         local width = layout and layout.width or select(1, owner:uiSize())
@@ -2293,8 +3315,8 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         state.ty = math.max(0, math.floor((height / 8 - state.th) / 2))
         state.sgbPalettes = function(_, activeGame)
           return addOverlayPaletteZone(
-            copyParentPaletteZones(owner, activeGame), activeGame,
-            state.tx * 8, state.ty * 8, state.tw * 8, state.th * 8)
+            compactBagPalettes(owner, activeGame), activeGame,
+            state.tx * 8, state.ty * 8, state.tw * 8, state.th * 8, styled)
         end
         local baseDraw = state.draw
         state.draw = function(active)
@@ -2307,6 +3329,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       local TextBox = require("src.render.TextBox")
       if owner and state and getmetatable(state) == TextBox then
         state.__betterBagResponsiveOverlay = true
+        state.__betterBagStyledOverlay = styled
         state.uiSize = function() return owner:uiSize() end
         state.holdsUIAnchors = true
         local width = owner:uiSize()
@@ -2327,9 +3350,9 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         state.line2Y = (state.boxTy + 3) * 8
         state.sgbPalettes = function(_, activeGame)
           return addOverlayPaletteZone(
-            copyParentPaletteZones(owner, activeGame), activeGame,
+            compactBagPalettes(owner, activeGame), activeGame,
             state.boxTx * 8, state.boxTy * 8,
-            state.boxTw * 8, state.boxTh * 8)
+            state.boxTw * 8, state.boxTh * 8, styled)
         end
         local baseDraw = state.draw
         state.draw = function(active)
@@ -2354,6 +3377,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
           and (stateType == QuantityBox or stateType == ChoiceBox)
           and not state.__betterBagResponsiveOverlay then
         state.__betterBagResponsiveOverlay = true
+        state.__betterBagStyledOverlay = styled
         state.uiSize = function() return owner:uiSize() end
         state.holdsUIAnchors = true
 
@@ -2449,7 +3473,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
 
         local basePalettes = state.sgbPalettes
         state.sgbPalettes = function(active, activeGame)
-          local zones = copyParentPaletteZones(owner, activeGame)
+          local zones = compactBagPalettes(owner, activeGame)
           local offsetX, offsetY = overlayOffset(active)
           local QuantityBox = require("src.ui.QuantityBox")
           local ChoiceBox = require("src.ui.ChoiceBox")
@@ -2458,30 +3482,30 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
             if active.__betterBagAnchorX then
               return addOverlayPaletteZone(zones, activeGame,
                 active.__betterBagAnchorX, active.__betterBagAnchorY,
-                active.__betterBagAnchorW, active.__betterBagAnchorH)
+                active.__betterBagAnchorW, active.__betterBagAnchorH, styled)
             end
             if active.tx and active.ty and active.tw and active.th then
               return addOverlayPaletteZone(zones, activeGame,
                 active.tx * 8 + offsetX, active.ty * 8 + offsetY,
-                active.tw * 8, active.th * 8)
+                active.tw * 8, active.th * 8, styled)
             end
             return zones
           end
           if active.__betterBagAnchorX then
             return addOverlayPaletteZone(zones, activeGame,
               active.__betterBagAnchorX, active.__betterBagAnchorY,
-              active.__betterBagAnchorW, active.__betterBagAnchorH)
+              active.__betterBagAnchorW, active.__betterBagAnchorH, styled)
           end
           if active.tx and active.ty and active.tw and active.th then
             return addOverlayPaletteZone(zones, activeGame,
               active.tx * 8 + offsetX, active.ty * 8 + offsetY,
-              active.tw * 8, active.th * 8)
+              active.tw * 8, active.th * 8, styled)
           end
           if type(basePalettes) == "function" then
             for _, zone in ipairs(basePalettes(active, activeGame) or {}) do
               addOverlayPaletteZone(zones, activeGame,
                 (zone.x or 0) + offsetX, (zone.y or 0) + offsetY,
-                zone.w or 0, zone.h or 0)
+                zone.w or 0, zone.h or 0, styled)
             end
           end
           return zones
@@ -2505,40 +3529,38 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
       return
     end
     actionMenu.__betterBagTossPrompts = true
+    local exitAction = actionMenu.exit
+    actionMenu.exit = function(active, ...)
+      menu.betterBagToss, menu.betterBagPrompt = nil, nil
+      if type(exitAction) == "function" then return exitAction(active, ...) end
+    end
     local chooseToss = tossRow.onSelect
     tossRow.onSelect = function()
+      -- Set the phase before the native push, so the bridge can style quantity.
+      local toss = {action = actionMenu, phase = "quantity"}
+      menu.betterBagToss = toss
       local result = chooseToss()
       local quantity = menu.game.stack:top()
       local QuantityBox = require("src.ui.QuantityBox")
       if getmetatable(quantity) ~= QuantityBox
           or type(quantity.onDone) ~= "function" then
+        menu.betterBagToss = nil
         return result
       end
 
-      menu.betterBagPrompt = Strings("How many?")
+      menu.betterBagPrompt = Strings("HOW MANY?")
       local finishQuantity = quantity.onDone
       quantity.onDone = function(qty)
+        menu.betterBagPrompt = nil
         if qty then
-          menu.betterBagPrompt = Strings("Toss %s?", item.label)
+          toss.phase, toss.qty = "confirm", qty
+          local def = menu.game.data.items[item.value]
+          toss.question = Strings("Is it OK to toss x%02d %s?", qty,
+            def and def.name or item.label)
         else
-          menu.betterBagPrompt = nil
+          menu.betterBagToss = nil
         end
-        local finished = finishQuantity(qty)
-        if qty then
-          local choice = menu.game.stack:top()
-          local ChoiceBox = require("src.ui.ChoiceBox")
-          if getmetatable(choice) == ChoiceBox
-              and type(choice.onChoose) == "function" then
-            local confirm = choice.onChoose
-            choice.onChoose = function(yes)
-              menu.betterBagPrompt = nil
-              return confirm(yes)
-            end
-          else
-            menu.betterBagPrompt = nil
-          end
-        end
-        return finished
+        return finishQuantity(qty)
       end
       return result
     end
@@ -2601,6 +3623,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
         end
       end
       menu.onChoose = function(item, list)
+        if item and item.value == WALLET_ID then return end
         if not externalController and list.betterBagSwapId then
           finishSwap(list, item and item.value)
           return

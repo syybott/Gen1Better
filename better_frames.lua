@@ -501,6 +501,21 @@ return function(mod, menuPalette, classicPaletteLocked)
 
   local api = { names = names, choices = choices }
 
+  -- Keep foreground coverage and border marks in the translated canvas space.
+  function api.withTranslatedMarks(dx, dy, draw, ...)
+    local originalAdd, originalCover = marks.add, marks.cover
+    marks.add = function(x, y, w, h)
+      return originalAdd(x + dx, y + dy, w, h)
+    end
+    marks.cover = function(x, y, w, h)
+      return originalCover(x + dx, y + dy, w, h)
+    end
+    local ok, result = pcall(draw, ...)
+    marks.add, marks.cover = originalAdd, originalCover
+    if not ok then error(result, 0) end
+    return result
+  end
+
   function api.withoutPadding(draw, ...)
     local previous = paddingDisabled
     paddingDisabled = true

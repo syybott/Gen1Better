@@ -37,8 +37,7 @@ return function(deps)
   function M.anchorWideHud(battle, x, y, w, h, anchor, placement)
     if not battle:extendedHUD() then return end
 
-    local stack = battle.game and battle.game.stack
-    if stack and stack.top and stack:top() ~= battle then return end
+    if not M.battleIsTopState(battle) then return end
 
     local renderer = battle.game and battle.game.renderer
     if not (renderer and renderer.setBattleUIAnchor) then return end
@@ -60,6 +59,13 @@ return function(deps)
   function M.battleIsTopState(battle)
     local stack = battle and battle.game and battle.game.stack
     return not (stack and stack.top) or stack:top() == battle
+      or M.levelUpStatBox(battle) ~= nil
+  end
+
+  function M.levelUpStatBox(battle)
+    local stack = battle and battle.game and battle.game.stack
+    local top = stack and stack.top and stack:top()
+    if top and top.gen1BetterBattleStatBoxOwner == battle then return top end
   end
 
   M.BETTER_BATTLE_SCALE = 0.50 -- internal only; no options entry

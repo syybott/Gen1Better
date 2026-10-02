@@ -181,13 +181,14 @@ return function(deps)
           end
         end
       elseif battleMode == "off" then
-        -- Stock WIDE uses a 48-pixel animated HP value. Exempt only its
-        -- two-pixel semantic fill from the BetterMenus palette.
+        -- Match the one-pixel translation of the stock extended HP bars.
+        -- Only their semantic fill bypasses the menu palette, never the caps.
+        local fillDx = Policy.stockWideExtended(battle) and 1 or 0
         if Policy.enemyVisible(battle) then
-          trueColorFill(battle.enemy, 24, 19, 11, battle.enemy.shownPx)
+          trueColorFill(battle.enemy, 24 + fillDx, 19, 11, battle.enemy.shownPx)
         end
         if Policy.playerVisible(battle) then
-          trueColorFill(battle.player, 208, 75, 10, battle.player.shownPx)
+          trueColorFill(battle.player, 208 + fillDx, 75, 10, battle.player.shownPx)
         end
       else
         -- MOD provider HUDs retain their existing provider-owned exemption.

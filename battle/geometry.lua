@@ -155,18 +155,25 @@ return function(deps)
       end
     end
     if Policy.uiSetting(battle) then return normalizeGeometry(betterBattleGeometry(battle)) end
+    local stageActive = Policy.stageSetting(battle)
+    local enemyGround = stageActive and (104 - 32) or 56
+    local backdropApi = betterBattleApi and betterBattleApi.backdrop
+    if stageActive and backdropApi and backdropApi.effectiveGroundOffsets then
+      local _, enemyOffsetY = backdropApi.effectiveGroundOffsets(battle)
+      enemyGround = enemyGround + (tonumber(enemyOffsetY) or 0)
+    end
     return normalizeGeometry({
       owner = "stock",
       coordinateSpace = "native",
       playerX = 0,
       enemyX = 0,
       playerGround = 104,
-      enemyGround = 56,
+      enemyGround = enemyGround,
       playerShift = 0,
-      enemyShift = 0,
+      enemyShift = enemyGround - 56,
       spriteScale = 1,
       nativeBlit = true,
-      nativeAnim = true,
+      nativeAnim = not stageActive,
       nativeClip = true,
       stock = true,
     })

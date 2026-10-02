@@ -4,7 +4,7 @@
 local ShadowEngine = {}
 
 ShadowEngine.SHADOW_STYLE = "soft-feathered-oval"
-ShadowEngine.SHADOW_GLOBAL_OPACITY = 1.035
+ShadowEngine.SHADOW_GLOBAL_OPACITY = 1.423125
 
 ShadowEngine.SHADOW_SHAPE = {
   contactWidthScale = 1.30,

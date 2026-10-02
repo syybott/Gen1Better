@@ -16,7 +16,7 @@ Disable any Better screen option to use an old school Game Boy inspired widescre
 - **Menu themes:** customizable colors for menus and panels
 - **Favorites and scrolling labels:** pin Start Menu entries and favorite items; long labels can scroll so you can read them
 
-## BetterBattle UI / Crystal Shiny Sprites Compatibility
+## BetterBattle UI
 
 A richer battle interface that puts useful information alongside the action
 

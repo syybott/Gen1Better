@@ -215,6 +215,11 @@ return function(deps)
   function M.levelUpStatBoxVisible(battle)
     local stack = battle and battle.game and battle.game.stack
     local top = stack and stack:top()
+    -- The BetterBattle window owns its palette and does not cover the player
+    -- HUD's canvas. Only the original wide window needs that exclusion.
+    if top and top.gen1BetterBattleStatBoxOwner == battle and M.uiSetting(battle) then
+      return false
+    end
     return top and getmetatable(top) == BattleState.StatBox and top.gen1BetterMenusWide
   end
 

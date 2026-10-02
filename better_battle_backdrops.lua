@@ -73,9 +73,9 @@ local WING_SHADOW_RINGS = {
   { scale = 0.90, alpha = 0.018 },
   { scale = 0.82, alpha = 0.022 },
 }
--- Reduce the prior 1.15 global multiplier by 10% while preserving ring
+-- Increase the prior 1.1385 global multiplier by 25% while preserving ring
 -- proportions and per-species opacityScale overrides.
-local SHADOW_GLOBAL_OPACITY = 1.035
+local SHADOW_GLOBAL_OPACITY = 1.423125
 
 local function drawSoftShadow(g, x, y, width, height, alphaScale,
     innerRing, side, middleRing, rotationDegrees, color, customRings)

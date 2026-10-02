@@ -64,6 +64,7 @@ return function(
   local messages = loadModule("battle/messages.lua")({
     layout = layout,
     policy = policy,
+    text = mod.gen1BetterMenusText or loadModule("better_text.lua"),
   })
   local menus = loadModule("battle/menus.lua")({
     compatibility = compatibility,
@@ -141,6 +142,7 @@ return function(
   betterBattleApi.stageEnabled = function(battle) return policy.stageSetting(battle) end
   betterBattleApi.modeFor = function(battle) return policy.effectiveBattleMode(battle) end
   betterBattleApi.activeProvider = function(battle) return policy.activeProvider(battle) end
+  betterBattleApi.drawStatBox = ui_layer.renderStatBox
   betterBattleApi.drawLayer = function(battle, bottomVisible)
     if bottomVisible == nil and battle and type(battle.bottomUIVisible) == "function" then
       local ok, visible = pcall(battle.bottomUIVisible, battle)

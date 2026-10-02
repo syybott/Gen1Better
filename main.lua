@@ -40,6 +40,7 @@ local DexEntryMenu = require("src.ui.DexEntryMenu")
 local NamingScreen = require("src.ui.NamingScreen")
 local SummaryMenu = require("src.ui.SummaryMenu")
 local TextBox = require("src.render.TextBox")
+local betterText
 local ChoiceBox = require("src.ui.ChoiceBox")
 local QuantityBox = require("src.ui.QuantityBox")
 local ManagerState = require("src.mods.ManagerState")
@@ -3000,6 +3001,9 @@ local function installBattlePaletteIsolation()
         end
       end
     end
+    if canvas == self.gen1BetterBattleStatBoxCanvas then
+      zones = self.gen1BetterBattleStatBoxZones
+    end
     if boxW and boxH and (boxW <= 0 or boxH <= 0) then return end
     if canvas == self.canvas and zones then
       local filtered = {}
@@ -3380,8 +3384,7 @@ local function installDialogueLayout()
     -- In a widened BetterMenus pane, ordinary newlines are soft breaks and
     -- should not prevent adjacent words from sharing a line. Preserve \v
     -- continuation controls and \f page breaks.
-    wideText = wideText:gsub("\n", " ")
-    local pages = TextBox.paginate(wideText, self.maxCols)
+    local pages = betterText.paginate(wideText, self.maxCols)
 
     -- A stock \v can have been positioned after the original second
     -- narrow-textbox line. After widening, that content may now occupy only
@@ -4356,16 +4359,21 @@ local function installSupportingScreens(mod)
     end
     love.graphics.setColor(1, 1, 1, 1)
   end
-  -- Rare Candy level-up stat box: inherit the wide menu canvas and
-  -- move the stock 11-tile stats window into the added right-hand space.
+  -- Level-up stats use BetterBattle's detached scale in battle, or inherit
+  -- the parent menu's wide canvas for Rare Candy outside battle.
   local StatBox = BattleState.StatBox
   local originalStatBoxNew = StatBox.new
   local originalStatBoxDraw = StatBox.draw
 
-  StatBox.new = function(game, mon, onDone)
-    local self = originalStatBoxNew(game, mon, onDone)
+  StatBox.new = function(game, mon, onDone, keepOpen)
+    local self = originalStatBoxNew(game, mon, onDone, keepOpen)
 
     local parent = game and game.stack and game.stack:top()
+    local api = betterBattleApi()
+    if parent and getmetatable(parent) == BattleState
+        and api and api.uiEnabled and api.uiEnabled(parent) then
+      self.gen1BetterBattleStatBoxOwner = parent
+    end
     if parent and parent.uiSize then
       local w, h = parent:uiSize()
       if w and w > Renderer.WIDTH then
@@ -4383,12 +4391,24 @@ local function installSupportingScreens(mod)
   end
 
   StatBox.draw = function(self)
-    if self.gen1BetterMenusWide then
-      love.graphics.push()
-      love.graphics.translate(UI_W - Renderer.WIDTH, 0)
-      originalStatBoxDraw(self)
-      love.graphics.pop()
+    local api = betterBattleApi()
+    if api and api.drawStatBox and api.drawStatBox(self, originalStatBoxDraw) then
       return
+    end
+    if self.gen1BetterMenusWide then
+      local dx = UI_W - Renderer.WIDTH
+      local frames = activeMod and activeMod.gen1BetterMenusFrames
+      love.graphics.push()
+      love.graphics.translate(dx, 0)
+      local ok, result = pcall(function()
+        if frames and frames.withTranslatedMarks then
+          return frames.withTranslatedMarks(dx, 0, originalStatBoxDraw, self)
+        end
+        return originalStatBoxDraw(self)
+      end)
+      love.graphics.pop()
+      if not ok then error(result, 0) end
+      return result
     end
 
     originalStatBoxDraw(self)
@@ -4883,6 +4903,9 @@ end
 
 return function(mod, menuColors)
   activeMod = mod
+  betterText = assert(load(assert(mod:read("better_text.lua")),
+    "@" .. mod.path .. "/better_text.lua"))()
+  mod.gen1BetterMenusText = betterText
   local betterFrames
 
   local frameSource, frameReadErr = mod:read("better_frames.lua")
@@ -5577,6 +5600,7 @@ return function(mod, menuColors)
   if makeBetterBagScreen and makeBetterBagInventory then
     local originalBagScreen = mod.content.screens:get("BagMenu")
     local betterBagCompatibility = {
+      tinyFont = compatibility.tinyFont,
       usefulBag = mod.find("useful_bag") ~= nil,
       kantoReforged = mod.find("Kanto-Reforged") ~= nil,
       upstreamBagScreen = mod.find("Kanto-Reforged") and originalBagScreen
@@ -5722,7 +5746,7 @@ return function(mod, menuColors)
 	  return false
 	end
 
-  mod.options:define({
+  local optionSchema = {
     { key = "better_frames", label = "BetterFrames", type = "choice",
       default = "og:default",
       choices = betterFrames and betterFrames.choices
@@ -5822,8 +5846,15 @@ return function(mod, menuColors)
         { "DEFAULT", "default" },
         { "RED", "red" },
       } },
-  })
-  
+  }
+  mod.options:define(optionSchema)
+
+  do
+    local source = assert(mod:read("wild_skies_cache.lua"))
+    assert(load(source, "@" .. mod.path .. "/wild_skies_cache.lua"))()(
+      mod, optionSchema)
+  end
+
   local groovyMenuPalettes = {
     { "AMIGA WB", "amiga_wb" }, { "AMIGA DP", "amiga_dp" },
     { "C64", "c64" }, { "SPECTRUM", "spectrum" },
@@ -6570,9 +6601,10 @@ end
       elseif battleMode == "off" then
         local function addStockHpFill(battler, x, y, segments)
           local px = battleHpFillPixels(battler, segments)
+          local fillDx = top.extendedHUD and top:extendedHUD() and 1 or 0
           if px > 0 then
             out[#out + 1] = {
-              colors = false, x = x, y = y, w = px, h = 2,
+              colors = false, x = x + fillDx, y = y, w = px, h = 2,
               gen1BetterMenusBattleUI = true,
             }
           end

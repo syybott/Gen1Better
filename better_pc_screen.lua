@@ -126,7 +126,13 @@ return function(mod, genderExports, compatibility, menuColors,
     [")"] = { "110", "001", "001", "001", "110" },
     [":"] = { "000", "010", "000", "010", "000" },
     ["."] = { "000", "000", "000", "000", "010" },
+    [","] = { "000", "000", "000", "010", "100" },
+    [";"] = { "000", "010", "000", "010", "100" },
     ["'"] = { "010", "010", "000", "000", "000" },
+    ["’"] = { "010", "010", "000", "000", "000" },
+    ["é"] = { "001", "111", "110", "100", "111" },
+    ["É"] = { "001", "111", "110", "100", "111" },
+    ["₽"] = { "110", "101", "110", "111", "100" },
     [" "] = { "000", "000", "000", "000", "000" },
   }
 
@@ -1298,15 +1304,35 @@ return function(mod, genderExports, compatibility, menuColors,
     return tostring(text or ""):upper()
   end
 
+  -- Iterate complete UTF-8 characters so accented letters and symbols use
+  -- one glyph cell and fitting never cuts through a multibyte character.
+  local UTF8_CHARACTER = "[%z\1-\127\194-\244][\128-\191]*"
+
+  local function textGlyphCount(text)
+    local count = 0
+    for _ in text:gmatch(UTF8_CHARACTER) do count = count + 1 end
+    return count
+  end
+
+  local function textGlyphPrefix(text, count)
+    local bytes = 0
+    for character in text:gmatch(UTF8_CHARACTER) do
+      if count <= 0 then break end
+      bytes = bytes + #character
+      count = count - 1
+    end
+    return text:sub(1, bytes)
+  end
+
   local function tinyTextWidth(text)
-    local length = #cleanTinyText(text)
+    local length = textGlyphCount(cleanTinyText(text))
     return length > 0 and length * 4 - 1 or 0
   end
 
   local function tinyTextFit(text, maxWidth)
     text = cleanTinyText(text)
     local count = math.max(0, math.floor((math.floor(maxWidth or 0) + 1) / 4))
-    return text:sub(1, count)
+    return textGlyphPrefix(text, count)
   end
 
   local function drawTinyText(text, x, y, shade)
@@ -1314,7 +1340,7 @@ return function(mod, genderExports, compatibility, menuColors,
     gray(shade)
     local cursor = math.floor(x)
     y = math.floor(y)
-    for character in tostring(text):gmatch(".") do
+    for character in text:gmatch(UTF8_CHARACTER) do
       local glyph = TINY_GLYPHS[character]
       if glyph then
         for row = 1, 5 do
@@ -1340,14 +1366,14 @@ return function(mod, genderExports, compatibility, menuColors,
   -- A fixed 4x6 face keeps every ten-character nickname on even the narrowest
   -- data pane while remaining visibly larger than the 3x5 metadata face.
   local function mediumTextWidth(text)
-    local length = #cleanTinyText(text)
+    local length = textGlyphCount(cleanTinyText(text))
     return length > 0 and length * 5 - 1 or 0
   end
 
   local function mediumTextFit(text, maxWidth)
     text = cleanTinyText(text)
     local count = math.max(0, math.floor((math.floor(maxWidth or 0) + 1) / 5))
-    return text:sub(1, count)
+    return textGlyphPrefix(text, count)
   end
 
   local function drawMediumText(text, x, y, shade)
@@ -1355,7 +1381,7 @@ return function(mod, genderExports, compatibility, menuColors,
     gray(shade)
     local cursor = math.floor(x)
     y = math.floor(y)
-    for character in text:gmatch(".") do
+    for character in text:gmatch(UTF8_CHARACTER) do
       local glyph = TINY_GLYPHS[character]
       if glyph then
         for dy = 0, 5 do
