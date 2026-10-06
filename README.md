@@ -31,7 +31,7 @@ A richer battle interface that puts useful information alongside the action
 
 ## Choose your options
 
-Open **START → OPTION → EXTRAS → Gen1Better** to choose your interfaces, menu palette, frames, inverse colors, battle presentation, move animations, scrolling text, and Pokédex indicator. **Menu Scale** adjusts compact menus and dialogue.
+Open **START → OPTION → EXTRAS → Gen1Better** to choose your interfaces, menu palette, frames, battle presentation, move animations, scrolling text, and Pokédex indicator. **Menu Scale** adjusts compact menus, dialogue, and BetterTrainerCard.
 
 Choose the game's palette under **START → OPTION → GRAPHICS → COLORS**
 

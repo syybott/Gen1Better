@@ -409,6 +409,8 @@ local YELLOW_TITLE_PIKACHU = {
 
 local activeMod
 local activeGame
+local titlePresentation
+local titleBackdropRects
 local LOCATION_OVERLAY_KEY = "__qolLocationBannerOverlay"
 local locationStates = setmetatable({}, { __mode = "k" })
 local locationOverlays = setmetatable({}, { __mode = "k" })
@@ -452,6 +454,7 @@ local SCALABLE_MENU_STATES = {
   [ChoiceBox] = true,
   [QuantityBox] = true,
   [LinkState] = true,
+  [QuarantineReport] = true,
 }
 
 local function scaleOption(key)
@@ -485,8 +488,10 @@ local function defaultMenuScaleEnabled(game)
     elseif state and state.isBattle then
       return false
     elseif state and (state.betterPCUI or state.betterBagUI
-        or state.betterPartyUI or state.betterTrainerCardUI) then
+        or state.betterPartyUI) then
       return false
+    elseif state and state.betterTrainerCardUI then
+      supported = true
     elseif state and (state.isModOptions
         or state.BetterMenusScaleEligible) then
       supported = true
@@ -654,6 +659,10 @@ if not PaletteFX.gen1BetterMenusRawZoneHookInstalled then
   local originalEffectiveColors = PaletteFX.effectiveColors
   PaletteFX.sendColors = function(shader, palette)
     if isBetterMenusPalette(palette) then
+      -- Raw sends must share the engine's shader-uniform cache.
+      if type(PaletteFX.sendShades) == "function" then
+        return PaletteFX.sendShades(shader, palette)
+      end
       shader:send("c0", { palette[1][1] / 255,
         palette[1][2] / 255, palette[1][3] / 255 })
       shader:send("c1", { palette[2][1] / 255,
@@ -662,6 +671,9 @@ if not PaletteFX.gen1BetterMenusRawZoneHookInstalled then
         palette[3][2] / 255, palette[3][3] / 255 })
       shader:send("c3", { palette[4][1] / 255,
         palette[4][2] / 255, palette[4][3] / 255 })
+      if type(PaletteFX.forgetSent) == "function" then
+        PaletteFX.forgetSent(shader)
+      end
       return
     end
     return originalSendColors(shader, palette)
@@ -869,6 +881,17 @@ local function installOverworldScaleStability()
   local originalOffsetRange = Zoom.offsetRange
   local originalFrameRects = Renderer.frameRects
 
+  titleBackdropRects = function(renderer)
+    local width, height, uiScale = renderer.uiWidth,
+      renderer.uiHeight, renderer.uiScale
+    renderer.uiWidth, renderer.uiHeight = Renderer.WIDTH, Renderer.HEIGHT
+    renderer.uiScale = originalUiScale
+    local ok, rects = pcall(originalFrameRects, renderer)
+    renderer.uiWidth, renderer.uiHeight, renderer.uiScale = width, height, uiScale
+    if not ok then error(rects, 0) end
+    return rects
+  end
+
   -- Preserve the compact menu size at the player's current zoom once,
   -- then keep that reference when overworld zoom changes. Store an offset
   -- so the same choice adapts when the window's fit scale changes.
@@ -890,6 +913,11 @@ local function installOverworldScaleStability()
   local function scaledUiScale(renderer, game, scale)
     local factor, enabled = menuScaleFactor(game)
     if not enabled then return scale end
+    local top = game and game.stack and game.stack:top()
+    if top and (top.betterTrainerCardUI or getmetatable(top) == QuarantineReport) then
+      -- These complete panels retain their native 100% size.
+      return scale * factor
+    end
     local fitScale = renderer:fitScale()
     local floorScale = math.max(1, math.ceil(fitScale / 2))
     local baseScale = math.max(
@@ -904,6 +932,9 @@ local function installOverworldScaleStability()
   Renderer.uiScale = configuredUiScale
   Renderer.frameRects = function(renderer, ...)
     local rects = originalFrameRects(renderer, ...)
+    if titlePresentation then
+      rects = titlePresentation.frameRects(renderer, rects, activeGame)
+    end
     renderer.gen1BetterMenusFrameRects = rects
     return rects
   end
@@ -1631,6 +1662,29 @@ local function installMenuLayout()
   local originalTitleDraw = TitleState.draw
   local originalTitlePalettes = TitleState.sgbPalettes
 
+  local function titlePalettes(self, game)
+    local result = originalTitlePalettes(self, game)
+    if self.yellowLayout and result then
+      if result[1] then result[1].colors = YELLOW_TITLE_LOGO end
+      if result[2] then result[2].colors = YELLOW_TITLE_PIKACHU end
+      if result[3] then result[3].colors = YELLOW_TITLE_LOGO end
+      result[#result + 1] = PaletteFX.zone(PaletteFX.GRAYS, 0, 17, 19, 17)
+    end
+    return result
+  end
+
+  local titleFactory = assert(load(assert(activeMod:read("better_title_menu.lua")),
+    "@" .. activeMod.path .. "/better_title_menu.lua"))()
+  titlePresentation = titleFactory({
+    stack = StateStack, TitleState = TitleState,
+    backdropRects = function(renderer) return titleBackdropRects(renderer) end,
+    scaleFactor = function(game)
+      return scaleHookFactor({ kind = "menu", game = game,
+        state = game.stack:top(), states = game.stack.states,
+        requestedFactor = optionScaleFactor("menu_scale"), defaultEnabled = true })
+    end,
+  })
+
   local function startMenuFavorites(save)
     save.gen1BetterMenusStartFavorites =
       save.gen1BetterMenusStartFavorites or {}
@@ -1681,7 +1735,7 @@ local function installMenuLayout()
     love.graphics.rectangle("fill", x + 3, y + 6, 1, 1)
   end
 
-  local function colorizeYellowPikachu(game, source)
+  local function colorizeYellowPikachu(game, source, opaqueWhite)
     local logo = PaletteFX.effectiveColors(YELLOW_TITLE_LOGO)
     local pika = PaletteFX.effectiveColors(YELLOW_TITLE_PIKACHU)
     if not (logo and pika) then return nil end
@@ -1693,6 +1747,7 @@ local function installMenuLayout()
     local body, accent, ink = logo[2], pika[3], pika[4]
     data:mapPixel(function(_, _, r, g, b, a)
       if r > 0.99 and g > 0.99 and b > 0.99 then
+        if opaqueWhite and a > 0 then return 1, 1, 1, a end
         return 0, 0, 0, 0
       end
       local shade = (r + g + b) / 3
@@ -2566,24 +2621,21 @@ end
     end
   end
 
-  local function fillTitleFlash(flash)
+  local function keepTitleTransitionVisible(flash, title)
     flash.gen1BetterMenusTitleFlash = true
-    flash.uiSize = function() return UI_W, UI_H end
+    flash.isOpaque = false
+    flash.uiSize = function() return Renderer.WIDTH, Renderer.HEIGHT end
     flash.sgbPalettes = function()
-      return {
-        PaletteFX.zone(effectiveMenuPalette(),
-          0, 0, UI_TW - 1, UI_TH - 1),
-      }
+      return titlePalettes(title, titlePresentation.backgroundGame(title.game, title))
     end
-    flash.draw = function()
-      love.graphics.setColor(1, 1, 1, 1)
-      love.graphics.rectangle("fill", 0, 0, UI_W, UI_H)
-    end
+    -- Preserve the native transition's delay and callback without its white
+    -- cover. The title keeps drawing underneath until the menu opens.
+    flash.draw = function() end
   end
 
   TitleState.toMenu = function(self, ...)
     originalToMenu(self, ...)
-    fillTitleFlash(self.game.stack:top())
+    keepTitleTransitionVisible(self.game.stack:top(), self)
   end
 
   TitleState.openMenu = function(self)
@@ -2597,7 +2649,7 @@ end
       local originalCancel = menu.onCancel
       menu.onCancel = function(...)
         local result = originalCancel(...)
-        fillTitleFlash(self.game.stack:top())
+        keepTitleTransitionVisible(self.game.stack:top(), self)
         return result
       end
     end
@@ -2611,6 +2663,10 @@ end
       if colored then
         self.yellowPikachu = colored
         self.enhancedYellowPikachu = true
+        self.eyesHalf = colorizeYellowPikachu(game,
+          "assets/generated/title/eyes_half.png", true) or self.eyesHalf
+        self.eyesClosed = colorizeYellowPikachu(game,
+          "assets/generated/title/eyes_closed.png", true) or self.eyesClosed
       end
     end
     return self
@@ -2630,19 +2686,32 @@ end
     end
     local titlePanel = top and
       (top.enhancedTitleMenu or top.enhancedTitleInfo)
-    if titlePanel then
-      love.graphics.setColor(1, 1, 1, 1)
-      love.graphics.rectangle("fill", 0, 0, UI_W, UI_H)
-    else
+    local titleTransition = top and top.gen1BetterMenusTitleFlash
+    local function drawTitle()
       originalTitleDraw(self)
+      if self.enhancedYellowPikachu
+          and (top == self or titlePanel or titleTransition) then
+        PaletteFX.markUiSpriteRedraw(self.yellowPikachu, nil,
+          32, 64 - (self.scy or 0))
+        local eyes = self:blinkOverlay()
+        if eyes then
+          PaletteFX.markUiSpriteRedraw(eyes, nil, 56, 80 - (self.scy or 0))
+        end
+      end
+    end
+    if titlePanel then
+      titlePresentation.capture(self, drawTitle, titlePalettes(self,
+        titlePresentation.backgroundGame(self.game, self)))
+    elseif titleTransition then
+      local menuOpen = self.menuOpen
+      self.menuOpen = false
+      local ok, err = pcall(drawTitle)
+      self.menuOpen = menuOpen
+      if not ok then error(err, 0) end
+    else
+      drawTitle()
     end
     if currentSprite then self.currentSprite = currentSprite end
-    local titleVisible = top == self
-    if self.enhancedYellowPikachu and titleVisible then
-      PaletteFX.markUiSpriteRedraw(
-        self.yellowPikachu, nil,
-        32, 64 - (self.scy or 0))
-    end
   end
 
   TitleState.sgbPalettes = function(self, game)
@@ -2653,15 +2722,7 @@ end
         PaletteFX.zone(effectiveMenuPalette(), 0, 0, UI_TW - 1, UI_TH - 1),
       }
     end
-    local result = originalTitlePalettes(self, game)
-    if self.yellowLayout and result then
-      if result[1] then result[1].colors = YELLOW_TITLE_LOGO end
-      if result[2] then result[2].colors = YELLOW_TITLE_PIKACHU end
-      if result[3] then result[3].colors = YELLOW_TITLE_LOGO end
-      result[#result + 1] = PaletteFX.zone(
-        PaletteFX.GRAYS, 0, 17, 19, 17)
-    end
-    return result
+    return titlePalettes(self, game)
   end
 
   Menu.uiSize = function() return UI_W, UI_H end
@@ -3184,12 +3245,12 @@ local function installDialogueLayout()
     if parent and parent.holdsUIAnchors and parent.openPrompt
         and parent.delay ~= nil and not parent.gen1BetterMenusSavePanel then
       parent.gen1BetterMenusSavePanel = true
-      parent.uiSize = function() return UI_W, UI_H end
+      -- Reserve room below the save question for its YES/NO panel.
+      parent.uiSize = function() return UI_W, UI_H + 48 end
       parent.isWideBattleLayout = function() return false end
       parent.sgbPalettes = wholeWide
       parent.draw = function()
         love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.rectangle("fill", 0, 0, UI_W, UI_H)
         local save = game.save
         local badges = require("src.inventory.Badges").count(game.data, save)
         local owned = 0
@@ -3380,28 +3441,10 @@ local function installDialogueLayout()
     -- Reflow after widening and rebuild the typewriter's current line so it
     -- cannot retain the original 18-column first-page split.
     local wideText = TextBox.substitute(game, text)
-    -- Stock strings contain \n at their original narrow textbox boundaries.
-    -- In a widened BetterMenus pane, ordinary newlines are soft breaks and
-    -- should not prevent adjacent words from sharing a line. Preserve \v
-    -- continuation controls and \f page breaks.
+    -- The shared helper joins stock line/scroll boundaries and places waits
+    -- before reflowed text scrolls out of the two visible rows. Explicit
+    -- page breaks remain intact.
     local pages = betterText.paginate(wideText, self.maxCols)
-
-    -- A stock \v can have been positioned after the original second
-    -- narrow-textbox line. After widening, that content may now occupy only
-    -- the first visual line, which would pause before the second line.
-    -- Defer only that first-line continuation until the second visual line
-    -- has finished. Preserve all later continuation waits.
-    local contBefore = pages.contBefore or {}
-    for pageIndex, page in ipairs(pages) do
-      local conts = contBefore[pageIndex]
-      if conts and conts[2] then
-        conts[2] = false
-        if page[3] ~= nil then
-          conts[3] = true
-        end
-      end
-    end
-
     self.pages = pages
 
     if self.instant then
@@ -3436,7 +3479,11 @@ local function installDialogueLayout()
     local parent = game and game.stack and game.stack:top()
     if parent and parent.isTextBox and parent.boxTy then
       self.tx = parent.boxTx + parent.boxTw - self.tw
-      self.ty = parent.boxTy - self.th
+      if parent.choiceBox == Theme.saveBox then
+        self.ty = parent.boxTy + parent.boxTh + 1
+      else
+        self.ty = parent.boxTy - self.th
+      end
       self.uiSize = function() return parent:uiSize() end
     else
       self.tx = UI_TW - self.tw
@@ -4902,6 +4949,12 @@ local function installLinkLayout()
 end
 
 return function(mod, menuColors)
+  -- Retired option: saved ON values must not reactivate inverse colors.
+  local getOption = mod.options.get
+  mod.options.get = function(options, key)
+    if key == "inverse" then return false end
+    return getOption(options, key)
+  end
   activeMod = mod
   betterText = assert(load(assert(mod:read("better_text.lua")),
     "@" .. mod.path .. "/better_text.lua"))()
@@ -4937,11 +4990,6 @@ return function(mod, menuColors)
 
   local function qolBattleGateReason(game)
     if betterBattleUIEnabled(game) then return "betterbattle_ui" end
-    local options = game and game.save and game.save.options
-    if options and options.battleLayout == "wide"
-        and options.battleHud == "extended" then
-      return "extended"
-    end
     return nil
   end
 
@@ -4983,13 +5031,16 @@ return function(mod, menuColors)
       "BetterBattle UI."))
   end
 
-  local function showDisableBetterBattleForStandard(game)
+  local function confirmDisableBetterBattlesForStandard(game, onYes)
     if not (game and game.stack) then return end
-    game.stack:push(TextBox.new(game,
-      "Please disable BetterBattle UI\n" ..
-      "in the BetterMenus options\f" ..
-      "before switching to WIDE\n" ..
-      "Standard Battle UI."))
+    local message = "YOU MUST DISABLE BETTERBATTLES AND ITS CUSTOM BACKDROPS " ..
+      "IF YOU SWITCH FROM EXTENDED, ARE YOU SURE?"
+    game.stack:push(TextBox.new(game, message, nil, {
+      defaultNo = true,
+      choice = function(yes)
+        if yes then onYes() end
+      end,
+    }))
   end
 
   local function optionValue(loader, modId, key)
@@ -5098,7 +5149,17 @@ return function(mod, menuColors)
           if (betterBattleUIMode() == "on" or betterBattlesMode() == "on")
               and wideBattleLayoutSelected(g)
               and extendedBattleHudSelected(g) then
-            showDisableBetterBattleForStandard(g)
+            local args = { n = select("#", ...), ... }
+            confirmDisableBetterBattlesForStandard(g, function()
+              setBetterBattleOff(g)
+              local result = step(g,
+                (table.unpack or unpack)(args, 1, args.n))
+              normalizeInvalidBetterBattle(g)
+              enforceQolBattleGate(g)
+              if result and g.writeOptions then
+                g:writeOptions()
+              end
+            end)
             return false
           end
           local result = step(g, ...)
@@ -5238,12 +5299,41 @@ return function(mod, menuColors)
     end
   end
 
+  local pokeFollowers
+  local followersSource, followersReadErr = mod:read("poke_followers_compat.lua")
+  if not followersSource then
+    mod.log:warn("PokeFollowers compatibility is missing: %s",
+      tostring(followersReadErr or "unknown read error"))
+  else
+    local followersChunk, followersCompileErr = load(
+      followersSource, "@" .. mod.path .. "/poke_followers_compat.lua")
+    if not followersChunk then
+      mod.log:warn("PokeFollowers compatibility did not compile: %s",
+        tostring(followersCompileErr))
+    else
+      local okFactory, followersFactory = pcall(followersChunk)
+      if not okFactory or type(followersFactory) ~= "function" then
+        mod.log:warn("PokeFollowers compatibility factory failed: %s",
+          tostring(followersFactory))
+      else
+        local okCompat, compat = pcall(followersFactory, mod)
+        if okCompat and type(compat) == "table" then
+          pokeFollowers = compat
+        elseif not okCompat then
+          mod.log:warn("PokeFollowers compatibility failed: %s",
+            tostring(compat))
+        end
+      end
+    end
+  end
+
   local compatibility = {
     hgssSprites = mod.find("HGSS_SPRITES") ~= nil,
     crystalAnimatedSprites = crystalMod ~= nil,
     crystalModId = crystalMod and crystalMod.id or nil,
     crystalExports = crystalMod and crystalMod.exports or nil,
     crystalSprites = crystalSprites,
+    pokeFollowers = pokeFollowers,
   }
 
   local betterPCSource, betterPCReadErr = mod:read("better_pc_screen.lua")
@@ -5374,17 +5464,17 @@ return function(mod, menuColors)
   mod.exports.betterPokedex = betterPokedex
 
   local betterModManagerSource, betterModManagerReadErr =
-    mod:read("better_mod_manager_screen_candidate.lua")
+    mod:read("better_mod_manager_screen.lua")
   if not betterModManagerSource then
-    mod.log:error("better_mod_manager_screen_candidate.lua is missing (%s)",
+    mod.log:error("better_mod_manager_screen.lua is missing (%s)",
       tostring(betterModManagerReadErr or "unknown read error"))
     return
   end
   local betterModManagerChunk, betterModManagerCompileErr = load(
     betterModManagerSource,
-    "@" .. mod.path .. "/better_mod_manager_screen_candidate.lua")
+    "@" .. mod.path .. "/better_mod_manager_screen.lua")
   if not betterModManagerChunk then
-    mod.log:error("better_mod_manager_screen_candidate.lua did not compile: %s",
+    mod.log:error("better_mod_manager_screen.lua did not compile: %s",
       tostring(betterModManagerCompileErr))
     return
   end
@@ -5807,8 +5897,6 @@ return function(mod, menuColors)
 		{ "MINT", "mint" },
 		{ "GRAPE", "grape" },
       } },
-    { key = "inverse", label = "Inverse", type = "toggle",
-      default = false },
     { key = "modern_pc_ui", label = "BetterPC", type = "toggle",
       default = true },
     { key = "modern_party_ui", label = "BetterParty", type = "toggle",
@@ -5823,6 +5911,8 @@ return function(mod, menuColors)
       default = true },
     { key = "better_options", label = "BetterOptions", type = "toggle",
       default = true },
+    { key = "menu_wallpaper", label = "Menu Wallpaper", type = "toggle",
+      default = false },
     { key = "menu_scale", label = "Menu Scale", type = "choice",
       default = "100",
       choices = {
@@ -5850,9 +5940,9 @@ return function(mod, menuColors)
   mod.options:define(optionSchema)
 
   do
-    local source = assert(mod:read("wild_skies_cache.lua"))
-    assert(load(source, "@" .. mod.path .. "/wild_skies_cache.lua"))()(
-      mod, optionSchema)
+    local source = assert(mod:read("better_animation_palettes.lua"))
+    assert(load(source,
+      "@" .. mod.path .. "/better_animation_palettes.lua"))()(mod)
   end
 
   local groovyMenuPalettes = {
@@ -6295,6 +6385,13 @@ return function(mod, menuColors)
   mod.hooks:wrap("screen.render_visible", function(next, state)
     local visible = next(state)
 
+    if state and state.startCloses then
+      for _, overlay in ipairs(frameGame and frameGame.stack
+          and frameGame.stack.states or {}) do
+        if overlay.gen1BetterMenusSavePanel then return false end
+      end
+    end
+
     if getmetatable(state) == PokedexMenu then
       local top = frameGame and frameGame.stack and frameGame.stack:top()
       if top and getmetatable(top) == DexEntryMenu then
@@ -6306,6 +6403,8 @@ return function(mod, menuColors)
   end)
   mod.hooks:wrap("render.compose", function(next, renderer, ctx)
     local handled = next(renderer, ctx)
+    if handled == true then return handled end
+    titlePresentation.compose(renderer, ctx, frameGame)
     local solidNickname = false
     local game = frameGame
     for _, state in ipairs(game and game.stack and game.stack.states or {}) do
@@ -6390,7 +6489,8 @@ return function(mod, menuColors)
    local top = frameGame and frameGame.stack and frameGame.stack:top()
 local paper
 
-if top and top ~= title then
+if top and top ~= title and not titlePresentation.isPanel(top)
+    and not top.gen1BetterMenusTitleFlash then
   local menuColors = PaletteFX.effectiveColors(effectiveMenuPalette())
   paper = menuColors and menuColors[1] or { 255, 255, 255 }
 else

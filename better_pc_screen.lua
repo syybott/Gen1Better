@@ -4,6 +4,7 @@
 return function(mod, genderExports, compatibility, menuColors,
     useStockOgMenuPalette, menuPaper, rawPaletteCopy)
   compatibility = compatibility or {}
+  local pokeFollowers = compatibility.pokeFollowers
   local crystalSprites = compatibility.crystalSprites
   local crystalAnimatedSprites = compatibility.crystalAnimatedSprites == true
   local Assets = require("src.render.Assets")
@@ -480,10 +481,8 @@ return function(mod, genderExports, compatibility, menuColors,
   end
 
   local function advanceGen1IconHover(screen)
-    if not crystalAnimatedSprites then return end
     local changed, mon = syncGen1IconHover(screen)
     if changed or not mon or not iconAnimationEnabled(screen)
-        or not isOriginalGen1Icon(screen, mon)
         or screen.gen1IconHoverDone then
       return
     end
@@ -494,9 +493,8 @@ return function(mod, genderExports, compatibility, menuColors,
   end
 
   local function limitedGen1IconAnimation(screen, mon, animate)
-    if not crystalAnimatedSprites or not animate then return animate, nil end
+    if not animate then return animate, nil end
     syncGen1IconHover(screen)
-    if not isOriginalGen1Icon(screen, mon) then return animate, nil end
     local counter = tonumber(screen.gen1IconHoverCounter) or 0
     return not screen.gen1IconHoverDone, counter
   end
@@ -967,6 +965,7 @@ return function(mod, genderExports, compatibility, menuColors,
   local function drawBackdrop(layout)
     gray(WHITE)
     love.graphics.rectangle("fill", 0, 0, layout.width, layout.height)
+    if not (mod.options and mod.options:get("menu_wallpaper") == true) then return end
     gray(LIGHT)
     for x = -layout.height, layout.width, 16 do
       love.graphics.line(x, layout.headerH, x + layout.height, layout.footerY)
@@ -1457,7 +1456,9 @@ return function(mod, genderExports, compatibility, menuColors,
     local target = 16 * scale
     fillTrueColorBacking(background, x, y, target, target)
     love.graphics.push("all")
-    if shader then
+    if pokeFollowers and pokeFollowers.isIcon(screen, mon) then
+      love.graphics.setShader()
+    elseif shader then
       PaletteFX.sendColors(shader, palette)
       love.graphics.setShader(shader)
     end

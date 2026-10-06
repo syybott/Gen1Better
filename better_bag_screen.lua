@@ -1854,6 +1854,7 @@ return function(mod, compatibility, menuColors, useStockOgMenuPalette,
   local function drawBackdrop(layout)
     gray(WHITE)
     love.graphics.rectangle("fill", 0, 0, layout.width, layout.height)
+    if not (mod.options and mod.options:get("menu_wallpaper") == true) then return end
     gray(LIGHT)
     for x = -layout.height, layout.width, 16 do
       love.graphics.line(x, layout.headerH,

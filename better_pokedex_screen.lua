@@ -10,6 +10,7 @@
 return function(mod, genderExports, compatibility, menuColors,
     useStockOgMenuPalette, menuPaper, rawPaletteCopy)
   compatibility = compatibility or {}
+  local pokeFollowers = compatibility.pokeFollowers
   local crystalSprites = compatibility.crystalSprites
   local crystalAnimatedSprites = compatibility.crystalAnimatedSprites == true
 
@@ -514,8 +515,8 @@ return function(mod, genderExports, compatibility, menuColors,
     return speed * 4
   end
 
-  local function syncGen1IconHover(screen)
-    local mon = selectedPartyMon(screen)
+  local function syncGen1IconHover(screen, mon)
+    mon = mon or selectedPartyMon(screen)
     local key = table.concat({ tostring(screen.index), tostring(mon) }, ":")
     if screen.gen1IconHoverKey == key then return false, mon end
     screen.gen1IconHoverKey = key
@@ -524,11 +525,9 @@ return function(mod, genderExports, compatibility, menuColors,
     return true, mon
   end
 
-  local function advanceGen1IconHover(screen)
-    if not crystalAnimatedSprites then return end
-    local changed, mon = syncGen1IconHover(screen)
-    if changed or not mon or not isOriginalGen1Icon(screen, mon)
-        or screen.gen1IconHoverDone then
+  local function advanceGen1IconHover(screen, mon)
+    local changed, mon = syncGen1IconHover(screen, mon)
+    if changed or not mon or screen.gen1IconHoverDone then
       return
     end
     local limit = iconAnimationLimit(mon)
@@ -538,9 +537,8 @@ return function(mod, genderExports, compatibility, menuColors,
   end
 
   local function limitedGen1IconAnimation(screen, mon, animate)
-    if not crystalAnimatedSprites or not animate then return animate, nil end
-    syncGen1IconHover(screen)
-    if not isOriginalGen1Icon(screen, mon) then return animate, nil end
+    if not animate then return animate, nil end
+    syncGen1IconHover(screen, mon)
     local counter = tonumber(screen.gen1IconHoverCounter) or 0
     return not screen.gen1IconHoverDone, counter
   end
@@ -615,7 +613,9 @@ return function(mod, genderExports, compatibility, menuColors,
     local target = 16 * scale
     fillTrueColorBacking(background, x, y, target, target)
     love.graphics.push("all")
-    if shader then
+    if pokeFollowers and pokeFollowers.isIcon(screen, mon) then
+      love.graphics.setShader()
+    elseif shader then
       PaletteFX.sendColors(shader, palette)
       love.graphics.setShader(shader)
     end
@@ -837,6 +837,7 @@ return function(mod, genderExports, compatibility, menuColors,
   local function drawBackdrop(layout)
     gray(WHITE)
     love.graphics.rectangle("fill", 0, 0, layout.width, layout.height)
+    if not (mod.options and mod.options:get("menu_wallpaper") == true) then return end
     gray(LIGHT)
     for x = -layout.height, layout.width, 16 do
       love.graphics.line(x, layout.headerH, x + layout.height, layout.footerY)
@@ -1514,13 +1515,13 @@ return function(mod, genderExports, compatibility, menuColors,
   end
 
   local function drawSeenIcon(screen, mon, x, y, selected,
-      trueColorRegions, face)
+      trueColorRegions, face, counter)
     fillTrueColorBacking(face, x, y, 16, 16)
     love.graphics.push("all")
     local shader = shaderForGrayscale()
     if shader then love.graphics.setShader(shader) end
     drawSharedIcon(screen, mon, x, y, selected, 1,
-      trueColorRegions, animationCounter(screen))
+      trueColorRegions, counter ~= nil and counter or animationCounter(screen))
     love.graphics.pop()
     trueColorRegions[#trueColorRegions + 1] = { x = x, y = y, w = 16, h = 16 }
   end
@@ -1579,12 +1580,13 @@ return function(mod, genderExports, compatibility, menuColors,
       or (type(menuColors) == "function" and menuColors(screen.game))
     local face = colorFromPalette(paper or (mon and monPalette(screen, mon)), 1)
     if mon then
+      local animate, counter = limitedGen1IconAnimation(screen, mon, selected)
       if owned then
         drawTypeMatchedIcon(screen, mon, rect.x + 3, rect.y + 2,
-          selected, 1, trueColorRegions, face)
+          animate, 1, trueColorRegions, face, counter)
       else
         drawSeenIcon(screen, mon, rect.x + 3, rect.y + 2,
-          selected, trueColorRegions, face)
+          animate, trueColorRegions, face, counter)
       end
     end
 
@@ -2033,6 +2035,7 @@ return function(mod, genderExports, compatibility, menuColors,
     screen.update = function(self, dt)
       local elapsed = tonumber(dt) or (1 / 60)
       self.blink = ((self.blink or 0) + 1) % 60
+      advanceGen1IconHover(self, dexMon(self, selectedDexItem(self)))
       self.marquee = (self.marquee or 0) + 1
       self.selectorBlinkElapsed = ((self.selectorBlinkElapsed or 0) + elapsed)
         % SELECTOR_PERIOD_SECONDS

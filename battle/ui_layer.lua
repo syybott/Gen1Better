@@ -52,7 +52,7 @@ return function(deps)
     renderer.gen1BetterBattleStatBoxZones = zones
     local before = #(renderer.uiAnchors or {})
     renderer:setBattleUIAnchor(72, 16, 88, 80, "topright",
-      Geometry.betterBattlePlacement("top-right", 4, 42))
+      Geometry.betterBattlePlacement("center"))
     local anchors = renderer.uiAnchors
     if anchors and #anchors > before then
       anchors[#anchors].canvas = canvas

@@ -12,7 +12,6 @@ BetterOptions groups the game's settings into **SPEED**, **VIDEO**, **GRAPHICS**
 | --- | --- | --- | --- |
 | **BetterFrames** | `better_frames` | **OG DEFAULT** (`og:default`) | Frame artwork for menus, dialogue, location popups, and battle boxes |
 | **MENU PALETTE** | `palette` | **SOULSILVER** (`soulsilver`) | Menu and panel colors, subject to the game's CLASSIC palette lock |
-| **Inverse** | `inverse` | **OFF** | Reverses the menu palette's light-to-dark order when the palette is unlocked |
 | **BetterPC** | `modern_pc_ui` | **ON** | Responsive Pokémon storage |
 | **BetterParty** | `modern_party_ui` | **ON** | Responsive party screen |
 | **BetterPokedex** | `modern_pokedex_ui` | **ON** | Responsive Pokédex |
@@ -20,10 +19,11 @@ BetterOptions groups the game's settings into **SPEED**, **VIDEO**, **GRAPHICS**
 | **BetterBag** | `modern_bag_ui` | **ON** | Pocket-based bag interface. Expanded inventory limits apply independently. |
 | **BetterModManager** | `better_mod_manager` | **ON** | Responsive mod manager |
 | **BetterOptions** | `better_options` | **ON** | Tabbed game options screen |
-| **Menu Scale** | `menu_scale` | **100%** (`100`) | 100%, 90%, 80%, or 70% for eligible compact menus and dialogue. The seven responsive interfaces keep their own sizing. |
+| **Menu Wallpaper** | `menu_wallpaper` | **OFF** | Enables patterned backgrounds on BetterPC, BetterParty, BetterPokedex, BetterBag, BetterOptions, and BetterModManager. OFF keeps their plain menu-colored background. |
+| **Menu Scale** | `menu_scale` | **100%** (`100`) | 100%, 90%, 80%, or 70% for eligible compact menus and dialogue, BetterTrainerCard, the title menu and Continue panel, and LOAD REPORT. The other six responsive interfaces keep their own sizing. |
 | **BetterBattles** | `better_battles` | **ON** | Gen1Better's 2D battle stage and backdrops. Requires WIDE + EXTENDED. |
 | **BetterBattle UI** | `better_battle_ui` | **ON** | BetterBattle's status, command, and move panels. Requires WIDE + EXTENDED. |
-| **BetterAnimations** | `better_animations` | **ON** | Enhanced move animations in the supported battle rendering path |
+| **BetterAnimations** | `better_animations` | **ON** | Enhanced move animations and corrected overworld flower colors in Advanced Game Palette |
 | **Marquee Text** | `marquee_text` | **ON** | Scrolls labels that do not fit |
 | **Pokédex Indicator** | `pokedex_indicator` | **DEFAULT** (`default`) | BetterBattle's caught marker: OFF, DEFAULT (menu palette), or RED |
 
@@ -31,13 +31,17 @@ These are defaults for the current option schema. Saved choices take precedence.
 
 ## Changes since 1.1.2
 
-The exposed settings grew from seven to sixteen. Review your settings after updating:
+Review your settings after updating:
 
 - **Modern PC UI** is now labeled **BetterPC**; its saved key remains `modern_pc_ui` and its default changed from OFF to ON
 - **Modern Bag UI** is now labeled **BetterBag**; its saved key remains `modern_bag_ui`
 - The **Modern Battle UI** ON/OFF/MOD selector (`modern_battle_ui`) was replaced by **BetterBattles** and **BetterBattle UI**, each an ON/OFF toggle. MOD is no longer a selectable setting. Review both new toggles after upgrading; do not rely on the old selector to configure them.
 - **BetterFrames**, **BetterParty**, **BetterPokedex**, **BetterTrainerCard**, **BetterModManager**, **BetterOptions**, **Menu Scale**, and **BetterAnimations** are additional settings
-- **MENU PALETTE**, **Inverse**, **Marquee Text**, and **Pokédex Indicator** retain their saved keys. The menu palette now has 52 choices, including ten FireRed frame palettes.
+- **MENU PALETTE**, **Marquee Text**, and **Pokédex Indicator** retain their saved keys. The menu palette now has 52 choices, including ten FireRed frame palettes.
+
+## Changes in 2.0
+
+Inverse colors has been retired. Its setting is hidden, and previously saved ON values are ignored for menu and battle palettes.
 
 ## Favorites
 
@@ -58,11 +62,11 @@ When Groovy Palette & Frames is installed, this game-palette browser offers **DE
 - **GAME BOY**, **BLACK AND WHITE**, **OG RED**, **ADVANCED**, **SGB**, **SOULSILVER**, **HEARTGOLD**, **FIRERED**, **FR 1–FR 10**, **LEAFGREEN**, **CRYSTAL**, and **EMERALD**
 - **AMIGA WB**, **AMIGA DP**, **C64**, **SPECTRUM**, **CGA**, **APPLE2**, **POCKET**, **GB LIGHT**, **VIRTUAL BOY**, **AMBER**, **PHOSPHOR**, **PLASMA**, **RAINBOW**, **ACID**, **FUSCHIA**, **SUNSET**, **OCEAN**, **FOREST**, **LAVA**, **ICE**, **CANDY**, **VAPOR**, **NEON**, **TOXIC**, **SEPIA**, **NOIR**, **CHERRY**, **MIDNIGHT**, **GOLD**, **MINT**, and **GRAPE**
 
-Names above match the displayed choices, including **FUSCHIA**. The **Inverse** toggle reverses an unlocked menu palette.
+Names above match the displayed choices, including **FUSCHIA**.
 
 ### CLASSIC palette lock
 
-When the game uses its classic/OG palette without a custom palette or ramp, the menu palette row displays **CLASSIC**. Menus follow the game's colors, Inverse is ignored, and BetterFrames offers only its OG category.
+When the game uses its classic/OG palette without a custom palette or ramp, the menu palette row displays **CLASSIC**. Menus follow the game's colors, and BetterFrames offers only its OG category.
 
 Selecting MENU PALETTE asks whether to switch the game's palette to **ADVANCED**. **YES** changes the game palette and opens the menu palette picker; **NO** keeps CLASSIC. There is no separate UNLOCK setting.
 
@@ -101,9 +105,13 @@ Use battle sprites with a correct transparency mask: the background must be tran
 
 ## Menu Scale and animations
 
-**Menu Scale** offers 100%, 90%, 80%, and 70%. Eligible compact menus and dialogue use this setting. BetterPC, BetterParty, BetterPokedex, BetterTrainerCard, BetterBag, BetterModManager, and BetterOptions retain their responsive sizing.
+**Menu Scale** offers 100%, 90%, 80%, and 70%. Eligible compact menus and dialogue, BetterTrainerCard, the title menu and Continue information panel, and LOAD REPORT use this setting. The title background keeps its native size and animation while its menu overlays scale. BetterPC, BetterParty, BetterPokedex, BetterBag, BetterModManager, and BetterOptions retain their responsive sizing.
 
-**BetterAnimations** chooses enhanced move animation rendering in the supported field renderer. Turning it off selects the original animation path.
+**Menu Wallpaper** defaults to OFF. Enable it to restore the patterned background on those six Better screens; OFF keeps a plain background in the selected menu palette.
+
+The title animation remains visible after pressing **A** or **START**, through the menu transition and behind the title menu and Continue information panel. Pikachu keeps blinking, and the transition has no white flash. Save panels and their dialogue keep the overworld visible around their frames.
+
+**BetterAnimations** chooses enhanced move animation rendering in the supported field renderer. In Advanced Game Palette, it also gives overworld flowers dark green stalks and leaves, red/pink/pale white petals, and a grass background without the stray pink edge dots. All three flower poses keep their original timing. Turning it off selects the original animation path and flower rendering.
 
 **Marquee Text** scrolls labels that do not fit. **Pokédex Indicator** selects OFF, DEFAULT, or RED for BetterBattle's caught marker.
 

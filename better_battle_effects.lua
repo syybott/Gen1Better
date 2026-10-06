@@ -92,22 +92,20 @@ function Effects.isScreenWide(player, step)
   local marked = stepCache[steps]
   if not marked then
     marked = {}
-    local starts, frame = {}, 0
-    for _, current in ipairs(steps) do
-      starts[frame] = current
-      frame = frame + current.dur
-    end
-    local first = {}
+    -- Emitter loading pauses and blank particle pulses are still part of
+    -- the same effect. The next row/effect event ends its field coverage.
+    local boundaries = {}
     for _, event in ipairs(player.events or {}) do
-      if fullFieldEffects[event.effect] and starts[event.frame] then
-        first[starts[event.frame]] = true
+      if event.effect or event.sound then
+        boundaries[event.frame] = boundaries[event.frame] == true
+          or fullFieldEffects[event.effect] == true
       end
     end
-    local active = false
+    local active, frame = false, 0
     for _, current in ipairs(steps) do
-      if first[current] then active = true end
-      if #current.sprites == 0 then active = false end
-      if active then marked[current] = true end
+      if boundaries[frame] ~= nil then active = boundaries[frame] end
+      if active and #current.sprites > 0 then marked[current] = true end
+      frame = frame + current.dur
     end
     stepCache[steps] = marked
   end

@@ -257,10 +257,6 @@ return function(deps)
           local continuation = pages.contBefore
             and pages.contBefore[pageIndex][lineIndex] or false
           if pageIndex > 1 and lineIndex == 1 then continuation = true end
-          -- Keep the existing battle wait only after both visible rows fill.
-          if continuation and (#lines % MESSAGE_VISIBLE_LINES) ~= 0 then
-            continuation = false
-          end
           local codes = Font.encode(text)
           lines[#lines + 1] = { text = text, codes = codes, cont = continuation }
           total = total + #codes
