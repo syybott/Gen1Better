@@ -5327,6 +5327,33 @@ return function(mod, menuColors)
     end
   end
 
+  local kantoGear
+  local gearSource, gearReadErr = mod:read("kanto_gear_compat.lua")
+  if not gearSource then
+    mod.log:warn("Kanto Gear compatibility is missing: %s",
+      tostring(gearReadErr or "unknown read error"))
+  else
+    local gearChunk, gearCompileErr = load(
+      gearSource, "@" .. mod.path .. "/kanto_gear_compat.lua")
+    if not gearChunk then
+      mod.log:warn("Kanto Gear compatibility did not compile: %s",
+        tostring(gearCompileErr))
+    else
+      local okFactory, gearFactory = pcall(gearChunk)
+      if not okFactory or type(gearFactory) ~= "function" then
+        mod.log:warn("Kanto Gear compatibility factory failed: %s",
+          tostring(gearFactory))
+      else
+        local okCompat, compat = pcall(gearFactory, mod)
+        if okCompat and type(compat) == "table" then
+          kantoGear = compat
+        elseif not okCompat then
+          mod.log:warn("Kanto Gear compatibility failed: %s", tostring(compat))
+        end
+      end
+    end
+  end
+
   local compatibility = {
     hgssSprites = mod.find("HGSS_SPRITES") ~= nil,
     crystalAnimatedSprites = crystalMod ~= nil,
@@ -6315,6 +6342,16 @@ return function(mod, menuColors)
       end)
     end
 
+    if activeMod
+        and activeMod.options:get("better_mod_manager") ~= false then
+      for _, item in ipairs(items) do
+        if tostring(item.label) == tostring(Strings("MODS")) then
+          item.keepOpen = true
+          break
+        end
+      end
+    end
+
     if groovyAvailable() then
       for i = #items, 1, -1 do
         if tostring(items[i].label) == "PALETTE" then table.remove(items, i) end
@@ -6384,6 +6421,9 @@ return function(mod, menuColors)
   installLocationBanners(mod)
   mod.hooks:wrap("screen.render_visible", function(next, state)
     local visible = next(state)
+
+    if visible == false then return false end
+    if kantoGear and kantoGear.shouldHide(state) then return false end
 
     if state and state.startCloses then
       for _, overlay in ipairs(frameGame and frameGame.stack
@@ -6737,7 +6777,8 @@ end
       for i = first, #states do
         local state = states[i]
         local stateMt = state and getmetatable(state)
-        if stateMt == Menu then
+        if stateMt == Menu
+            and not (kantoGear and kantoGear.shouldHide(state)) then
           local tx, ty, tw, th = state.tx, state.ty, state.tw, state.th
           local box = state.gen1BetterFramesBox
           if box then
@@ -6764,7 +6805,8 @@ end
               state.boxTx + state.boxTw - 1,
               state.boxTy + state.boxTh - 1)
           end
-        elseif stateMt == ChoiceBox then
+        elseif stateMt == ChoiceBox
+            and not (kantoGear and kantoGear.shouldHide(state)) then
           out[#out + 1] = PaletteFX.zone(effectiveMenuPalette(), state.tx, state.ty,
             state.tx + state.tw - 1, state.ty + state.th - 1)
         elseif state and state.isPCLoginTransition then
